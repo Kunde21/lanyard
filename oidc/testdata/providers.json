@@ -1,0 +1,10 @@
+[
+  {
+    "name": "google",
+    "issuer": "https://accounts.google.com"
+  },
+  {
+    "name": "apple",
+    "issuer": "https://appleid.apple.com"
+  }
+]
