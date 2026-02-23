@@ -3,16 +3,14 @@ package oidc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
-	"github.com/pquerna/cachecontrol/cacheobject"
+	"github.com/Kunde21/lanyard/httputil"
 )
-
-const maxErrorBodyBytes = 4096
 
 type providerFetchResult struct {
 	metadata    ProviderMetadata
@@ -77,48 +75,30 @@ func (c *Client) fetchRawJSON(ctx context.Context, rawURL, priorETag string, out
 		return result, fmt.Errorf("failed to build discovery request: %w", err)
 	}
 
-	req.Header.Set("Accept", "application/json")
-	if priorETag != "" {
-		req.Header.Set("If-None-Match", priorETag)
-	}
-
-	resp, err := c.httpClient.Do(req)
+	fetchResult, err := httputil.FetchJSON(req, c.httpClient, priorETag, c.defaultDiscoveryTTL, func(body io.Reader) error {
+		decoder := json.NewDecoder(body)
+		return decoder.Decode(out)
+	})
 	if err != nil {
+		var decodeErr *httputil.DecodeError
+		if errors.As(err, &decodeErr) {
+			return result, fmt.Errorf("failed to decode discovery response: %w", decodeErr.Err)
+		}
 		return result, fmt.Errorf("failed to execute discovery request: %w", err)
 	}
-	defer resp.Body.Close()
 
-	now := time.Now().UTC()
-	freshUntil := calculateFreshUntil(req, resp.StatusCode, resp.Header, c.defaultDiscoveryTTL, now)
-	result.etag = strings.TrimSpace(resp.Header.Get("ETag"))
-	result.freshUntil = freshUntil
-	result.fetchedAt = now
+	result.etag = fetchResult.ETag
+	result.freshUntil = fetchResult.FreshUntil
+	result.fetchedAt = fetchResult.FetchedAt
 
-	if resp.StatusCode == http.StatusNotModified {
+	if fetchResult.NotModified {
 		result.notModified = true
 		return result, nil
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		preview, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
-		return result, &HTTPStatusError{URL: rawURL, StatusCode: resp.StatusCode, BodyPreview: strings.TrimSpace(string(preview))}
-	}
-
-	decoder := json.NewDecoder(resp.Body)
-	if err := decoder.Decode(out); err != nil {
-		return result, fmt.Errorf("failed to decode discovery response: %w", err)
+	if fetchResult.StatusCode != http.StatusOK {
+		return result, &HTTPStatusError{URL: rawURL, StatusCode: fetchResult.StatusCode, BodyPreview: fetchResult.BodyPreview}
 	}
 
 	return result, nil
-}
-
-func calculateFreshUntil(req *http.Request, statusCode int, headers http.Header, fallbackTTL time.Duration, now time.Time) time.Time {
-	if req != nil {
-		_, expiry, err := cacheobject.UsingRequestResponse(req, statusCode, headers, true)
-		if err == nil && !expiry.IsZero() {
-			return expiry.UTC()
-		}
-	}
-
-	return now.Add(fallbackTTL)
 }

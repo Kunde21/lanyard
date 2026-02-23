@@ -3,17 +3,15 @@ package jwks
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
+	"github.com/Kunde21/lanyard/httputil"
 	jose "github.com/go-jose/go-jose/v4"
-	"github.com/pquerna/cachecontrol/cacheobject"
 )
-
-const maxErrorBodyBytes = 4096
 
 type fetchResult struct {
 	keys        []jose.JSONWebKey
@@ -31,48 +29,31 @@ func (r *RemoteKeySet) fetchJWKS(ctx context.Context, priorETag string) (fetchRe
 		return result, fmt.Errorf("failed to build jwks request: %w", err)
 	}
 
-	req.Header.Set("Accept", "application/json")
-	if priorETag != "" {
-		req.Header.Set("If-None-Match", priorETag)
-	}
-
-	resp, err := r.httpClient.Do(req)
+	var keySet jose.JSONWebKeySet
+	fetchResult, err := httputil.FetchJSON(req, r.httpClient, priorETag, r.defaultTTL, func(body io.Reader) error {
+		return json.NewDecoder(body).Decode(&keySet)
+	})
 	if err != nil {
+		var decodeErr *httputil.DecodeError
+		if errors.As(err, &decodeErr) {
+			return result, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("failed to decode jwks: %w", decodeErr.Err)}
+		}
 		return result, &FetchError{JWKSURL: r.jwksURL, Err: err}
 	}
-	defer resp.Body.Close()
 
-	now := time.Now().UTC()
-	result.etag = strings.TrimSpace(resp.Header.Get("ETag"))
-	result.fetchedAt = now
-	result.freshUntil = calculateFreshUntil(req, resp.StatusCode, resp.Header, r.defaultTTL, now)
+	result.etag = fetchResult.ETag
+	result.freshUntil = fetchResult.FreshUntil
+	result.fetchedAt = fetchResult.FetchedAt
 
-	if resp.StatusCode == http.StatusNotModified {
+	if fetchResult.NotModified {
 		result.notModified = true
 		return result, nil
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		preview, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
-		return result, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("status %d: %s", resp.StatusCode, strings.TrimSpace(string(preview)))}
-	}
-
-	var keySet jose.JSONWebKeySet
-	if err := json.NewDecoder(resp.Body).Decode(&keySet); err != nil {
-		return result, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("failed to decode jwks: %w", err)}
+	if fetchResult.StatusCode != http.StatusOK {
+		return result, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("status %d: %s", fetchResult.StatusCode, fetchResult.BodyPreview)}
 	}
 
 	result.keys = append([]jose.JSONWebKey(nil), keySet.Keys...)
 	return result, nil
-}
-
-func calculateFreshUntil(req *http.Request, statusCode int, headers http.Header, fallbackTTL time.Duration, now time.Time) time.Time {
-	if req != nil {
-		_, expiry, err := cacheobject.UsingRequestResponse(req, statusCode, headers, true)
-		if err == nil && !expiry.IsZero() {
-			return expiry.UTC()
-		}
-	}
-
-	return now.Add(fallbackTTL)
 }
