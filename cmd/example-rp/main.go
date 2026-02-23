@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
@@ -19,7 +20,7 @@ func main() {
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
-		rp.WithHTTPClient(&http.Client{Timeout: 15 * time.Second}),
+		rp.WithHTTPClient(newRPHTTPClient()),
 	)
 	if err != nil {
 		log.Fatalf("failed to initialize RP: %v", err)
@@ -32,6 +33,15 @@ func main() {
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("example RP server failed: %v", err)
 	}
+}
+
+func newRPHTTPClient() *http.Client {
+	transport := &http.Transport{}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("RP_INSECURE_TLS")), "true") {
+		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true}
+	}
+
+	return &http.Client{Timeout: 15 * time.Second, Transport: transport}
 }
 
 type flowHandler interface {

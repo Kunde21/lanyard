@@ -92,7 +92,8 @@ func (r *runner) executePlan(ctx context.Context, selected AvailablePlan, planIn
 	defer cancel()
 
 	planVariant := selectPlanVariant(selected)
-	created, err := r.client.CreatePlan(planCtx, selected.Name, planVariant, map[string]any{})
+	planConfig := buildPlanConfig(planVariant)
+	created, err := r.client.CreatePlan(planCtx, selected.Name, planVariant, planConfig)
 	if err != nil {
 		failPlan(&planRes, fmt.Sprintf("create plan failed: %v", err))
 		r.logf("plan failed: %s (%s)", selected.Name, planRes.FailureReason)
@@ -275,11 +276,61 @@ func selectPlanVariant(plan AvailablePlan) map[string]string {
 			continue
 		}
 		sort.Strings(values)
-		selected[key] = values[0]
+		selected[key] = chooseVariantValue(key, values)
 	}
 
 	if len(selected) == 0 {
 		return nil
 	}
 	return selected
+}
+
+func chooseVariantValue(key string, values []string) string {
+	lowerKey := strings.ToLower(strings.TrimSpace(key))
+
+	if lowerKey == "client_registration" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "static_client") {
+				return value
+			}
+		}
+	}
+
+	return values[0]
+}
+
+func buildPlanConfig(planVariant map[string]string) map[string]any {
+	if !usesStaticClientRegistration(planVariant) {
+		return map[string]any{}
+	}
+
+	requestType := "plain_http_request"
+	if v := strings.TrimSpace(planVariant["request_type"]); v != "" {
+		requestType = v
+	}
+
+	return map[string]any{
+		"alias":       "lanyard-local",
+		"description": "Lanyard automated local conformance run",
+		"client": map[string]any{
+			"client_id":     "local-dev-client",
+			"client_secret": "local-dev-secret",
+			"redirect_uri":  "https://rp.test/callback",
+			"request_type":  requestType,
+		},
+		"client2": map[string]any{
+			"client_id":     "local-dev-client-2",
+			"client_secret": "local-dev-secret-2",
+			"redirect_uri":  "https://rp.test/callback",
+			"request_type":  requestType,
+		},
+	}
+}
+
+func usesStaticClientRegistration(planVariant map[string]string) bool {
+	v, ok := planVariant["client_registration"]
+	if !ok {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(v), "static_client")
 }

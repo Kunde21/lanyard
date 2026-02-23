@@ -23,6 +23,14 @@ mkdir -p "${CERT_DIR}"
 echo "==> Installing/updating local mkcert CA trust"
 mkcert -install
 
+echo "==> Exporting mkcert root CA for containers"
+CAROOT="$(mkcert -CAROOT)"
+if [ ! -f "${CAROOT}/rootCA.pem" ]; then
+	echo "mkcert root CA not found at ${CAROOT}/rootCA.pem" >&2
+	exit 1
+fi
+cp "${CAROOT}/rootCA.pem" "${CERT_DIR}/mkcert-rootCA.pem"
+
 echo "==> Generating certificate for suite.test"
 mkcert \
 	-cert-file "${CERT_DIR}/suite.test.pem" \

@@ -29,6 +29,7 @@ bash conformance/scripts/setup.sh
 The script:
 
 - verifies `mkcert` is installed
+- exports `mkcert` root CA to `conformance/certs/mkcert-rootCA.pem` for container trust
 - generates certs in `conformance/certs/`
 - prints required `/etc/hosts` entries
 
@@ -65,6 +66,10 @@ Open:
 
 - `https://suite.test`
 - `https://rp.test`
+
+The compose stack builds local wrapper images for `suite`, `rp`, `mongo`, and `caddy` that import
+`conformance/certs/mkcert-rootCA.pem` into system trust. The suite wrapper also imports the CA into JVM
+`cacerts` so Java HTTPS calls trust local certs.
 
 Stop and clean all state:
 
@@ -156,7 +161,8 @@ Selected flags:
 - `-include-plan-regex` and `-exclude-plan-regex`
 - `-module-regex` for module/test name filtering inside selected plans
 - `-provision-timeout`, `-plan-timeout`, `-test-timeout`
-- `-keep-running` to avoid teardown for local debugging
+- `-cleanup` (default `false`) to tear down compose services after tests
+- `-cleanup=false` to keep services running for local debugging
 - `-export-zip` to save suite evidence ZIPs per plan
 - `-redact` to redact obvious sensitive values in report fields
 

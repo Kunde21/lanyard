@@ -24,6 +24,7 @@ func validatePrerequisites(cfg harnessConfig) error {
 		"conformance/certs/suite.test-key.pem",
 		"conformance/certs/rp.test.pem",
 		"conformance/certs/rp.test-key.pem",
+		"conformance/certs/mkcert-rootCA.pem",
 	}
 	for _, certRelPath := range certRelPaths {
 		certPath, err := repoPath(certRelPath)

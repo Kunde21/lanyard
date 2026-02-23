@@ -24,10 +24,10 @@ var (
 	flagPlanTimeout      = flag.Duration("plan-timeout", 30*time.Minute, "Max time for a single plan execution")
 	flagTestTimeout      = flag.Duration("test-timeout", 5*time.Minute, "Max time for a single test instance")
 
-	flagKeepRunning = flag.Bool("keep-running", false, "Leave docker compose services running after test")
-	flagExportZip   = flag.Bool("export-zip", true, "Export suite plan result ZIP artifacts")
-	flagRedact      = flag.Bool("redact", true, "Redact sensitive keys in artifacts/log output")
-	flagRebuild     = flag.Bool("rebuild-suite", false, "Force rebuilding suite image before compose up")
+	flagCleanup   = flag.Bool("cleanup", false, "Tear down docker compose services after test")
+	flagExportZip = flag.Bool("export-zip", true, "Export suite plan result ZIP artifacts")
+	flagRedact    = flag.Bool("redact", true, "Redact sensitive keys in artifacts/log output")
+	flagRebuild   = flag.Bool("rebuild-suite", false, "Force rebuilding suite image before compose up")
 )
 
 func TestConformanceHarness(t *testing.T) {
@@ -50,7 +50,7 @@ func TestConformanceHarness(t *testing.T) {
 	if err := ensureProvisioned(ctx, cfg); err != nil {
 		t.Fatalf("failed to provision conformance stack: %v", err)
 	}
-	if !cfg.KeepRunning {
+	if cfg.Cleanup {
 		t.Cleanup(func() {
 			downCtx, downCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer downCancel()
@@ -104,7 +104,7 @@ func parseHarnessConfig() (harnessConfig, error) {
 		ProvisionTimeout: *flagProvisionTimeout,
 		PlanTimeout:      *flagPlanTimeout,
 		TestTimeout:      *flagTestTimeout,
-		KeepRunning:      *flagKeepRunning,
+		Cleanup:          *flagCleanup,
 		ExportZip:        *flagExportZip,
 		Redact:           *flagRedact,
 		RebuildSuite:     *flagRebuild,

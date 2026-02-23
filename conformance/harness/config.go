@@ -15,7 +15,7 @@ type harnessConfig struct {
 	ProvisionTimeout  time.Duration
 	PlanTimeout       time.Duration
 	TestTimeout       time.Duration
-	KeepRunning       bool
+	Cleanup           bool
 	ExportZip         bool
 	Redact            bool
 	RebuildSuite      bool
