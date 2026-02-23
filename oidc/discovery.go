@@ -62,105 +62,69 @@ func (c *Client) DiscoverAuthorizationServer(ctx context.Context, issuer string)
 }
 
 func (c *Client) refreshProvider(ctx context.Context, issuer, cacheKey string, existing *CacheEntry) (*CacheEntry, error) {
-	value, err, _ := c.discoveryGroup.Do(cacheKey, func() (any, error) {
-		discoveryURL, err := OIDCWellKnownURL(issuer)
-		if err != nil {
-			return nil, err
-		}
-
-		etag := ""
-		if existing != nil {
-			etag = existing.etag
-		}
-
-		result, err := c.fetchProviderMetadata(ctx, discoveryURL, etag)
-		if err != nil {
-			return nil, err
-		}
-
-		if result.notModified {
-			if existing == nil {
-				return nil, fmt.Errorf("received 304 without cached entry")
+	return c.refreshDiscovery(ctx, issuer, cacheKey, existing, discoveryRefreshOptions{
+		wellKnown: OIDCWellKnownURL,
+		fetch: func(ctx context.Context, discoveryURL, etag string) (discoveryFetchResult, error) {
+			result, err := c.fetchProviderMetadata(ctx, discoveryURL, etag)
+			if err != nil {
+				return discoveryFetchResult{}, err
 			}
-			updated := newProviderCacheEntry(existing.provider, existing.etag, result.freshUntil, result.fetchedAt)
-			if result.etag != "" {
-				updated.etag = result.etag
+			return discoveryFetchResult{
+				metadata:    result.metadata,
+				notModified: result.notModified,
+				etag:        result.etag,
+				freshUntil:  result.freshUntil,
+				fetchedAt:   result.fetchedAt,
+			}, nil
+		},
+		validate: func(expectedIssuer string, metadata interface{}) error {
+			md, ok := metadata.(ProviderMetadata)
+			if !ok {
+				return fmt.Errorf("expected provider metadata, got %T", metadata)
 			}
-			c.discoveryCache.Set(cacheKey, updated)
-			return updated, nil
-		}
-
-		if err := c.validateProviderMetadata(issuer, result.metadata); err != nil {
-			return nil, err
-		}
-
-		entry := newProviderCacheEntry(result.metadata, result.etag, result.freshUntil, result.fetchedAt)
-		c.discoveryCache.Set(cacheKey, entry)
-		return entry, nil
+			return c.validateProviderMetadata(expectedIssuer, md)
+		},
+		newEntry: func(metadata interface{}, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
+			return newProviderCacheEntry(metadata.(ProviderMetadata), etag, freshUntil, fetchedAt)
+		},
+		metadataFromExisting: func(entry *CacheEntry) interface{} {
+			return entry.provider
+		},
+		staleLogMessage: "provider refresh failed; serving stale cache",
+		entryKind:       cacheEntryKindProvider,
 	})
-	if err != nil {
-		if existing != nil {
-			c.logger.DebugContext(ctx, "provider refresh failed; serving stale cache", "issuer", issuer, "err", err)
-		}
-		return nil, err
-	}
-
-	entry, ok := value.(*CacheEntry)
-	if !ok {
-		return nil, fmt.Errorf("unexpected provider cache entry type %T", value)
-	}
-
-	return entry, nil
 }
 
 func (c *Client) refreshAuthorizationServer(ctx context.Context, issuer, cacheKey string, existing *CacheEntry) (*CacheEntry, error) {
-	value, err, _ := c.discoveryGroup.Do(cacheKey, func() (any, error) {
-		discoveryURL, err := OAuthASWellKnownURL(issuer)
-		if err != nil {
-			return nil, err
-		}
-
-		etag := ""
-		if existing != nil {
-			etag = existing.etag
-		}
-
-		result, err := c.fetchAuthorizationServerMetadata(ctx, discoveryURL, etag)
-		if err != nil {
-			return nil, err
-		}
-
-		if result.notModified {
-			if existing == nil {
-				return nil, fmt.Errorf("received 304 without cached entry")
+	return c.refreshDiscovery(ctx, issuer, cacheKey, existing, discoveryRefreshOptions{
+		wellKnown: OAuthASWellKnownURL,
+		fetch: func(ctx context.Context, discoveryURL, etag string) (discoveryFetchResult, error) {
+			result, err := c.fetchAuthorizationServerMetadata(ctx, discoveryURL, etag)
+			if err != nil {
+				return discoveryFetchResult{}, err
 			}
-			updated := newAuthorizationServerCacheEntry(existing.authorizer, existing.etag, result.freshUntil, result.fetchedAt)
-			if result.etag != "" {
-				updated.etag = result.etag
+			return discoveryFetchResult{
+				metadata:    result.metadata,
+				notModified: result.notModified,
+				etag:        result.etag,
+				freshUntil:  result.freshUntil,
+				fetchedAt:   result.fetchedAt,
+			}, nil
+		},
+		validate: func(expectedIssuer string, metadata interface{}) error {
+			md, ok := metadata.(AuthorizationServerMetadata)
+			if !ok {
+				return fmt.Errorf("expected authorization server metadata, got %T", metadata)
 			}
-			c.discoveryCache.Set(cacheKey, updated)
-			return updated, nil
-		}
-
-		if err := c.validateAuthorizationServerMetadata(issuer, result.metadata); err != nil {
-			return nil, err
-		}
-
-		entry := newAuthorizationServerCacheEntry(result.metadata, result.etag, result.freshUntil, result.fetchedAt)
-		c.discoveryCache.Set(cacheKey, entry)
-		return entry, nil
+			return c.validateAuthorizationServerMetadata(expectedIssuer, md)
+		},
+		newEntry: func(metadata interface{}, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
+			return newAuthorizationServerCacheEntry(metadata.(AuthorizationServerMetadata), etag, freshUntil, fetchedAt)
+		},
+		metadataFromExisting: func(entry *CacheEntry) interface{} {
+			return entry.authorizer
+		},
+		staleLogMessage: "authorization server refresh failed; serving stale cache",
+		entryKind:       cacheEntryKindAS,
 	})
-	if err != nil {
-		if existing != nil {
-			c.logger.DebugContext(ctx, "authorization server refresh failed; serving stale cache", "issuer", issuer, "err", err)
-		}
-		return nil, err
-	}
-
-	entry, ok := value.(*CacheEntry)
-	if !ok {
-		return nil, fmt.Errorf("unexpected authorization server cache entry type %T", value)
-	}
-
-	return entry, nil
 }
