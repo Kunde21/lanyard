@@ -1,35 +1,36 @@
 package oidc
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/Kunde21/lanyard/validateurl"
 )
 
 func validateIssuerURL(issuer string) (*url.URL, error) {
-	u, err := url.Parse(issuer)
+	u, err := validateurl.ParseHTTPSAbsoluteNoQueryFragment(issuer)
 	if err != nil {
-		return nil, &ValidationError{
-			Field:    "issuer",
-			Expected: "valid https URL",
-			Actual:   issuer,
-			Err:      fmt.Errorf("failed to parse issuer: %w", err),
+		if errors.Is(err, validateurl.ErrInvalidFormat) {
+			return nil, &ValidationError{
+				Field:    "issuer",
+				Expected: "valid https URL",
+				Actual:   issuer,
+				Err:      fmt.Errorf("failed to parse issuer: %w", err),
+			}
 		}
-	}
-
-	if !u.IsAbs() || u.Scheme != "https" {
+		if errors.Is(err, validateurl.ErrQueryOrFragment) {
+			return nil, &ValidationError{
+				Field:    "issuer",
+				Expected: "issuer without query or fragment",
+				Actual:   issuer,
+				Err:      ErrInvalidIssuer,
+			}
+		}
 		return nil, &ValidationError{
 			Field:    "issuer",
 			Expected: "absolute https URL",
-			Actual:   issuer,
-			Err:      ErrInvalidIssuer,
-		}
-	}
-
-	if u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
-		return nil, &ValidationError{
-			Field:    "issuer",
-			Expected: "issuer without query or fragment",
 			Actual:   issuer,
 			Err:      ErrInvalidIssuer,
 		}
@@ -65,32 +66,29 @@ func validateHTTPSURL(issuer, fieldName, raw string, required bool) error {
 		return nil
 	}
 
-	u, err := url.Parse(raw)
-	if err != nil {
-		return &ValidationError{
-			Issuer:   issuer,
-			Field:    fieldName,
-			Expected: "valid https URL",
-			Actual:   raw,
-			Err:      err,
+	if _, err := validateurl.ParseHTTPSAbsoluteNoQueryFragment(raw); err != nil {
+		if errors.Is(err, validateurl.ErrInvalidFormat) {
+			return &ValidationError{
+				Issuer:   issuer,
+				Field:    fieldName,
+				Expected: "valid https URL",
+				Actual:   raw,
+				Err:      err,
+			}
 		}
-	}
-
-	if !u.IsAbs() || u.Scheme != "https" || u.Host == "" {
+		if errors.Is(err, validateurl.ErrQueryOrFragment) {
+			return &ValidationError{
+				Issuer:   issuer,
+				Field:    fieldName,
+				Expected: "URL without query or fragment",
+				Actual:   raw,
+				Err:      ErrInvalidIssuer,
+			}
+		}
 		return &ValidationError{
 			Issuer:   issuer,
 			Field:    fieldName,
 			Expected: "absolute https URL",
-			Actual:   raw,
-			Err:      ErrInvalidIssuer,
-		}
-	}
-
-	if u.RawQuery != "" || u.Fragment != "" {
-		return &ValidationError{
-			Issuer:   issuer,
-			Field:    fieldName,
-			Expected: "URL without query or fragment",
 			Actual:   raw,
 			Err:      ErrInvalidIssuer,
 		}
