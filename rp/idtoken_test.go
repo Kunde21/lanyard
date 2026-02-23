@@ -60,8 +60,13 @@ func TestValidateIDToken(t *testing.T) {
 	}
 
 	goodToken := signIDToken(t, key, "kid-1", baseClaims)
-	if _, err := r.validateIDToken(context.Background(), goodToken, "nonce-123"); err != nil {
+	if _, err := r.validateIDToken(context.Background(), goodToken, "nonce-123", issuer+"/jwks"); err != nil {
 		t.Fatalf("validateIDToken() failed: %v", err)
+	}
+
+	missingKIDToken := signIDToken(t, key, "", baseClaims)
+	if _, err := r.validateIDToken(context.Background(), missingKIDToken, "nonce-123", issuer+"/jwks"); err != nil {
+		t.Fatalf("validateIDToken() with single signing key and missing kid failed: %v", err)
 	}
 
 	tests := []struct {
@@ -72,6 +77,8 @@ func TestValidateIDToken(t *testing.T) {
 	}{
 		{name: "issuer mismatch", claims: cloneClaims(baseClaims, "iss", "https://other.test"), nonce: "nonce-123", kid: "kid-1"},
 		{name: "audience mismatch", claims: cloneClaims(baseClaims, "aud", []string{"other-client"}), nonce: "nonce-123", kid: "kid-1"},
+		{name: "missing exp", claims: removeClaim(baseClaims, "exp"), nonce: "nonce-123", kid: "kid-1"},
+		{name: "missing iat", claims: removeClaim(baseClaims, "iat"), nonce: "nonce-123", kid: "kid-1"},
 		{name: "expired", claims: cloneClaims(baseClaims, "exp", now.Add(-10*time.Minute).Unix()), nonce: "nonce-123", kid: "kid-1"},
 		{name: "iat too far future", claims: cloneClaims(baseClaims, "iat", now.Add(10*time.Minute).Unix()), nonce: "nonce-123", kid: "kid-1"},
 		{name: "nonce mismatch", claims: cloneClaims(baseClaims, "nonce", "wrong"), nonce: "nonce-123", kid: "kid-1"},
@@ -83,11 +90,68 @@ func TestValidateIDToken(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			token := signIDToken(t, key, tt.kid, tt.claims)
-			_, err := r.validateIDToken(context.Background(), token, tt.nonce)
+			_, err := r.validateIDToken(context.Background(), token, tt.nonce, issuer+"/jwks")
 			if err == nil {
 				t.Fatalf("validateIDToken() expected error")
 			}
 		})
+	}
+}
+
+func TestValidateIDTokenMissingKIDWithMultipleSigningKeysTriesAllKeys(t *testing.T) {
+	key1, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey(key1) failed: %v", err)
+	}
+	key2, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey(key2) failed: %v", err)
+	}
+
+	pub1 := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key1.PublicKey}
+	pub2 := jose.JSONWebKey{KeyID: "kid-2", Algorithm: string(jose.RS256), Use: "sig", Key: &key2.PublicKey}
+
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub1, pub2}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	now := time.Now().UTC()
+	r, err := New(
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	claims := map[string]any{
+		"iss":   issuer,
+		"sub":   "subject-123",
+		"aud":   []string{"client-id"},
+		"exp":   now.Add(5 * time.Minute).Unix(),
+		"iat":   now.Add(-1 * time.Minute).Unix(),
+		"nonce": "nonce-123",
+	}
+
+	token := signIDToken(t, key1, "", claims)
+	if _, err := r.validateIDToken(context.Background(), token, "nonce-123", issuer+"/jwks"); err != nil {
+		t.Fatalf("validateIDToken() failed: %v", err)
 	}
 }
 
@@ -113,5 +177,16 @@ func cloneClaims(src map[string]any, key string, value any) map[string]any {
 		copy[k] = v
 	}
 	copy[key] = value
+	return copy
+}
+
+func removeClaim(src map[string]any, key string) map[string]any {
+	copy := make(map[string]any, len(src))
+	for k, v := range src {
+		if k == key {
+			continue
+		}
+		copy[k] = v
+	}
 	return copy
 }

@@ -45,7 +45,7 @@ func (r *RP) HandleCallback(ctx context.Context, code, state string) (*CallbackR
 		return nil, fmt.Errorf("%w: token response missing access_token", ErrUserInfoValidationFailed)
 	}
 
-	claims, err := r.validateIDToken(ctx, tokenResp.IDToken, data.Nonce)
+	claims, err := r.validateIDToken(ctx, tokenResp.IDToken, data.Nonce, provider.JWKSURI)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ func main() {
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
 		rp.WithHTTPClient(newRPHTTPClient()),
+		rp.WithScopes(parseScopesEnv("RP_SCOPES", []string{"openid", "profile", "email", "phone", "address"})...),
 	)
 	if err != nil {
 		log.Fatalf("failed to initialize RP: %v", err)
@@ -93,6 +94,7 @@ func handleCallback(flow flowHandler) http.HandlerFunc {
 
 		result, err := flow.HandleCallback(r.Context(), code, state)
 		if err != nil {
+			log.Printf("callback processing failed: %v", err)
 			status := callbackStatus(err)
 			http.Error(w, "callback processing failed", status)
 			return
@@ -118,4 +120,34 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func parseScopesEnv(key string, fallback []string) []string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return append([]string(nil), fallback...)
+	}
+
+	parts := strings.Fields(strings.ReplaceAll(value, ",", " "))
+	if len(parts) == 0 {
+		return append([]string(nil), fallback...)
+	}
+
+	seen := make(map[string]struct{}, len(parts))
+	scopes := make([]string, 0, len(parts))
+	for _, part := range parts {
+		normalized := strings.TrimSpace(part)
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		scopes = append(scopes, normalized)
+	}
+	if len(scopes) == 0 {
+		return append([]string(nil), fallback...)
+	}
+	return scopes
 }

@@ -113,3 +113,21 @@ func TestCallbackErrorMappingAndNoSecrets(t *testing.T) {
 		})
 	}
 }
+
+func TestParseScopesEnv(t *testing.T) {
+	t.Run("uses fallback when unset", func(t *testing.T) {
+		fallback := []string{"openid", "profile"}
+		got := parseScopesEnv("RP_SCOPES_TEST", fallback)
+		if strings.Join(got, " ") != "openid profile" {
+			t.Fatalf("unexpected fallback scopes: %v", got)
+		}
+	})
+
+	t.Run("parses comma and space separated values and deduplicates", func(t *testing.T) {
+		t.Setenv("RP_SCOPES_TEST", "openid, profile email openid")
+		got := parseScopesEnv("RP_SCOPES_TEST", []string{"openid"})
+		if strings.Join(got, " ") != "openid profile email" {
+			t.Fatalf("unexpected parsed scopes: %v", got)
+		}
+	})
+}
