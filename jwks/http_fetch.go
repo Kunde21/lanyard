@@ -29,9 +29,14 @@ func (r *RemoteKeySet) fetchJWKS(ctx context.Context, priorETag string) (fetchRe
 		return result, fmt.Errorf("failed to build jwks request: %w", err)
 	}
 
-	var keySet jose.JSONWebKeySet
+	var keySet []jose.JSONWebKey
 	fetchResult, err := httputil.FetchJSON(req, r.httpClient, priorETag, r.defaultTTL, func(body io.Reader) error {
-		return json.NewDecoder(body).Decode(&keySet)
+		decoded, decodeErr := decodeJWKS(body)
+		if decodeErr != nil {
+			return decodeErr
+		}
+		keySet = decoded
+		return nil
 	})
 	if err != nil {
 		var decodeErr *httputil.DecodeError
@@ -54,6 +59,30 @@ func (r *RemoteKeySet) fetchJWKS(ctx context.Context, priorETag string) (fetchRe
 		return result, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("status %d: %s", fetchResult.StatusCode, fetchResult.BodyPreview)}
 	}
 
-	result.keys = append([]jose.JSONWebKey(nil), keySet.Keys...)
+	result.keys = append([]jose.JSONWebKey(nil), keySet...)
 	return result, nil
+}
+
+func decodeJWKS(body io.Reader) ([]jose.JSONWebKey, error) {
+	var envelope struct {
+		Keys []json.RawMessage `json:"keys"`
+	}
+	if err := json.NewDecoder(body).Decode(&envelope); err != nil {
+		return nil, err
+	}
+
+	keys := make([]jose.JSONWebKey, 0, len(envelope.Keys))
+	for _, raw := range envelope.Keys {
+		var key jose.JSONWebKey
+		if err := json.Unmarshal(raw, &key); err != nil {
+			continue
+		}
+		keys = append(keys, key)
+	}
+
+	if len(envelope.Keys) > 0 && len(keys) == 0 {
+		return nil, fmt.Errorf("failed to decode all jwk entries")
+	}
+
+	return keys, nil
 }
