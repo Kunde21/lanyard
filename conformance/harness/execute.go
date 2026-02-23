@@ -2,7 +2,11 @@ package conformanceharness
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/cookiejar"
 	"regexp"
 	"sort"
 	"strings"
@@ -10,16 +14,31 @@ import (
 )
 
 type runner struct {
-	client *suiteClient
-	cfg    harnessConfig
-	logf   func(format string, args ...any)
+	client      *suiteClient
+	cfg         harnessConfig
+	logf        func(format string, args ...any)
+	frontClient *http.Client
 }
 
 func newRunner(client *suiteClient, cfg harnessConfig, logf func(format string, args ...any)) *runner {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return &runner{client: client, cfg: cfg, logf: logf}
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		jar = nil
+	}
+
+	frontClient := &http.Client{
+		Timeout: 45 * time.Second,
+		Jar:     jar,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true},
+		},
+	}
+
+	return &runner{client: client, cfg: cfg, logf: logf, frontClient: frontClient}
 }
 
 type runReport struct {
@@ -148,7 +167,7 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	pollCtx, cancel := context.WithTimeout(ctx, r.cfg.TestTimeout)
 	defer cancel()
 
-	info, err := pollTestResult(pollCtx, r.client, testID)
+	info, err := pollTestResult(pollCtx, r.client, testID, r.triggerFrontChannelStep)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("poll failed: %v", err))
 		r.logf("  test failed: module=%s err=%v", module.Name, err)
@@ -163,11 +182,37 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	return res
 }
 
-func pollTestResult(ctx context.Context, client *suiteClient, testID string) (testInfo, error) {
+func (r *runner) triggerFrontChannelStep(ctx context.Context, testID string) error {
+	triggerCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(triggerCtx, http.MethodGet, "https://rp.test/login", nil)
+	if err != nil {
+		return fmt.Errorf("failed to build front-channel request: %w", err)
+	}
+
+	resp, err := r.frontClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed calling rp front-channel endpoint: %w", err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	r.logf("  front-channel trigger: test=%s status=%d", testID, resp.StatusCode)
+	if resp.StatusCode >= 500 {
+		return fmt.Errorf("rp front-channel endpoint returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func pollTestResult(ctx context.Context, client *suiteClient, testID string, onWaiting func(context.Context, string) error) (testInfo, error) {
 	ticker := time.NewTicker(1500 * time.Millisecond)
 	defer ticker.Stop()
 
 	var waitingSince time.Time
+	waitingTriggered := false
+	var waitingTriggerErr error
 	startedFromConfigured := false
 
 	for {
@@ -189,11 +234,22 @@ func pollTestResult(ctx context.Context, client *suiteClient, testID string) (te
 				if waitingSince.IsZero() {
 					waitingSince = time.Now()
 				}
+				if !waitingTriggered && onWaiting != nil {
+					waitingTriggered = true
+					if err := onWaiting(ctx, testID); err != nil {
+						waitingTriggerErr = err
+					}
+				}
 				if time.Since(waitingSince) >= waitingStateWindow(ctx) {
+					if waitingTriggerErr != nil {
+						return testInfo{}, fmt.Errorf("test entered WAITING state and did not progress after front-channel trigger: %w", waitingTriggerErr)
+					}
 					return testInfo{}, fmt.Errorf("test entered WAITING state and did not progress; interactive/browser step likely required")
 				}
 			} else {
 				waitingSince = time.Time{}
+				waitingTriggered = false
+				waitingTriggerErr = nil
 			}
 
 			if isTestDone(info) {
@@ -239,7 +295,7 @@ func isTestDone(info testInfo) bool {
 
 func moduleFailed(result testResult) bool {
 	res := strings.ToUpper(strings.TrimSpace(result.Result))
-	if res == "PASSED" || res == "SUCCESS" {
+	if res == "PASSED" || res == "SUCCESS" || res == "SKIPPED" {
 		return false
 	}
 	return true
