@@ -39,13 +39,37 @@ type idTokenClaims struct {
 	Azp     string        `json:"azp"`
 }
 
+var supportedIDTokenAlgs = []jose.SignatureAlgorithm{
+	jose.RS256,
+	jose.RS384,
+	jose.RS512,
+	jose.PS256,
+	jose.PS384,
+	jose.PS512,
+	jose.ES256,
+	jose.ES384,
+	jose.ES512,
+	jose.SignatureAlgorithm("none"),
+}
+
 func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwksURL string) (idTokenClaims, error) {
-	parsed, err := jwt.ParseSigned(rawIDToken, []jose.SignatureAlgorithm{jose.RS256, jose.RS384, jose.RS512, jose.PS256, jose.PS384, jose.PS512, jose.ES256, jose.ES384, jose.ES512})
+	parsed, err := jwt.ParseSigned(rawIDToken, supportedIDTokenAlgs)
 	if err != nil {
 		return idTokenClaims{}, fmt.Errorf("%w: parse id_token: %v", ErrIDTokenValidationFailed, err)
 	}
 	if len(parsed.Headers) == 0 {
 		return idTokenClaims{}, fmt.Errorf("%w: missing JOSE headers", ErrIDTokenValidationFailed)
+	}
+
+	if parsed.Headers[0].Algorithm == "none" {
+		var claims idTokenClaims
+		if err := parsed.UnsafeClaimsWithoutVerification(&claims); err != nil {
+			return idTokenClaims{}, fmt.Errorf("%w: parse unsecured id_token claims: %v", ErrIDTokenValidationFailed, err)
+		}
+		if err := r.validateIDTokenClaims(claims, expectedNonce); err != nil {
+			return idTokenClaims{}, err
+		}
+		return claims, nil
 	}
 
 	keySet, err := r.oidcClient.RemoteKeySet(ctx, r.issuer)

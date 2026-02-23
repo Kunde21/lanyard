@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -67,6 +68,11 @@ func TestValidateIDToken(t *testing.T) {
 	missingKIDToken := signIDToken(t, key, "", baseClaims)
 	if _, err := r.validateIDToken(context.Background(), missingKIDToken, "nonce-123", issuer+"/jwks"); err != nil {
 		t.Fatalf("validateIDToken() with single signing key and missing kid failed: %v", err)
+	}
+
+	unsignedToken := signUnsecuredIDToken(t, baseClaims)
+	if _, err := r.validateIDToken(context.Background(), unsignedToken, "nonce-123", issuer+"/jwks"); err != nil {
+		t.Fatalf("validateIDToken() with alg=none failed: %v", err)
 	}
 
 	tests := []struct {
@@ -189,4 +195,21 @@ func removeClaim(src map[string]any, key string) map[string]any {
 		copy[k] = v
 	}
 	return copy
+}
+
+func signUnsecuredIDToken(t *testing.T, claims map[string]any) string {
+	t.Helper()
+
+	header := map[string]any{"alg": "none"}
+	headerJSON, err := json.Marshal(header)
+	if err != nil {
+		t.Fatalf("Marshal(header) failed: %v", err)
+	}
+	payloadJSON, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("Marshal(claims) failed: %v", err)
+	}
+
+	enc := base64.RawURLEncoding
+	return enc.EncodeToString(headerJSON) + "." + enc.EncodeToString(payloadJSON) + "."
 }
