@@ -132,3 +132,24 @@ func validateHTTPSAbsoluteURL(field, raw string) error {
 
 	return nil
 }
+
+func (r *RP) Discover(ctx context.Context) error {
+	provider, err := r.oidcClient.DiscoverProvider(ctx, r.issuer)
+	if err != nil {
+		return fmt.Errorf("failed to discover provider: %w", err)
+	}
+	r.provider = provider
+	r.providerSet = true
+	return nil
+}
+
+func (r *RP) DiscoverWithJWKS(ctx context.Context) error {
+	if err := r.Discover(ctx); err != nil {
+		return err
+	}
+	if r.provider.JWKSURI == "" {
+		return nil
+	}
+	_, err := r.oidcClient.RemoteKeySet(ctx, r.issuer)
+	return err
+}

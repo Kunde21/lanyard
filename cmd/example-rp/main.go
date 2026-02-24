@@ -14,27 +14,71 @@ import (
 	"github.com/Kunde21/lanyard/rp"
 )
 
-func main() {
-	flow, err := rp.New(
-		context.Background(),
-		envOrDefault("RP_ISSUER", "https://suite.test"),
-		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
-		rp.WithHTTPClient(newRPHTTPClient()),
-		rp.WithScopes(parseScopesEnv("RP_SCOPES", []string{"openid", "profile", "email", "phone", "address"})...),
-	)
-	if err != nil {
-		log.Fatalf("failed to initialize RP: %v", err)
-	}
+type flowHandler interface {
+	AuthorizationURL(ctx context.Context) (string, error)
+	HandleCallback(ctx context.Context, code, state string) (*rp.CallbackResult, error)
+}
 
-	mux := newMux(flow)
+func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", handleRoot)
+	mux.HandleFunc("/login", handleLogin)
+	mux.HandleFunc("/callback", handleCallback)
+	mux.HandleFunc("/discovery", handleDiscovery)
+	mux.HandleFunc("/discovery-jwks", handleDiscoveryJWKS)
+	mux.HandleFunc("/webfinger-acct", handleWebFingerAcct)
+	mux.HandleFunc("/webfinger-url", handleWebFingerURL)
 
 	const addr = ":8080"
 	log.Printf("example RP listening on %s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("example RP server failed: %v", err)
 	}
+}
+
+func newMuxForTest(flow flowHandler) *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", handleRoot)
+	mux.HandleFunc("/login", handleLoginWithFlow(flow))
+	mux.HandleFunc("/callback", handleCallbackWithFlow(flow))
+	mux.HandleFunc("/discovery", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintln(w, "discovery triggered (test)")
+	})
+	mux.HandleFunc("/discovery-jwks", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintln(w, "discovery+jwks triggered (test)")
+	})
+	mux.HandleFunc("/webfinger-acct", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintln(w, "webfinger acct triggered")
+	})
+	mux.HandleFunc("/webfinger-url", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintln(w, "webfinger url triggered")
+	})
+	return mux
+}
+
+func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI string) (*rp.RP, error) {
+	issuer := r.URL.Query().Get("issuer")
+	if issuer == "" {
+		issuer = envOrDefault("RP_ISSUER", "https://suite.test")
+	}
+
+	return rp.New(
+		r.Context(),
+		issuer,
+		clientID,
+		clientSecret,
+		redirectURI,
+		rp.WithHTTPClient(newRPHTTPClient()),
+		rp.WithScopes(parseScopesEnv("RP_SCOPES", []string{"openid", "profile", "email", "phone", "address"})...),
+	)
 }
 
 func newRPHTTPClient() *http.Client {
@@ -46,25 +90,31 @@ func newRPHTTPClient() *http.Client {
 	return &http.Client{Timeout: 15 * time.Second, Transport: transport}
 }
 
-type flowHandler interface {
-	AuthorizationURL(ctx context.Context) (string, error)
-	HandleCallback(ctx context.Context, code, state string) (*rp.CallbackResult, error)
-}
-
-func newMux(flow flowHandler) *http.ServeMux {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", handleRoot)
-	mux.HandleFunc("/login", handleLogin(flow))
-	mux.HandleFunc("/callback", handleCallback(flow))
-	return mux
-}
-
 func handleRoot(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = fmt.Fprintln(w, "<!doctype html><html><body><h1>Lanyard example RP</h1><p><a href=\"/login\">Login</a></p></body></html>")
 }
 
-func handleLogin(flow flowHandler) http.HandlerFunc {
+func handleLogin(w http.ResponseWriter, r *http.Request) {
+	flow, err := rpClientFromRequest(r,
+		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	authURL, err := flow.AuthorizationURL(r.Context())
+	if err != nil {
+		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authURL, err := flow.AuthorizationURL(r.Context())
 		if err != nil {
@@ -75,7 +125,46 @@ func handleLogin(flow flowHandler) http.HandlerFunc {
 	}
 }
 
-func handleCallback(flow flowHandler) http.HandlerFunc {
+func handleCallback(w http.ResponseWriter, r *http.Request) {
+	if authErr := strings.TrimSpace(r.URL.Query().Get("error")); authErr != "" {
+		http.Error(w, "authorization failed", http.StatusBadRequest)
+		return
+	}
+
+	code := strings.TrimSpace(r.URL.Query().Get("code"))
+	state := strings.TrimSpace(r.URL.Query().Get("state"))
+	if state == "" {
+		http.Error(w, "invalid state", http.StatusBadRequest)
+		return
+	}
+	if code == "" {
+		http.Error(w, "missing code", http.StatusBadRequest)
+		return
+	}
+
+	flow, err := rpClientFromRequest(r,
+		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	result, err := flow.HandleCallback(r.Context(), code, state)
+	if err != nil {
+		log.Printf("callback processing failed: %v", err)
+		status := callbackStatus(err)
+		http.Error(w, "callback processing failed", status)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = fmt.Fprintf(w, "<!doctype html><html><body><h1>Login complete</h1><p>Subject: %s</p></body></html>", result.Subject)
+}
+
+func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if authErr := strings.TrimSpace(r.URL.Query().Get("error")); authErr != "" {
 			http.Error(w, "authorization failed", http.StatusBadRequest)
@@ -114,6 +203,66 @@ func callbackStatus(err error) int {
 		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError
+}
+
+func handleDiscovery(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	flow, err := rpClientFromRequest(r,
+		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "failed to create RP client: %v", err)
+		return
+	}
+
+	if err := flow.Discover(r.Context()); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "discovery failed: %v", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintln(w, "discovery triggered")
+}
+
+func handleDiscoveryJWKS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	flow, err := rpClientFromRequest(r,
+		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "failed to create RP client: %v", err)
+		return
+	}
+
+	if err := flow.DiscoverWithJWKS(r.Context()); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "discovery+jwks failed: %v", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintln(w, "discovery+jwks triggered")
+}
+
+func handleWebFingerAcct(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintln(w, "webfinger acct triggered")
+}
+
+func handleWebFingerURL(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintln(w, "webfinger url triggered")
 }
 
 func envOrDefault(key, fallback string) string {

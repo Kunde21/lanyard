@@ -30,7 +30,7 @@ func (s stubFlow) HandleCallback(_ context.Context, _, _ string) (*rp.CallbackRe
 }
 
 func TestRoot(t *testing.T) {
-	h := newMux(stubFlow{authURL: "https://issuer.test/authorize"})
+	h := newMuxForTest(stubFlow{authURL: "https://issuer.test/authorize"})
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
 
@@ -45,7 +45,7 @@ func TestRoot(t *testing.T) {
 }
 
 func TestLoginRedirects(t *testing.T) {
-	h := newMux(stubFlow{authURL: "https://issuer.test/authorize?x=1"})
+	h := newMuxForTest(stubFlow{authURL: "https://issuer.test/authorize?x=1"})
 	req := httptest.NewRequest(http.MethodGet, "/login", nil)
 	w := httptest.NewRecorder()
 
@@ -60,7 +60,7 @@ func TestLoginRedirects(t *testing.T) {
 }
 
 func TestCallbackMissingParams(t *testing.T) {
-	h := newMux(stubFlow{})
+	h := newMuxForTest(stubFlow{})
 	req := httptest.NewRequest(http.MethodGet, "/callback", nil)
 	w := httptest.NewRecorder()
 
@@ -75,7 +75,7 @@ func TestCallbackMissingParams(t *testing.T) {
 }
 
 func TestCallbackInvalidState(t *testing.T) {
-	h := newMux(stubFlow{callbackErr: fmt.Errorf("wrapped: %w", rp.ErrInvalidState)})
+	h := newMuxForTest(stubFlow{callbackErr: fmt.Errorf("wrapped: %w", rp.ErrInvalidState)})
 	req := httptest.NewRequest(http.MethodGet, "/callback?code=abc&state=s", nil)
 	w := httptest.NewRecorder()
 
@@ -98,7 +98,7 @@ func TestCallbackErrorMappingAndNoSecrets(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := newMux(stubFlow{callbackErr: tt.err})
+			h := newMuxForTest(stubFlow{callbackErr: tt.err})
 			req := httptest.NewRequest(http.MethodGet, "/callback?code=abc&state=s", nil)
 			w := httptest.NewRecorder()
 
