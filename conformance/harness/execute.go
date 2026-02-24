@@ -205,10 +205,10 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 }
 
 func constructIssuer(suiteURL, planID, testAlias string) string {
-	if planID == "" || testAlias == "" {
+	if testAlias == "" {
 		return ""
 	}
-	return strings.TrimRight(suiteURL, "/") + "/test/" + planID + "/" + testAlias
+	return strings.TrimRight(suiteURL, "/") + "/test/a/" + testAlias + "/"
 }
 
 func (r *runner) triggerFrontChannelStep(ctx context.Context, testID string) error {
