@@ -98,7 +98,7 @@ func handleRoot(w http.ResponseWriter, _ *http.Request) {
 func handleLogin(w http.ResponseWriter, r *http.Request) {
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
 	)
 	if err != nil {
@@ -144,7 +144,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
 	)
 	if err != nil {
@@ -210,7 +210,7 @@ func handleDiscovery(w http.ResponseWriter, r *http.Request) {
 
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
 	)
 	if err != nil {
@@ -234,7 +234,7 @@ func handleDiscoveryJWKS(w http.ResponseWriter, r *http.Request) {
 
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
 	)
 	if err != nil {

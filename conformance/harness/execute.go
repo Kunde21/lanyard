@@ -440,13 +440,13 @@ func buildPlanConfig(planVariant map[string]string) map[string]any {
 		"description": "Lanyard automated local conformance run",
 		"client": map[string]any{
 			"client_id":     "local-dev-client",
-			"client_secret": "local-dev-secret",
+			"client_secret": "local-dev-secret-32-bytes-minimum!!",
 			"redirect_uri":  "https://rp.test/callback",
 			"request_type":  requestType,
 		},
 		"client2": map[string]any{
 			"client_id":     "local-dev-client-2",
-			"client_secret": "local-dev-secret-2",
+			"client_secret": "local-dev-secret-2-32-bytes-min!!",
 			"redirect_uri":  "https://rp.test/callback",
 			"request_type":  requestType,
 		},
