@@ -13,6 +13,11 @@ import (
 	"time"
 )
 
+type testInfoGetter interface {
+	GetTestInfo(ctx context.Context, testID string) (testInfo, error)
+	StartTest(ctx context.Context, testID string) error
+}
+
 type runner struct {
 	client      *suiteClient
 	cfg         harnessConfig
@@ -23,6 +28,13 @@ type runner struct {
 func newRunner(client *suiteClient, cfg harnessConfig, logf func(format string, args ...any)) *runner {
 	if logf == nil {
 		logf = func(string, ...any) {}
+	}
+
+	if cfg.WaitingMaxRetries <= 0 {
+		cfg.WaitingMaxRetries = 3
+	}
+	if cfg.WaitingRetryInterval <= 0 {
+		cfg.WaitingRetryInterval = 2 * time.Second
 	}
 
 	jar, err := cookiejar.New(nil)
@@ -160,7 +172,7 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	testID, err := r.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, nil)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("create test instance failed: %v", err))
-		r.logf("  test failed: module=%s err=%v", module.Name, err)
+		r.logf("  test failed: plan=%s module=%s alias=%s test_id=%s err=%v", selected.Name, module.Name, alias, testID, err)
 		return res
 	}
 	res.TestID = testID
@@ -168,10 +180,10 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	pollCtx, cancel := context.WithTimeout(ctx, r.cfg.TestTimeout)
 	defer cancel()
 
-	info, err := pollTestResult(pollCtx, r.client, testID, r.triggerFrontChannelStep)
+	info, err := pollTestResultWithConfig(pollCtx, r.client, testID, r.triggerFrontChannelStep, r.cfg.WaitingMaxRetries, r.cfg.WaitingRetryInterval)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("poll failed: %v", err))
-		r.logf("  test failed: module=%s err=%v", module.Name, err)
+		r.logf("  test failed: plan=%s module=%s alias=%s test_id=%s err=%v", selected.Name, module.Name, alias, testID, err)
 		return res
 	}
 
@@ -179,7 +191,7 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	res.Result = info.Result
 	res.Summary = info.Summary
 	finalizeTest(&res)
-	r.logf("  test done: module=%s status=%s result=%s", module.Name, res.Status, res.Result)
+	r.logf("  test done: plan=%s module=%s alias=%s test_id=%s status=%s result=%s", selected.Name, module.Name, alias, testID, res.Status, res.Result)
 	return res
 }
 
@@ -199,7 +211,7 @@ func (r *runner) triggerFrontChannelStep(ctx context.Context, testID string) err
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	r.logf("  front-channel trigger: test=%s status=%d", testID, resp.StatusCode)
+	r.logf("    front-channel trigger: test_id=%s status=%d", testID, resp.StatusCode)
 	if resp.StatusCode >= 500 {
 		return fmt.Errorf("rp front-channel endpoint returned status %d", resp.StatusCode)
 	}
@@ -207,12 +219,16 @@ func (r *runner) triggerFrontChannelStep(ctx context.Context, testID string) err
 	return nil
 }
 
-func pollTestResult(ctx context.Context, client *suiteClient, testID string, onWaiting func(context.Context, string) error) (testInfo, error) {
+func pollTestResult(ctx context.Context, client testInfoGetter, testID string, onWaiting func(context.Context, string) error) (testInfo, error) {
+	return pollTestResultWithConfig(ctx, client, testID, onWaiting, 3, 2*time.Second)
+}
+
+func pollTestResultWithConfig(ctx context.Context, client testInfoGetter, testID string, onWaiting func(context.Context, string) error, maxRetries int, retryInterval time.Duration) (testInfo, error) {
 	ticker := time.NewTicker(1500 * time.Millisecond)
 	defer ticker.Stop()
 
 	var waitingSince time.Time
-	waitingTriggered := false
+	waitingRetries := 0
 	var waitingTriggerErr error
 	startedFromConfigured := false
 
@@ -235,21 +251,28 @@ func pollTestResult(ctx context.Context, client *suiteClient, testID string, onW
 				if waitingSince.IsZero() {
 					waitingSince = time.Now()
 				}
-				if !waitingTriggered && onWaiting != nil {
-					waitingTriggered = true
+				if onWaiting != nil && waitingRetries <= maxRetries {
+					waitingRetries++
 					if err := onWaiting(ctx, testID); err != nil {
 						waitingTriggerErr = err
+					}
+					if waitingRetries <= maxRetries && retryInterval > 0 {
+						select {
+						case <-ctx.Done():
+							return testInfo{}, ctx.Err()
+						case <-time.After(retryInterval):
+						}
 					}
 				}
 				if time.Since(waitingSince) >= waitingStateWindow(ctx) {
 					if waitingTriggerErr != nil {
-						return testInfo{}, fmt.Errorf("test entered WAITING state and did not progress after front-channel trigger: %w", waitingTriggerErr)
+						return testInfo{}, fmt.Errorf("test entered WAITING state and did not progress after %d front-channel trigger attempts: %w", waitingRetries, waitingTriggerErr)
 					}
-					return testInfo{}, fmt.Errorf("test entered WAITING state and did not progress; interactive/browser step likely required")
+					return testInfo{}, fmt.Errorf("test entered WAITING state and did not progress after %d attempts; interactive/browser step likely required", waitingRetries)
 				}
 			} else {
 				waitingSince = time.Time{}
-				waitingTriggered = false
+				waitingRetries = 0
 				waitingTriggerErr = nil
 			}
 
