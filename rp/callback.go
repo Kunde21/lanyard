@@ -33,6 +33,11 @@ func (r *RP) HandleCallback(ctx context.Context, code, state string) (*CallbackR
 	if provider.TokenEndpoint == "" {
 		return nil, fmt.Errorf("%w: provider missing token endpoint", ErrTokenExchangeFailed)
 	}
+	if len(provider.TokenEndpointAuthMethodsSupported) > 0 {
+		if err := r.applySupportedAuthMethods(provider.TokenEndpointAuthMethodsSupported); err != nil {
+			return nil, fmt.Errorf("%w: auth method negotiation failed: %v", ErrTokenExchangeFailed, err)
+		}
+	}
 
 	tokenResp, err := r.exchangeToken(ctx, provider.TokenEndpoint, code, data.CodeVerifier)
 	if err != nil {

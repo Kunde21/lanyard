@@ -1,10 +1,12 @@
 package rp
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Kunde21/lanyard/oidc"
@@ -27,7 +29,7 @@ func TestNew_Validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := New(tt.issuer, tt.clientID, "secret", tt.redirectURI)
+			_, err := New(context.Background(), tt.issuer, tt.clientID, "secret", tt.redirectURI)
 			if err == nil {
 				t.Fatalf("New() expected error")
 			}
@@ -44,6 +46,7 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 	customOIDCClient := oidc.NewClient()
 
 	got, err := New(
+		context.Background(),
 		"https://issuer.test",
 		"client",
 		"secret",
@@ -51,6 +54,7 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 		WithHTTPClient(customHTTPClient),
 		WithLogger(customLogger),
 		WithOIDCClient(customOIDCClient),
+		WithProviderDiscovery(providerForAuthMethods()),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -68,4 +72,75 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 	if got.oidcClient != customOIDCClient {
 		t.Fatalf("oidcClient mismatch")
 	}
+}
+
+func TestNew_PerformsDiscoveryByDefault(t *testing.T) {
+	requestCount := 0
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			t.Fatalf("unexpected discovery path: %s", r.URL.Path)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	_, err := New(
+		context.Background(),
+		issuer,
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if diff := cmp.Diff(1, requestCount); diff != "" {
+		t.Fatalf("discovery request count mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestNew_WithProviderDiscovery_SkipsDiscoveryHTTP(t *testing.T) {
+	provider := oidc.ProviderMetadata{
+		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+			Issuer:                "https://issuer.test",
+			AuthorizationEndpoint: "https://issuer.test/authorize",
+			TokenEndpoint:         "https://issuer.test/token",
+			JWKSURI:               "https://issuer.test/jwks",
+			ResponseTypesSupported: []string{
+				"code",
+			},
+		},
+		SubjectTypesSupported:            []string{"public"},
+		IDTokenSigningAlgValuesSupported: []string{"RS256"},
+	}
+
+	failOnRequest := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("unexpected network request")
+	})}
+
+	_, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(failOnRequest),
+		WithProviderDiscovery(provider),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }

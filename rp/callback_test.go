@@ -11,11 +11,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kunde21/lanyard/oidc"
 	jose "github.com/go-jose/go-jose/v4"
 )
 
 func TestHandleCallbackValidation(t *testing.T) {
-	r, err := New("https://issuer.test", "client", "secret", "https://rp.test/callback")
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithProviderDiscovery(oidc.ProviderMetadata{}),
+	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -71,6 +79,7 @@ func TestHandleCallbackFailures(t *testing.T) {
 	issuer = ts.URL
 
 	r, err := New(
+		context.Background(),
 		issuer,
 		"client-id",
 		"secret",

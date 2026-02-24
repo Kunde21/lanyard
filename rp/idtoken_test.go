@@ -40,6 +40,7 @@ func TestValidateIDToken(t *testing.T) {
 
 	now := time.Now().UTC()
 	r, err := New(
+		context.Background(),
 		issuer,
 		"client-id",
 		"secret",
@@ -135,6 +136,7 @@ func TestValidateIDTokenMissingKIDWithMultipleSigningKeysTriesAllKeys(t *testing
 
 	now := time.Now().UTC()
 	r, err := New(
+		context.Background(),
 		issuer,
 		"client-id",
 		"secret",

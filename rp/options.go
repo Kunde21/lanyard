@@ -58,6 +58,21 @@ func WithClockSkew(skew time.Duration) Option {
 	}
 }
 
+// WithProviderDiscovery sets already-discovered provider metadata.
+func WithProviderDiscovery(provider oidc.ProviderMetadata) Option {
+	return func(r *RP) {
+		r.provider = provider
+		r.providerSet = true
+	}
+}
+
+// WithAuthMethod sets the token endpoint client authentication method.
+func WithAuthMethod(method AuthMethod) Option {
+	return func(r *RP) {
+		r.authMethod = method
+	}
+}
+
 func withNow(now func() time.Time) Option {
 	return func(r *RP) {
 		if now != nil {

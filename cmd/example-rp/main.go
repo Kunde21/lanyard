@@ -16,6 +16,7 @@ import (
 
 func main() {
 	flow, err := rp.New(
+		context.Background(),
 		envOrDefault("RP_ISSUER", "https://suite.test"),
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret"),

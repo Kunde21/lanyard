@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/Kunde21/lanyard/oidc"
 )
 
 func TestFetchUserInfo(t *testing.T) {
@@ -19,7 +21,7 @@ func TestFetchUserInfo(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	r, err := New("https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()))
+	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -52,7 +54,7 @@ func TestFetchUserInfoErrors(t *testing.T) {
 			ts := httptest.NewTLSServer(tt.handler)
 			defer ts.Close()
 
-			r, err := New("https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()))
+			r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
 			if err != nil {
 				t.Fatalf("New() failed: %v", err)
 			}

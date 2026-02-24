@@ -23,6 +23,7 @@ func TestAuthorizationURL(t *testing.T) {
 	issuer = ts.URL
 
 	r, err := New(
+		context.Background(),
 		issuer,
 		"client-123",
 		"secret",
