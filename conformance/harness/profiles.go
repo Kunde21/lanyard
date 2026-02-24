@@ -9,7 +9,9 @@ import (
 
 var (
 	oidcExplicitPlans = map[string]struct{}{
-		"oidcc-client-basic-certification-test-plan": {},
+		"oidcc-client-basic-certification-test-plan":          {},
+		"oidcc-client-test-plan":                              {},
+		"oidcc-client-formpost-basic-certification-test-plan": {},
 	}
 	oidcFallbackPattern = regexp.MustCompile(`(?i)oidc.*(client|rp)|rp.*oidc|openid.*relying`)
 	fapiFallbackPattern = regexp.MustCompile(`(?i)fapi.*(client|rp)|rp.*fapi`)

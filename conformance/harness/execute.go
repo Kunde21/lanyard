@@ -110,7 +110,7 @@ func (r *runner) executePlan(ctx context.Context, selected AvailablePlan, planIn
 	planCtx, cancel := context.WithTimeout(ctx, r.cfg.PlanTimeout)
 	defer cancel()
 
-	planVariant := selectPlanVariant(selected)
+	planVariant := mergePlanVariant(selectPlanVariant(selected), r.cfg.ForcedVariants)
 	planConfig := buildPlanConfig(planVariant)
 	created, err := r.client.CreatePlan(planCtx, selected.Name, planVariant, planConfig)
 	if err != nil {
@@ -156,7 +156,8 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	res := testResult{ModuleName: module.Name, Alias: alias, StartedAt: startedAt}
 	r.logf("  test start: plan=%s module=%s alias=%s", selected.Name, module.Name, alias)
 
-	testID, err := r.client.CreateTestInstance(ctx, module.Name, planID, module.Variant, nil)
+	moduleVariant := mergeModuleVariant(module.Variant, r.cfg.ForcedVariants)
+	testID, err := r.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, nil)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("create test instance failed: %v", err))
 		r.logf("  test failed: module=%s err=%v", module.Name, err)

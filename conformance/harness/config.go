@@ -20,4 +20,5 @@ type harnessConfig struct {
 	Redact            bool
 	RebuildSuite      bool
 	SelectedPlanNames []string
+	ForcedVariants    map[string]string
 }

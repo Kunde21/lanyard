@@ -28,7 +28,13 @@ var (
 	flagExportZip = flag.Bool("export-zip", true, "Export suite plan result ZIP artifacts")
 	flagRedact    = flag.Bool("redact", true, "Redact sensitive keys in artifacts/log output")
 	flagRebuild   = flag.Bool("rebuild-suite", false, "Force rebuilding suite image before compose up")
+
+	flagForceVariants repeatableStringFlag
 )
+
+func init() {
+	flag.Var(&flagForceVariants, "force-variant", "Force suite variant (repeatable key=value, e.g. client_auth_type=client_secret_post)")
+}
 
 func TestConformanceHarness(t *testing.T) {
 	if os.Getenv("LANYARD_CONFORMANCE") != "1" {
@@ -149,6 +155,12 @@ func parseHarnessConfig() (harnessConfig, error) {
 	cfg.IncludePlanRegex = includeRE
 	cfg.ExcludePlanRegex = excludeRE
 	cfg.ModuleRegex = moduleRE
+
+	forcedVariants, err := parseForcedVariants([]string(flagForceVariants))
+	if err != nil {
+		return harnessConfig{}, fmt.Errorf("invalid -force-variant: %w", err)
+	}
+	cfg.ForcedVariants = forcedVariants
 
 	return cfg, nil
 }
