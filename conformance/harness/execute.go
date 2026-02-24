@@ -31,10 +31,10 @@ func newRunner(client *suiteClient, cfg harnessConfig, logf func(format string, 
 	}
 
 	if cfg.WaitingMaxRetries <= 0 {
-		cfg.WaitingMaxRetries = 3
+		cfg.WaitingMaxRetries = 10
 	}
 	if cfg.WaitingRetryInterval <= 0 {
-		cfg.WaitingRetryInterval = 2 * time.Second
+		cfg.WaitingRetryInterval = 3 * time.Second
 	}
 
 	jar, err := cookiejar.New(nil)
@@ -169,37 +169,69 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	r.logf("  test start: plan=%s module=%s alias=%s", selected.Name, module.Name, alias)
 
 	moduleVariant := mergeModuleVariant(module.Variant, r.cfg.ForcedVariants)
-	testID, err := r.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, nil)
+	instance, err := r.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, nil)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("create test instance failed: %v", err))
-		r.logf("  test failed: plan=%s module=%s alias=%s test_id=%s err=%v", selected.Name, module.Name, alias, testID, err)
+		r.logf("  test failed: plan=%s module=%s alias=%s test_id=%s err=%v", selected.Name, module.Name, alias, instance.ID, err)
 		return res
 	}
-	res.TestID = testID
+	res.TestID = instance.ID
+	testID := instance.ID
+
+	info, err := r.client.GetTestInfo(ctx, testID)
+	if err != nil {
+		r.logf("  warning: failed to get test info: %v", err)
+	}
+
+	issuer := constructIssuer(r.cfg.SuiteURL, info.PlanID, info.Alias)
 
 	pollCtx, cancel := context.WithTimeout(ctx, r.cfg.TestTimeout)
 	defer cancel()
 
-	info, err := pollTestResultWithConfig(pollCtx, r.client, testID, r.triggerFrontChannelStep, r.cfg.WaitingMaxRetries, r.cfg.WaitingRetryInterval)
+	trigger := r.frontChannelTriggerForModule(module.Name, issuer)
+	pollInfo, err := pollTestResultWithConfig(pollCtx, r.client, testID, trigger, r.cfg.WaitingMaxRetries, r.cfg.WaitingRetryInterval)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("poll failed: %v", err))
 		r.logf("  test failed: plan=%s module=%s alias=%s test_id=%s err=%v", selected.Name, module.Name, alias, testID, err)
 		return res
 	}
 
-	res.Status = info.Status
-	res.Result = info.Result
-	res.Summary = info.Summary
+	res.Status = pollInfo.Status
+	res.Result = pollInfo.Result
+	res.Summary = pollInfo.Summary
 	finalizeTest(&res)
 	r.logf("  test done: plan=%s module=%s alias=%s test_id=%s status=%s result=%s", selected.Name, module.Name, alias, testID, res.Status, res.Result)
 	return res
 }
 
+func constructIssuer(suiteURL, planID, testAlias string) string {
+	if planID == "" || testAlias == "" {
+		return ""
+	}
+	return strings.TrimRight(suiteURL, "/") + "/test/" + planID + "/" + testAlias
+}
+
 func (r *runner) triggerFrontChannelStep(ctx context.Context, testID string) error {
+	return r.doTrigger(ctx, testID, "/login", "")
+}
+
+func (r *runner) frontChannelTriggerForModule(moduleName, issuer string) func(context.Context, string) error {
+	return func(ctx context.Context, testID string) error {
+		endpoint := moduleTriggerEndpoint(moduleName)
+		return r.doTrigger(ctx, testID, endpoint, issuer)
+	}
+}
+
+func (r *runner) doTrigger(ctx context.Context, testID, endpoint, issuer string) error {
 	triggerCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(triggerCtx, http.MethodGet, "https://rp.test/login", nil)
+	url := "https://rp.test" + endpoint
+	if issuer != "" {
+		url += "?issuer=" + issuer
+	}
+
+	req, err := http.NewRequestWithContext(triggerCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to build front-channel request: %w", err)
 	}
@@ -211,12 +243,26 @@ func (r *runner) triggerFrontChannelStep(ctx context.Context, testID string) err
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	r.logf("    front-channel trigger: test_id=%s status=%d", testID, resp.StatusCode)
+	r.logf("    front-channel trigger: test_id=%s endpoint=%s issuer=%q status=%d", testID, endpoint, issuer, resp.StatusCode)
 	if resp.StatusCode >= 500 {
 		return fmt.Errorf("rp front-channel endpoint returned status %d", resp.StatusCode)
 	}
 
 	return nil
+}
+
+func moduleTriggerEndpoint(moduleName string) string {
+	discoveryModules := map[string]string{
+		"oidcc-client-test-discovery-openid-config":   "/discovery",
+		"oidcc-client-test-discovery-jwks-uri-keys":   "/discovery-jwks",
+		"oidcc-client-test-discovery-issuer-mismatch": "/discovery",
+		"oidcc-client-test-discovery-webfinger-acct":  "/webfinger-acct",
+		"oidcc-client-test-discovery-webfinger-url":   "/webfinger-url",
+	}
+	if endpoint, ok := discoveryModules[moduleName]; ok {
+		return endpoint
+	}
+	return "/login"
 }
 
 func pollTestResult(ctx context.Context, client testInfoGetter, testID string, onWaiting func(context.Context, string) error) (testInfo, error) {

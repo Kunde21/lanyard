@@ -55,6 +55,8 @@ type testInfo struct {
 	Status  string `json:"status"`
 	Result  string `json:"result"`
 	Summary string `json:"summary"`
+	PlanID  string `json:"planId"`
+	Alias   string `json:"alias"`
 }
 
 func (c *suiteClient) ListAvailablePlans(ctx context.Context) ([]AvailablePlan, error) {
@@ -100,7 +102,11 @@ func (c *suiteClient) CreatePlan(ctx context.Context, planName string, variant m
 	return plan, nil
 }
 
-func (c *suiteClient) CreateTestInstance(ctx context.Context, testName, planID string, variant map[string]any, config map[string]any) (string, error) {
+type testInstance struct {
+	ID string `json:"id"`
+}
+
+func (c *suiteClient) CreateTestInstance(ctx context.Context, testName, planID string, variant map[string]any, config map[string]any) (testInstance, error) {
 	query := url.Values{}
 	query.Set("test", testName)
 	if planID != "" {
@@ -109,7 +115,7 @@ func (c *suiteClient) CreateTestInstance(ctx context.Context, testName, planID s
 	if len(variant) > 0 {
 		encodedVariant, err := json.Marshal(variant)
 		if err != nil {
-			return "", fmt.Errorf("failed to encode test variant: %w", err)
+			return testInstance{}, fmt.Errorf("failed to encode test variant: %w", err)
 		}
 		query.Set("variant", string(encodedVariant))
 	}
@@ -124,14 +130,16 @@ func (c *suiteClient) CreateTestInstance(ctx context.Context, testName, planID s
 
 	var payload json.RawMessage
 	if err := c.doJSON(ctx, http.MethodPost, "/api/runner", query, body, &payload); err != nil {
-		return "", err
+		return testInstance{}, err
 	}
 
-	id := parseStringField(payload, "id", "testId", "test_id")
-	if id == "" {
-		return "", fmt.Errorf("create test response missing id")
+	instance := testInstance{
+		ID: parseStringField(payload, "id", "testId", "test_id"),
 	}
-	return id, nil
+	if instance.ID == "" {
+		return testInstance{}, fmt.Errorf("create test response missing id")
+	}
+	return instance, nil
 }
 
 func (c *suiteClient) GetTestInfo(ctx context.Context, testID string) (testInfo, error) {
@@ -364,6 +372,8 @@ func parseTestInfo(payload json.RawMessage) testInfo {
 		Status:  strings.ToUpper(firstString(m, "status", "state")),
 		Result:  strings.ToUpper(firstString(m, "result", "testResult")),
 		Summary: summary,
+		PlanID:  firstString(m, "planId", "plan_id"),
+		Alias:   firstString(m, "alias"),
 	}
 }
 

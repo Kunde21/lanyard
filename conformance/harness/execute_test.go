@@ -246,3 +246,48 @@ func TestWaitingStateWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestModuleTriggerEndpoint(t *testing.T) {
+	tests := []struct {
+		moduleName string
+		want       string
+	}{
+		{
+			moduleName: "oidcc-client-test-discovery-openid-config",
+			want:       "/discovery",
+		},
+		{
+			moduleName: "oidcc-client-test-discovery-jwks-uri-keys",
+			want:       "/discovery-jwks",
+		},
+		{
+			moduleName: "oidcc-client-test-discovery-issuer-mismatch",
+			want:       "/discovery",
+		},
+		{
+			moduleName: "oidcc-client-test-discovery-webfinger-acct",
+			want:       "/webfinger-acct",
+		},
+		{
+			moduleName: "oidcc-client-test-discovery-webfinger-url",
+			want:       "/webfinger-url",
+		},
+		{
+			moduleName: "oidcc-client-test-client-secret-basic",
+			want:       "/login",
+		},
+		{
+			moduleName: "some-other-module",
+			want:       "/login",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.moduleName, func(t *testing.T) {
+			got := moduleTriggerEndpoint(tc.moduleName)
+			if got != tc.want {
+				t.Errorf("moduleTriggerEndpoint(%q) = %q, want %q", tc.moduleName, got, tc.want)
+			}
+		})
+	}
+}
