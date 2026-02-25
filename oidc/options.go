@@ -62,3 +62,10 @@ func WithDefaultDiscoveryTTL(ttl time.Duration) Option {
 		}
 	}
 }
+
+// WithConformanceFreshDiscovery forces blocking discovery refreshes on every lookup.
+func WithConformanceFreshDiscovery(enabled bool) Option {
+	return func(c *Client) {
+		c.conformanceFreshDiscovery = enabled
+	}
+}

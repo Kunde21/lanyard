@@ -2,9 +2,12 @@ package rp
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -26,7 +29,7 @@ func TestFetchUserInfo(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	got, err := r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123")
+	got, err := r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportHeader)
 	if err != nil {
 		t.Fatalf("fetchUserInfo() failed: %v", err)
 	}
@@ -35,6 +38,104 @@ func TestFetchUserInfo(t *testing.T) {
 	}
 	if got["name"] != "Alice" {
 		t.Fatalf("userinfo payload mismatch")
+	}
+}
+
+func TestFetchUserInfoBodyTransport(t *testing.T) {
+	var gotMethod string
+	var gotAuth string
+	var gotToken string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotAuth = r.Header.Get("Authorization")
+		body, _ := io.ReadAll(r.Body)
+		values, _ := url.ParseQuery(string(body))
+		gotToken = values.Get("access_token")
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"sub":"sub-123","name":"Alice"}`)
+	}))
+	defer ts.Close()
+
+	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportBody)
+	if err != nil {
+		t.Fatalf("fetchUserInfo() failed: %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Fatalf("userinfo request method mismatch: got %q", gotMethod)
+	}
+	if gotAuth != "" {
+		t.Fatalf("Authorization header should be empty in body mode, got %q", gotAuth)
+	}
+	if gotToken != "access-token" {
+		t.Fatalf("access_token body parameter mismatch: %q", gotToken)
+	}
+}
+
+func TestFetchUserInfoDistributedClaimsFromEndpoint(t *testing.T) {
+	var distributedAuth string
+	issuerURL := ""
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"sub":"sub-123","_claim_names":{"email":"src1"},"_claim_sources":{"src1":{"endpoint":"`+issuerURL+`/claims","access_token":"source-token"}}}`)
+		case "/claims":
+			distributedAuth = r.Header.Get("Authorization")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprint(w, `{"sub":"sub-123","email":"alice@example.com"}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuerURL = ts.URL
+
+	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	got, err := r.fetchUserInfo(context.Background(), ts.URL+"/userinfo", "access-token", "sub-123", UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("fetchUserInfo() failed: %v", err)
+	}
+	if distributedAuth != "Bearer source-token" {
+		t.Fatalf("distributed claims auth mismatch: %q", distributedAuth)
+	}
+	if got["email"] != "alice@example.com" {
+		t.Fatalf("distributed claim was not merged")
+	}
+}
+
+func TestFetchUserInfoDistributedClaimsJWT(t *testing.T) {
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"sub-123","email":"alice@example.com"}`))
+	jwt := "header." + payload + ".signature"
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"sub":"sub-123","_claim_names":{"email":"src1"},"_claim_sources":{"src1":{"JWT":"`+jwt+`"}}}`)
+	}))
+	defer ts.Close()
+
+	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	got, err := r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("fetchUserInfo() failed: %v", err)
+	}
+	if got["email"] != "alice@example.com" {
+		t.Fatalf("distributed claim from JWT was not merged")
 	}
 }
 
@@ -59,7 +160,7 @@ func TestFetchUserInfoErrors(t *testing.T) {
 				t.Fatalf("New() failed: %v", err)
 			}
 
-			_, err = r.fetchUserInfo(context.Background(), ts.URL, "token", "sub-123")
+			_, err = r.fetchUserInfo(context.Background(), ts.URL, "token", "sub-123", UserInfoTokenTransportHeader)
 			if tt.expectFail && err == nil {
 				t.Fatalf("fetchUserInfo() expected error")
 			}

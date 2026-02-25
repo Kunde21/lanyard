@@ -4,9 +4,11 @@ import "time"
 
 // StateData contains callback correlation values saved at authorization start.
 type StateData struct {
-	Nonce        string
-	CodeVerifier string
-	CreatedAt    time.Time
+	Nonce                  string
+	CodeVerifier           string
+	CreatedAt              time.Time
+	Issuer                 string
+	UserInfoTokenTransport UserInfoTokenTransport
 }
 
 // StateStore stores and consumes state correlation data.

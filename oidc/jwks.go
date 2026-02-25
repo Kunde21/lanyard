@@ -17,8 +17,13 @@ func (c *Client) RemoteKeySet(ctx context.Context, issuer string) (*jwks.RemoteK
 		return nil, fmt.Errorf("%w: provider metadata missing jwks_uri", ErrDiscoveryFailed)
 	}
 
+	return c.RemoteKeySetFromJWKSURI(provider.JWKSURI)
+}
+
+// RemoteKeySetFromJWKSURI builds a remote key set from a known JWKS URL.
+func (c *Client) RemoteKeySetFromJWKSURI(jwksURI string) (*jwks.RemoteKeySet, error) {
 	remote, err := jwks.NewRemoteKeySet(
-		provider.JWKSURI,
+		jwksURI,
 		jwks.WithHTTPClient(c.httpClient),
 		jwks.WithLogger(c.logger),
 		jwks.WithCache(c.jwksCache),

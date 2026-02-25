@@ -19,6 +19,14 @@ func (c *Client) DiscoverProvider(ctx context.Context, issuer string) (ProviderM
 
 	cacheKey := providerCachePrefix + issuer
 	if entry, ok := c.discoveryCache.Get(cacheKey); ok && entry != nil && entry.kind == cacheEntryKindProvider {
+		if c.conformanceFreshDiscovery {
+			refreshed, err := c.refreshProvider(ctx, issuer, cacheKey, entry)
+			if err != nil {
+				return ProviderMetadata{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+			}
+			return refreshed.provider, nil
+		}
+
 		if time.Now().UTC().Before(entry.freshUntil) {
 			return entry.provider, nil
 		}
@@ -44,6 +52,14 @@ func (c *Client) DiscoverAuthorizationServer(ctx context.Context, issuer string)
 
 	cacheKey := oauthASCachePrefix + issuer
 	if entry, ok := c.discoveryCache.Get(cacheKey); ok && entry != nil && entry.kind == cacheEntryKindAS {
+		if c.conformanceFreshDiscovery {
+			refreshed, err := c.refreshAuthorizationServer(ctx, issuer, cacheKey, entry)
+			if err != nil {
+				return AuthorizationServerMetadata{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+			}
+			return refreshed.authorizer, nil
+		}
+
 		if time.Now().UTC().Before(entry.freshUntil) {
 			return entry.authorizer, nil
 		}

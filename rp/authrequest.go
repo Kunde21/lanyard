@@ -37,9 +37,11 @@ func (r *RP) AuthorizationURL(ctx context.Context) (string, error) {
 	}
 
 	r.stateStore.Save(state, StateData{
-		Nonce:        nonce,
-		CodeVerifier: verifier,
-		CreatedAt:    r.now(),
+		Nonce:                  nonce,
+		CodeVerifier:           verifier,
+		CreatedAt:              r.now(),
+		Issuer:                 r.issuer,
+		UserInfoTokenTransport: r.userInfoTokenTransport,
 	})
 
 	authURL, err := url.Parse(metadata.AuthorizationEndpoint)

@@ -23,6 +23,7 @@ type Client struct {
 
 	issuerTrailingSlashTolerance bool
 	defaultDiscoveryTTL          time.Duration
+	conformanceFreshDiscovery    bool
 
 	discoveryGroup singleflight.Group
 }
@@ -37,6 +38,7 @@ func NewClient(opts ...Option) *Client {
 		jwksCache:                    cache.NewStore[*jwks.CacheEntry](),
 		defaultDiscoveryTTL:          defaultDiscoveryTTL,
 		issuerTrailingSlashTolerance: false,
+		conformanceFreshDiscovery:    false,
 	}
 
 	for _, opt := range opts {

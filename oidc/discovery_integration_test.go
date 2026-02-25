@@ -135,3 +135,47 @@ func providerResponse(issuer, tokenEndpoint string) string {
 		tokenEndpoint,
 	)
 }
+
+func TestDiscoverProviderConformanceFreshDiscovery(t *testing.T) {
+	issuer := ""
+	var calls int
+	currentTokenEndpoint := ""
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "max-age=300")
+		_, _ = w.Write([]byte(providerResponse(issuer, currentTokenEndpoint)))
+	}))
+	defer ts.Close()
+
+	issuer = ts.URL
+	currentTokenEndpoint = issuer + "/token-v1"
+
+	client := NewClient(
+		WithHTTPClient(ts.Client()),
+		WithConformanceFreshDiscovery(true),
+	)
+
+	gotFirst, err := client.DiscoverProvider(context.Background(), issuer)
+	if err != nil {
+		t.Fatalf("DiscoverProvider() first call failed: %v", err)
+	}
+	if diff := cmp.Diff(issuer+"/token-v1", gotFirst.TokenEndpoint); diff != "" {
+		t.Fatalf("first token endpoint mismatch (-want +got):\n%s", diff)
+	}
+
+	currentTokenEndpoint = issuer + "/token-v2"
+
+	gotSecond, err := client.DiscoverProvider(context.Background(), issuer)
+	if err != nil {
+		t.Fatalf("DiscoverProvider() second call failed: %v", err)
+	}
+	if diff := cmp.Diff(issuer+"/token-v2", gotSecond.TokenEndpoint); diff != "" {
+		t.Fatalf("second token endpoint mismatch (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff(2, calls); diff != "" {
+		t.Fatalf("discovery call count mismatch (-want +got):\n%s", diff)
+	}
+}

@@ -73,6 +73,22 @@ func WithAuthMethod(method AuthMethod) Option {
 	}
 }
 
+// WithStateStore sets the state store used for callback correlation.
+func WithStateStore(store StateStore) Option {
+	return func(r *RP) {
+		if store != nil {
+			r.stateStore = store
+		}
+	}
+}
+
+// WithUserInfoTokenTransport sets how UserInfo requests send access tokens.
+func WithUserInfoTokenTransport(transport UserInfoTokenTransport) Option {
+	return func(r *RP) {
+		r.userInfoTokenTransport = normalizeUserInfoTokenTransport(transport)
+	}
+}
+
 func withNow(now func() time.Time) Option {
 	return func(r *RP) {
 		if now != nil {

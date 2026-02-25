@@ -26,7 +26,13 @@ func (r *RP) HandleCallback(ctx context.Context, code, state string) (*CallbackR
 	}
 	r.stateStore.Delete(state)
 
-	provider, err := r.oidcClient.DiscoverProvider(ctx, r.issuer)
+	issuer := data.Issuer
+	if issuer == "" {
+		issuer = r.issuer
+	}
+	r.issuer = issuer
+
+	provider, err := r.oidcClient.DiscoverProvider(ctx, issuer)
 	if err != nil {
 		return nil, fmt.Errorf("%w: discovery failed: %v", ErrTokenExchangeFailed, err)
 	}
@@ -57,7 +63,11 @@ func (r *RP) HandleCallback(ctx context.Context, code, state string) (*CallbackR
 	if provider.UserinfoEndpoint == "" {
 		return nil, fmt.Errorf("%w: provider missing userinfo endpoint", ErrUserInfoValidationFailed)
 	}
-	userinfo, err := r.fetchUserInfo(ctx, provider.UserinfoEndpoint, tokenResp.AccessToken, claims.Subject)
+	transport := data.UserInfoTokenTransport
+	if transport == "" {
+		transport = r.userInfoTokenTransport
+	}
+	userinfo, err := r.fetchUserInfo(ctx, provider.UserinfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
 	if err != nil {
 		return nil, err
 	}

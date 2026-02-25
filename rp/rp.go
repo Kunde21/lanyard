@@ -36,6 +36,8 @@ type RP struct {
 	provider    oidc.ProviderMetadata
 	providerSet bool
 
+	userInfoTokenTransport UserInfoTokenTransport
+
 	resolvedAuthMethod  AuthMethod
 	allowMethodFallback bool
 	methodMu            sync.RWMutex
@@ -52,16 +54,17 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 	}
 
 	r := &RP{
-		issuer:       strings.TrimSpace(issuer),
-		clientID:     strings.TrimSpace(clientID),
-		clientSecret: clientSecret,
-		redirectURI:  strings.TrimSpace(redirectURI),
-		scopes:       []string{"openid"},
-		httpClient:   http.DefaultClient,
-		logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
-		now:          func() time.Time { return time.Now().UTC() },
-		randReader:   rand.Reader,
-		clockSkew:    defaultClockSkew,
+		issuer:                 strings.TrimSpace(issuer),
+		clientID:               strings.TrimSpace(clientID),
+		clientSecret:           clientSecret,
+		redirectURI:            strings.TrimSpace(redirectURI),
+		scopes:                 []string{"openid"},
+		httpClient:             http.DefaultClient,
+		logger:                 slog.New(slog.NewTextHandler(io.Discard, nil)),
+		userInfoTokenTransport: UserInfoTokenTransportHeader,
+		now:                    func() time.Time { return time.Now().UTC() },
+		randReader:             rand.Reader,
+		clockSkew:              defaultClockSkew,
 	}
 
 	for _, opt := range opts {
@@ -150,6 +153,27 @@ func (r *RP) DiscoverWithJWKS(ctx context.Context) error {
 	if r.provider.JWKSURI == "" {
 		return nil
 	}
-	_, err := r.oidcClient.RemoteKeySet(ctx, r.issuer)
+	keySet, err := r.oidcClient.RemoteKeySetFromJWKSURI(r.provider.JWKSURI)
+	if err != nil {
+		return err
+	}
+	_, err = keySet.Keys(ctx)
 	return err
+}
+
+func (r *RP) DiscoverFromWebFinger(ctx context.Context, resource string) error {
+	provider, err := r.oidcClient.DiscoverProviderFromResource(ctx, resource)
+	if err != nil {
+		return fmt.Errorf("failed to discover provider from webfinger: %w", err)
+	}
+
+	r.issuer = provider.Issuer
+	r.provider = provider
+	r.providerSet = true
+
+	if err := r.applySupportedAuthMethods(provider.TokenEndpointAuthMethodsSupported); err != nil {
+		return fmt.Errorf("failed to resolve token endpoint auth method after webfinger discovery: %w", err)
+	}
+
+	return nil
 }
