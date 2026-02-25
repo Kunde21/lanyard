@@ -38,6 +38,7 @@ services:
     environment:
       RP_INSECURE_TLS: ${RP_INSECURE_TLS:-false}
       RP_ISSUER: ${RP_ISSUER:-https://suite.test/test/a/lanyard-local/}
+      RP_CONFORMANCE_FRESH_DISCOVERY: ${RP_CONFORMANCE_FRESH_DISCOVERY:-true}
     volumes:
       - ..:/workspace
 

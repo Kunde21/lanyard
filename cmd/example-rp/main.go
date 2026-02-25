@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/Kunde21/lanyard/oidc"
 	"github.com/Kunde21/lanyard/rp"
 )
 
@@ -19,10 +21,13 @@ type flowHandler interface {
 	HandleCallback(ctx context.Context, code, state string) (*rp.CallbackResult, error)
 }
 
+var sharedStateStore = rp.NewMemoryStateStore(10 * time.Minute)
+
 func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleRoot)
 	mux.HandleFunc("/login", handleLogin)
+	mux.HandleFunc("/login-userinfo-body", handleLoginUserInfoBody)
 	mux.HandleFunc("/callback", handleCallback)
 	mux.HandleFunc("/discovery", handleDiscovery)
 	mux.HandleFunc("/discovery-jwks", handleDiscoveryJWKS)
@@ -40,6 +45,7 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleRoot)
 	mux.HandleFunc("/login", handleLoginWithFlow(flow))
+	mux.HandleFunc("/login-userinfo-body", handleLoginWithFlow(flow))
 	mux.HandleFunc("/callback", handleCallbackWithFlow(flow))
 	mux.HandleFunc("/discovery", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -64,21 +70,30 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 	return mux
 }
 
-func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI string) (*rp.RP, error) {
+func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI string, transport rp.UserInfoTokenTransport, skipInitialDiscovery bool) (*rp.RP, error) {
 	issuer := r.URL.Query().Get("issuer")
 	if issuer == "" {
 		issuer = envOrDefault("RP_ISSUER", "https://suite.test")
 	}
+	httpClient := newRPHTTPClient()
+	oidcOpts := []oidc.Option{oidc.WithHTTPClient(httpClient)}
+	if envTrue("RP_CONFORMANCE_FRESH_DISCOVERY") {
+		oidcOpts = append(oidcOpts, oidc.WithConformanceFreshDiscovery(true))
+	}
+	oidcClient := oidc.NewClient(oidcOpts...)
 
-	return rp.New(
-		r.Context(),
-		issuer,
-		clientID,
-		clientSecret,
-		redirectURI,
-		rp.WithHTTPClient(newRPHTTPClient()),
+	opts := []rp.Option{
+		rp.WithHTTPClient(httpClient),
+		rp.WithOIDCClient(oidcClient),
+		rp.WithStateStore(sharedStateStore),
+		rp.WithUserInfoTokenTransport(transport),
 		rp.WithScopes(parseScopesEnv("RP_SCOPES", []string{"openid", "profile", "email", "phone", "address"})...),
-	)
+	}
+	if skipInitialDiscovery {
+		opts = append(opts, rp.WithProviderDiscovery(oidc.ProviderMetadata{}))
+	}
+
+	return rp.New(r.Context(), issuer, clientID, clientSecret, redirectURI, opts...)
 }
 
 func newRPHTTPClient() *http.Client {
@@ -100,6 +115,29 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		rp.UserInfoTokenTransportHeader,
+		true,
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	authURL, err := flow.AuthorizationURL(r.Context())
+	if err != nil {
+		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, authURL, http.StatusFound)
+}
+
+func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
+	flow, err := rpClientFromRequest(r,
+		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		rp.UserInfoTokenTransportBody,
+		false,
 	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
@@ -146,6 +184,8 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		rp.UserInfoTokenTransportHeader,
+		true,
 	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
@@ -212,6 +252,8 @@ func handleDiscovery(w http.ResponseWriter, r *http.Request) {
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		rp.UserInfoTokenTransportHeader,
+		true,
 	)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -236,6 +278,8 @@ func handleDiscoveryJWKS(w http.ResponseWriter, r *http.Request) {
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		rp.UserInfoTokenTransportHeader,
+		false,
 	)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -255,14 +299,114 @@ func handleDiscoveryJWKS(w http.ResponseWriter, r *http.Request) {
 
 func handleWebFingerAcct(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
+
+	resource, err := webFingerAcctResource(issuerFromRequest(r))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, "invalid issuer for webfinger acct resource: %v", err)
+		return
+	}
+
+	flow, err := rpClientFromRequest(r,
+		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		rp.UserInfoTokenTransportHeader,
+		false,
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "failed to create RP client: %v", err)
+		return
+	}
+
+	if err := flow.DiscoverFromWebFinger(r.Context(), resource); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "webfinger acct discovery failed: %v", err)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintln(w, "webfinger acct triggered")
+	_, _ = fmt.Fprintf(w, "webfinger acct triggered: %s\n", resource)
 }
 
 func handleWebFingerURL(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
+
+	resource, err := webFingerURLResource(issuerFromRequest(r))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, "invalid issuer for webfinger URL resource: %v", err)
+		return
+	}
+
+	flow, err := rpClientFromRequest(r,
+		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		rp.UserInfoTokenTransportHeader,
+		false,
+	)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "failed to create RP client: %v", err)
+		return
+	}
+
+	if err := flow.DiscoverFromWebFinger(r.Context(), resource); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = fmt.Fprintf(w, "webfinger URL discovery failed: %v", err)
+		return
+	}
+
 	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintln(w, "webfinger url triggered")
+	_, _ = fmt.Fprintf(w, "webfinger url triggered: %s\n", resource)
+}
+
+func issuerFromRequest(r *http.Request) string {
+	issuer := strings.TrimSpace(r.URL.Query().Get("issuer"))
+	if issuer == "" {
+		issuer = envOrDefault("RP_ISSUER", "https://suite.test")
+	}
+	return issuer
+}
+
+func webFingerAcctResource(issuer string) (string, error) {
+	alias, host, err := webFingerAliasAndHost(issuer)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("acct:%s.oidcc-client-test-discovery-webfinger-acct@%s", alias, host), nil
+}
+
+func webFingerURLResource(issuer string) (string, error) {
+	alias, host, err := webFingerAliasAndHost(issuer)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("https://%s/%s/oidcc-client-test-discovery-webfinger-url", host, alias), nil
+}
+
+func webFingerAliasAndHost(issuer string) (string, string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(issuer))
+	if err != nil {
+		return "", "", err
+	}
+	host := strings.TrimSpace(parsed.Host)
+	if host == "" {
+		return "", "", fmt.Errorf("issuer host missing")
+	}
+
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) < 3 || segments[0] != "test" || segments[1] != "a" {
+		return "", "", fmt.Errorf("issuer path %q does not include /test/a/{alias}", parsed.Path)
+	}
+	alias := strings.TrimSpace(segments[2])
+	if alias == "" {
+		return "", "", fmt.Errorf("issuer alias missing")
+	}
+
+	return alias, host, nil
 }
 
 func envOrDefault(key, fallback string) string {
@@ -270,6 +414,11 @@ func envOrDefault(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func envTrue(key string) bool {
+	value := strings.TrimSpace(os.Getenv(key))
+	return strings.EqualFold(value, "1") || strings.EqualFold(value, "true") || strings.EqualFold(value, "yes") || strings.EqualFold(value, "on")
 }
 
 func parseScopesEnv(key string, fallback []string) []string {
