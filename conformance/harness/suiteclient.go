@@ -163,6 +163,14 @@ func (c *suiteClient) StartTest(ctx context.Context, testID string) error {
 	return nil
 }
 
+func (c *suiteClient) CancelTest(ctx context.Context, testID string) error {
+	path := "/api/runner/" + url.PathEscape(testID)
+	if err := c.doJSON(ctx, http.MethodDelete, path, nil, nil, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *suiteClient) ExportPlanZip(ctx context.Context, planID string) ([]byte, error) {
 	path := "/api/plan/exporthtml/" + url.PathEscape(planID)
 	endpoint := c.baseURL + path

@@ -23,6 +23,8 @@ var (
 	flagProvisionTimeout = flag.Duration("provision-timeout", 5*time.Minute, "Max time to provision local conformance stack")
 	flagPlanTimeout      = flag.Duration("plan-timeout", 30*time.Minute, "Max time for a single plan execution")
 	flagTestTimeout      = flag.Duration("test-timeout", 5*time.Minute, "Max time for a single test instance")
+	flagWaitingMaxReties = flag.Int("waiting-max-retries", 10, "Max front-channel trigger retries while test status is WAITING")
+	flagWaitingInterval  = flag.Duration("waiting-retry-interval", 10*time.Second, "Interval between WAITING front-channel trigger retries")
 
 	flagCleanup   = flag.Bool("cleanup", false, "Tear down docker compose services after test")
 	flagExportZip = flag.Bool("export-zip", true, "Export suite plan result ZIP artifacts")
@@ -104,16 +106,18 @@ func TestConformanceHarness(t *testing.T) {
 
 func parseHarnessConfig() (harnessConfig, error) {
 	cfg := harnessConfig{
-		Profile:          strings.TrimSpace(*flagProfile),
-		SuiteURL:         strings.TrimSpace(*flagSuiteURL),
-		ArtifactsDir:     strings.TrimSpace(*flagArtifactsDir),
-		ProvisionTimeout: *flagProvisionTimeout,
-		PlanTimeout:      *flagPlanTimeout,
-		TestTimeout:      *flagTestTimeout,
-		Cleanup:          *flagCleanup,
-		ExportZip:        *flagExportZip,
-		Redact:           *flagRedact,
-		RebuildSuite:     *flagRebuild,
+		Profile:              strings.TrimSpace(*flagProfile),
+		SuiteURL:             strings.TrimSpace(*flagSuiteURL),
+		ArtifactsDir:         strings.TrimSpace(*flagArtifactsDir),
+		ProvisionTimeout:     *flagProvisionTimeout,
+		PlanTimeout:          *flagPlanTimeout,
+		TestTimeout:          *flagTestTimeout,
+		Cleanup:              *flagCleanup,
+		ExportZip:            *flagExportZip,
+		Redact:               *flagRedact,
+		RebuildSuite:         *flagRebuild,
+		WaitingMaxRetries:    *flagWaitingMaxReties,
+		WaitingRetryInterval: *flagWaitingInterval,
 	}
 
 	if cfg.Profile == "" {
@@ -137,6 +141,12 @@ func parseHarnessConfig() (harnessConfig, error) {
 	}
 	if cfg.ProvisionTimeout <= 0 || cfg.PlanTimeout <= 0 || cfg.TestTimeout <= 0 {
 		return harnessConfig{}, fmt.Errorf("timeouts must be positive durations")
+	}
+	if cfg.WaitingMaxRetries < 0 {
+		return harnessConfig{}, fmt.Errorf("-waiting-max-retries must be >= 0")
+	}
+	if cfg.WaitingRetryInterval <= 0 {
+		return harnessConfig{}, fmt.Errorf("-waiting-retry-interval must be a positive duration")
 	}
 
 	includeRE, err := compileRegex(strings.TrimSpace(*flagIncludePlanRegex))

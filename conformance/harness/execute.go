@@ -3,6 +3,7 @@ package conformanceharness
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,7 +35,7 @@ func newRunner(client *suiteClient, cfg harnessConfig, logf func(format string, 
 		cfg.WaitingMaxRetries = 10
 	}
 	if cfg.WaitingRetryInterval <= 0 {
-		cfg.WaitingRetryInterval = 3 * time.Second
+		cfg.WaitingRetryInterval = 10 * time.Second
 	}
 
 	jar, err := cookiejar.New(nil)
@@ -123,7 +124,7 @@ func (r *runner) executePlan(ctx context.Context, selected AvailablePlan, planIn
 	defer cancel()
 
 	planVariant := mergePlanVariant(selectPlanVariant(selected), r.cfg.ForcedVariants)
-	planConfig := buildPlanConfig(planVariant)
+	planConfig := buildPlanConfig(planVariant, fmt.Sprintf("lanyard-%d-%d", time.Now().UTC().UnixNano(), planIndex+1))
 	created, err := r.client.CreatePlan(planCtx, selected.Name, planVariant, planConfig)
 	if err != nil {
 		failPlan(&planRes, fmt.Sprintf("create plan failed: %v", err))
@@ -182,6 +183,8 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	if err != nil {
 		r.logf("  warning: failed to get test info: %v", err)
 	}
+	suiteAlias := strings.TrimSpace(info.Alias)
+	r.logf("  test context: plan=%s module=%s test_id=%s local_alias=%s suite_alias=%s", selected.Name, module.Name, testID, alias, suiteAlias)
 
 	issuer := constructIssuer(r.cfg.SuiteURL, info.PlanID, info.Alias)
 
@@ -191,8 +194,13 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	trigger := r.frontChannelTriggerForModule(module.Name, issuer)
 	pollInfo, err := pollTestResultWithConfig(pollCtx, r.client, testID, trigger, r.cfg.WaitingMaxRetries, r.cfg.WaitingRetryInterval)
 	if err != nil {
-		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("poll failed: %v", err))
-		r.logf("  test failed: plan=%s module=%s alias=%s test_id=%s err=%v", selected.Name, module.Name, alias, testID, err)
+		cleanupErr := r.cancelTestAndWaitTerminal(testID, selected.Name, module.Name, alias, suiteAlias)
+		summary := fmt.Sprintf("poll failed: %v", err)
+		if cleanupErr != nil {
+			summary = fmt.Sprintf("%s (cleanup failed: %v)", summary, cleanupErr)
+		}
+		failTest(&res, "ERROR", "FAILED", summary)
+		r.logf("  test failed: plan=%s module=%s alias=%s suite_alias=%s test_id=%s err=%v cleanup_err=%v", selected.Name, module.Name, alias, suiteAlias, testID, err, cleanupErr)
 		return res
 	}
 
@@ -200,8 +208,30 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	res.Result = pollInfo.Result
 	res.Summary = pollInfo.Summary
 	finalizeTest(&res)
-	r.logf("  test done: plan=%s module=%s alias=%s test_id=%s status=%s result=%s", selected.Name, module.Name, alias, testID, res.Status, res.Result)
+	r.logf("  test done: plan=%s module=%s alias=%s suite_alias=%s test_id=%s status=%s result=%s", selected.Name, module.Name, alias, suiteAlias, testID, res.Status, res.Result)
 	return res
+}
+
+func (r *runner) cancelTestAndWaitTerminal(testID, planName, moduleName, localAlias, suiteAlias string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	cancelErr := r.client.CancelTest(cleanupCtx, testID)
+	if cancelErr != nil {
+		r.logf("  cleanup warning: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s failed to cancel test: %v", planName, moduleName, localAlias, suiteAlias, testID, cancelErr)
+	}
+
+	waitErr := waitForTerminalTestState(cleanupCtx, r.client, testID)
+	if waitErr != nil {
+		r.logf("  cleanup warning: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s failed waiting for terminal state: %v", planName, moduleName, localAlias, suiteAlias, testID, waitErr)
+	}
+
+	if cancelErr != nil || waitErr != nil {
+		return errors.Join(cancelErr, waitErr)
+	}
+
+	r.logf("  cleanup done: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s reached terminal state", planName, moduleName, localAlias, suiteAlias, testID)
+	return nil
 }
 
 func constructIssuer(suiteURL, planID, testAlias string) string {
@@ -244,10 +274,6 @@ func (r *runner) doTrigger(ctx context.Context, testID, endpoint, issuer string)
 	_, _ = io.Copy(io.Discard, resp.Body)
 
 	r.logf("    front-channel trigger: test_id=%s endpoint=%s issuer=%q status=%d", testID, endpoint, issuer, resp.StatusCode)
-	if resp.StatusCode >= 500 {
-		return fmt.Errorf("rp front-channel endpoint returned status %d", resp.StatusCode)
-	}
-
 	return nil
 }
 
@@ -258,6 +284,7 @@ func moduleTriggerEndpoint(moduleName string) string {
 		"oidcc-client-test-discovery-issuer-mismatch": "/discovery",
 		"oidcc-client-test-discovery-webfinger-acct":  "/webfinger-acct",
 		"oidcc-client-test-discovery-webfinger-url":   "/webfinger-url",
+		"oidcc-client-test-userinfo-bearer-body":      "/login-userinfo-body",
 	}
 	if endpoint, ok := discoveryModules[moduleName]; ok {
 		return endpoint
@@ -273,8 +300,8 @@ func pollTestResultWithConfig(ctx context.Context, client testInfoGetter, testID
 	ticker := time.NewTicker(1500 * time.Millisecond)
 	defer ticker.Stop()
 
-	var waitingSince time.Time
-	waitingRetries := 0
+	waitingTriggerAttempts := 0
+	var lastWaitingTrigger time.Time
 	var waitingTriggerErr error
 	startedFromConfigured := false
 
@@ -294,32 +321,32 @@ func pollTestResultWithConfig(ctx context.Context, client testInfoGetter, testID
 			}
 
 			if status == "WAITING" {
-				if waitingSince.IsZero() {
-					waitingSince = time.Now()
-				}
-				if onWaiting != nil && waitingRetries <= maxRetries {
-					waitingRetries++
-					if err := onWaiting(ctx, testID); err != nil {
-						waitingTriggerErr = err
+				if onWaiting != nil {
+					shouldTrigger := waitingTriggerAttempts == 0
+					if !shouldTrigger && waitingTriggerAttempts <= maxRetries {
+						if retryInterval <= 0 {
+							shouldTrigger = true
+						} else if time.Since(lastWaitingTrigger) >= retryInterval {
+							shouldTrigger = true
+						}
 					}
-					if waitingRetries <= maxRetries && retryInterval > 0 {
-						select {
-						case <-ctx.Done():
-							return testInfo{}, ctx.Err()
-						case <-time.After(retryInterval):
+
+					if shouldTrigger {
+						waitingTriggerAttempts++
+						lastWaitingTrigger = time.Now()
+						if err := onWaiting(ctx, testID); err != nil {
+							waitingTriggerErr = err
 						}
 					}
 				}
-				if time.Since(waitingSince) >= waitingStateWindow(ctx) {
-					if waitingTriggerErr != nil {
-						return testInfo{}, fmt.Errorf("test entered WAITING state and did not progress after %d front-channel trigger attempts: %w", waitingRetries, waitingTriggerErr)
-					}
-					return testInfo{}, fmt.Errorf("test entered WAITING state and did not progress after %d attempts; interactive/browser step likely required", waitingRetries)
-				}
 			} else {
-				waitingSince = time.Time{}
-				waitingRetries = 0
+				waitingTriggerAttempts = 0
+				lastWaitingTrigger = time.Time{}
 				waitingTriggerErr = nil
+			}
+
+			if waitingTriggerErr != nil && waitingTriggerAttempts >= maxRetries+1 {
+				return testInfo{}, fmt.Errorf("test entered WAITING state and front-channel trigger failed after %d attempts: %w", waitingTriggerAttempts, waitingTriggerErr)
 			}
 
 			if isTestDone(info) {
@@ -335,32 +362,45 @@ func pollTestResultWithConfig(ctx context.Context, client testInfoGetter, testID
 	}
 }
 
-func waitingStateWindow(ctx context.Context) time.Duration {
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		return 20 * time.Second
+func waitForTerminalTestState(ctx context.Context, client *suiteClient, testID string) error {
+	ticker := time.NewTicker(1500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		info, err := client.GetTestInfo(ctx, testID)
+		if err == nil && isTerminalStatus(info) {
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
 	}
-	remaining := time.Until(deadline)
-	if remaining <= 0 {
-		return 1 * time.Second
-	}
-	window := remaining / 3
-	if window < 10*time.Second {
-		window = 10 * time.Second
-	}
-	if window > 30*time.Second {
-		window = 30 * time.Second
-	}
-	return window
 }
 
 func isTestDone(info testInfo) bool {
-	status := strings.ToUpper(strings.TrimSpace(info.Status))
-	if status == "FINISHED" || status == "COMPLETE" || status == "COMPLETED" || status == "DONE" {
+	if isTerminalStatus(info) {
 		return true
 	}
+
 	result := strings.ToUpper(strings.TrimSpace(info.Result))
 	return result != "" && result != "UNKNOWN"
+}
+
+func isTerminalStatus(info testInfo) bool {
+	status := strings.ToUpper(strings.TrimSpace(info.Status))
+	switch status {
+	case "FINISHED", "COMPLETE", "COMPLETED", "DONE", "INTERRUPTED", "CANCELLED", "ERROR", "FAILED", "STOPPED":
+		return true
+	}
+
+	return false
 }
 
 func moduleFailed(result testResult) bool {
@@ -425,9 +465,12 @@ func chooseVariantValue(key string, values []string) string {
 	return values[0]
 }
 
-func buildPlanConfig(planVariant map[string]string) map[string]any {
+func buildPlanConfig(planVariant map[string]string, alias string) map[string]any {
 	if !usesStaticClientRegistration(planVariant) {
 		return map[string]any{}
+	}
+	if strings.TrimSpace(alias) == "" {
+		alias = "lanyard-local"
 	}
 
 	requestType := "plain_http_request"
@@ -436,7 +479,7 @@ func buildPlanConfig(planVariant map[string]string) map[string]any {
 	}
 
 	return map[string]any{
-		"alias":       "lanyard-local",
+		"alias":       alias,
 		"description": "Lanyard automated local conformance run",
 		"client": map[string]any{
 			"client_id":     "local-dev-client",

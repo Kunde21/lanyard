@@ -207,41 +207,23 @@ func TestPollTestResultReturnsErrorOnTriggerFailure(t *testing.T) {
 	}
 }
 
-func TestWaitingStateWindow(t *testing.T) {
+func TestIsTerminalStatus(t *testing.T) {
 	tests := []struct {
-		name     string
-		deadline time.Time
-		wantMin  time.Duration
-		wantMax  time.Duration
+		name   string
+		status string
+		want   bool
 	}{
-		{
-			name:     "deadline far in future",
-			deadline: time.Now().Add(10 * time.Minute),
-			wantMin:  10 * time.Second,
-			wantMax:  30 * time.Second,
-		},
-		{
-			name:     "deadline soon",
-			deadline: time.Now().Add(20 * time.Second),
-			wantMin:  10 * time.Second,
-			wantMax:  10 * time.Second,
-		},
-		{
-			name:     "deadline in past",
-			deadline: time.Now().Add(-10 * time.Second),
-			wantMin:  1 * time.Second,
-			wantMax:  1 * time.Second,
-		},
+		{name: "finished", status: "FINISHED", want: true},
+		{name: "interrupted", status: "INTERRUPTED", want: true},
+		{name: "cancelled", status: "CANCELLED", want: true},
+		{name: "running", status: "RUNNING", want: false},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ctx, cancel := context.WithDeadline(context.Background(), tc.deadline)
-			defer cancel()
-
-			got := waitingStateWindow(ctx)
-			if got < tc.wantMin || got > tc.wantMax {
-				t.Errorf("waitingStateWindow() = %v, want between %v and %v", got, tc.wantMin, tc.wantMax)
+			got := isTerminalStatus(testInfo{Status: tc.status})
+			if got != tc.want {
+				t.Fatalf("isTerminalStatus(%q) = %t, want %t", tc.status, got, tc.want)
 			}
 		})
 	}
@@ -275,6 +257,10 @@ func TestModuleTriggerEndpoint(t *testing.T) {
 		{
 			moduleName: "oidcc-client-test-client-secret-basic",
 			want:       "/login",
+		},
+		{
+			moduleName: "oidcc-client-test-userinfo-bearer-body",
+			want:       "/login-userinfo-body",
 		},
 		{
 			moduleName: "some-other-module",
