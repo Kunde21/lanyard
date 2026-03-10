@@ -17,7 +17,7 @@ services:
     image: ${SUITE_RUNTIME_IMAGE:-lanyard-conformance-suite-with-ca:release-v5.1.39}
     restart: unless-stopped
     environment:
-      BASE_URL: https://suite.test
+      BASE_URL: https://suite.localhost
       MONGODB_HOST: mongo
       JAVA_EXTRA_ARGS: -Dfintechlabs.devmode=true
       OIDC_GOOGLE_CLIENTID: local-dev
@@ -37,7 +37,7 @@ services:
     command: ["go", "run", "./cmd/example-rp"]
     environment:
       RP_INSECURE_TLS: ${RP_INSECURE_TLS:-false}
-      RP_ISSUER: ${RP_ISSUER:-https://suite.test/test/a/lanyard-local/}
+      RP_ISSUER: ${RP_ISSUER:-https://suite.localhost/test/a/lanyard-local/}
       RP_CONFORMANCE_FRESH_DISCOVERY: ${RP_CONFORMANCE_FRESH_DISCOVERY:-true}
     volumes:
       - ..:/workspace
@@ -53,8 +53,8 @@ services:
     networks:
       default:
         aliases:
-          - suite.test
-          - rp.test
+          - suite.localhost
+          - rp.localhost
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./certs:/etc/caddy/certs:ro

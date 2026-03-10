@@ -14,7 +14,7 @@ import (
 
 var (
 	flagProfile          = flag.String("profile", "", "Conformance profile to run: oidc-rp|fapi-rp|all-rp")
-	flagSuiteURL         = flag.String("suite-url", "https://suite.test", "Base URL for the conformance suite")
+	flagSuiteURL         = flag.String("suite-url", "https://suite.localhost", "Base URL for the conformance suite")
 	flagArtifactsDir     = flag.String("artifacts-dir", "./artifacts", "Directory for run artifacts")
 	flagIncludePlanRegex = flag.String("include-plan-regex", "", "Regex for plan names to include")
 	flagExcludePlanRegex = flag.String("exclude-plan-regex", "", "Regex for plan names to exclude")

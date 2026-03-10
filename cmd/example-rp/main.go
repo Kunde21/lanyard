@@ -73,7 +73,7 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI string, transport rp.UserInfoTokenTransport, skipInitialDiscovery bool) (*rp.RP, error) {
 	issuer := r.URL.Query().Get("issuer")
 	if issuer == "" {
-		issuer = envOrDefault("RP_ISSUER", "https://suite.test")
+		issuer = envOrDefault("RP_ISSUER", "https://suite.localhost")
 	}
 	httpClient := newRPHTTPClient()
 	oidcOpts := []oidc.Option{oidc.WithHTTPClient(httpClient)}
@@ -366,7 +366,7 @@ func handleWebFingerURL(w http.ResponseWriter, r *http.Request) {
 func issuerFromRequest(r *http.Request) string {
 	issuer := strings.TrimSpace(r.URL.Query().Get("issuer"))
 	if issuer == "" {
-		issuer = envOrDefault("RP_ISSUER", "https://suite.test")
+		issuer = envOrDefault("RP_ISSUER", "https://suite.localhost")
 	}
 	return issuer
 }

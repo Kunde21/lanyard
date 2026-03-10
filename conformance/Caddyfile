@@ -1,9 +1,9 @@
-suite.test {
-	tls /etc/caddy/certs/suite.test.pem /etc/caddy/certs/suite.test-key.pem
+suite.localhost {
+	tls /etc/caddy/certs/suite.localhost.pem /etc/caddy/certs/suite.localhost-key.pem
 	reverse_proxy suite:8080
 }
 
-rp.test {
-	tls /etc/caddy/certs/rp.test.pem /etc/caddy/certs/rp.test-key.pem
+rp.localhost {
+	tls /etc/caddy/certs/rp.localhost.pem /etc/caddy/certs/rp.localhost-key.pem
 	reverse_proxy rp:8080
 }

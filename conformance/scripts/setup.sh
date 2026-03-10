@@ -31,25 +31,17 @@ if [ ! -f "${CAROOT}/rootCA.pem" ]; then
 fi
 cp "${CAROOT}/rootCA.pem" "${CERT_DIR}/mkcert-rootCA.pem"
 
-echo "==> Generating certificate for suite.test"
+echo "==> Generating certificate for suite.localhost"
 mkcert \
-	-cert-file "${CERT_DIR}/suite.test.pem" \
-	-key-file "${CERT_DIR}/suite.test-key.pem" \
-	suite.test
+	-cert-file "${CERT_DIR}/suite.localhost.pem" \
+	-key-file "${CERT_DIR}/suite.localhost-key.pem" \
+	suite.localhost
 
-echo "==> Generating certificate for rp.test"
+echo "==> Generating certificate for rp.localhost"
 mkcert \
-	-cert-file "${CERT_DIR}/rp.test.pem" \
-	-key-file "${CERT_DIR}/rp.test-key.pem" \
-	rp.test
-
-cat <<'EOF'
-
-Required /etc/hosts entries:
-  127.0.0.1 suite.test
-  127.0.0.1 rp.test
-
-Add these entries manually if they are not already present.
-EOF
+	-cert-file "${CERT_DIR}/rp.localhost.pem" \
+	-key-file "${CERT_DIR}/rp.localhost-key.pem" \
+	rp.localhost
 
 echo "==> Done. Certificates are in conformance/certs/."
+echo "==> Note: *.localhost domains resolve automatically to 127.0.0.1 (no /etc/hosts modification needed)"

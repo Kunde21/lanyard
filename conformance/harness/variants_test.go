@@ -88,7 +88,7 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	}()
 
 	*flagProfile = "oidc-rp"
-	*flagSuiteURL = "https://suite.test"
+	*flagSuiteURL = "https://suite.localhost"
 	*flagArtifactsDir = t.TempDir()
 	*flagIncludePlanRegex = ""
 	*flagExcludePlanRegex = ""

@@ -133,13 +133,13 @@ func TestParseScopesEnv(t *testing.T) {
 }
 
 func TestWebFingerResourceBuilders(t *testing.T) {
-	issuer := "https://suite.test/test/a/lanyard-local/"
+	issuer := "https://suite.localhost/test/a/lanyard-local/"
 
 	acct, err := webFingerAcctResource(issuer)
 	if err != nil {
 		t.Fatalf("webFingerAcctResource() failed: %v", err)
 	}
-	if acct != "acct:lanyard-local.oidcc-client-test-discovery-webfinger-acct@suite.test" {
+	if acct != "acct:lanyard-local.oidcc-client-test-discovery-webfinger-acct@suite.localhost" {
 		t.Fatalf("acct resource mismatch: %q", acct)
 	}
 
@@ -147,7 +147,7 @@ func TestWebFingerResourceBuilders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("webFingerURLResource() failed: %v", err)
 	}
-	if resourceURL != "https://suite.test/lanyard-local/oidcc-client-test-discovery-webfinger-url" {
+	if resourceURL != "https://suite.localhost/lanyard-local/oidcc-client-test-discovery-webfinger-url" {
 		t.Fatalf("url resource mismatch: %q", resourceURL)
 	}
 }

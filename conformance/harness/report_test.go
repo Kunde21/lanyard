@@ -15,7 +15,7 @@ import (
 func TestWriteReport_RedactsSensitiveFields(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := harnessConfig{
-		SuiteURL:          "https://suite.test",
+		SuiteURL:          "https://suite.localhost",
 		Profile:           "oidc-rp",
 		ArtifactsDir:      tempDir,
 		ExportZip:         false,
@@ -83,7 +83,7 @@ func TestSanitizePathComponent(t *testing.T) {
 func TestWriteReport_CreatesRunReportPath(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := harnessConfig{
-		SuiteURL:          "https://suite.test",
+		SuiteURL:          "https://suite.localhost",
 		Profile:           "oidc-rp",
 		ArtifactsDir:      tempDir,
 		ExportZip:         false,

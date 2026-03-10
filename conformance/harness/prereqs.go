@@ -13,17 +13,17 @@ func validatePrerequisites(cfg harnessConfig) error {
 		return fmt.Errorf("conformance harness only supports linux; got %s", runtime.GOOS)
 	}
 
-	for _, host := range []string{"suite.test", "rp.test"} {
+	for _, host := range []string{"suite.localhost", "rp.localhost"} {
 		if err := ensureLocalHostResolution(host); err != nil {
 			return err
 		}
 	}
 
 	certRelPaths := []string{
-		"conformance/certs/suite.test.pem",
-		"conformance/certs/suite.test-key.pem",
-		"conformance/certs/rp.test.pem",
-		"conformance/certs/rp.test-key.pem",
+		"conformance/certs/suite.localhost.pem",
+		"conformance/certs/suite.localhost-key.pem",
+		"conformance/certs/rp.localhost.pem",
+		"conformance/certs/rp.localhost-key.pem",
 		"conformance/certs/mkcert-rootCA.pem",
 	}
 	for _, certRelPath := range certRelPaths {
