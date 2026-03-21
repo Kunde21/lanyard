@@ -23,6 +23,11 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
         *   `private_key_jwt` (asymmetric signatures)
     *   Pushed Authorization Requests (PAR) support.
 
+*   **Client Credentials Grant** (RFC 6749 §4.4):
+    *   OAuth 2.0 Client Credentials flow for service-to-service authentication.
+    *   Per-request scope customization via context.
+    *   TokenSource interface for caching and reuse.
+
 *   **Token & User Info**:
     *   ID Token validation (signature, claims, audience, expiration).
     *   User Info endpoint retrieval.
@@ -123,6 +128,45 @@ func handleCallback(ctx context.Context, code, state string) (*rp.CallbackResult
     // result.Subject contains the user's ID (sub claim)
     // result.UserInfo contains claims from the UserInfo endpoint
     return result, nil
+}
+```
+
+### Client Credentials Grant
+
+For service-to-service authentication using the OAuth 2.0 Client Credentials flow:
+
+```go
+import (
+    "context"
+    "github.com/Kunde21/lanyard/rp"
+)
+
+func main() {
+    ctx := context.Background()
+
+    // Create client with default scopes
+    client, err := rp.NewClientCredentials(ctx,
+        "https://auth.example.com",
+        "client-id",
+        "client-secret",
+        rp.WithClientCredentialsScopes("api:read", "api:write"),
+    )
+    if err != nil {
+        panic(err)
+    }
+
+    // Get token
+    token, err := client.Token(ctx)
+    if err != nil {
+        panic(err)
+    }
+
+    fmt.Printf("Access Token: %s\n", token.AccessToken)
+    fmt.Printf("Expires In: %d\n", token.ExpiresIn)
+
+    // Per-request scope override via context
+    ctx = rp.WithTokenScopes(ctx, "admin:all")
+    adminToken, err := client.Token(ctx)
 }
 ```
 
