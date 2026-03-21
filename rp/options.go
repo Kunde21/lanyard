@@ -89,6 +89,22 @@ func WithUserInfoTokenTransport(transport UserInfoTokenTransport) Option {
 	}
 }
 
+// WithClientKeyProvider sets the key provider for private_key_jwt and mTLS authentication.
+func WithClientKeyProvider(provider ClientKeyProvider) Option {
+	return func(r *RP) {
+		if provider != nil {
+			r.clientKeyProvider = provider
+		}
+	}
+}
+
+// WithRequirePAR forces the use of Pushed Authorization Requests (PAR).
+func WithRequirePAR(require bool) Option {
+	return func(r *RP) {
+		r.requirePAR = require
+	}
+}
+
 func withNow(now func() time.Time) Option {
 	return func(r *RP) {
 		if now != nil {

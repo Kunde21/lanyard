@@ -3,11 +3,15 @@ package conformanceharness
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -191,7 +195,7 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	pollCtx, cancel := context.WithTimeout(ctx, r.cfg.TestTimeout)
 	defer cancel()
 
-	trigger := r.frontChannelTriggerForModule(module.Name, issuer)
+	trigger := r.frontChannelTriggerForModule(module.Name, issuer, moduleVariant)
 	pollInfo, err := pollTestResultWithConfig(pollCtx, r.client, testID, trigger, r.cfg.WaitingMaxRetries, r.cfg.WaitingRetryInterval)
 	if err != nil {
 		cleanupErr := r.cancelTestAndWaitTerminal(testID, selected.Name, module.Name, alias, suiteAlias)
@@ -242,26 +246,49 @@ func constructIssuer(suiteURL, planID, testAlias string) string {
 }
 
 func (r *runner) triggerFrontChannelStep(ctx context.Context, testID string) error {
-	return r.doTrigger(ctx, testID, "/login", "")
+	return r.doTrigger(ctx, testID, "/login", "", nil)
 }
 
-func (r *runner) frontChannelTriggerForModule(moduleName, issuer string) func(context.Context, string) error {
+func (r *runner) frontChannelTriggerForModule(moduleName, issuer string, variant map[string]any) func(context.Context, string) error {
 	return func(ctx context.Context, testID string) error {
 		endpoint := moduleTriggerEndpoint(moduleName)
-		return r.doTrigger(ctx, testID, endpoint, issuer)
+		return r.doTrigger(ctx, testID, endpoint, issuer, variant)
 	}
 }
 
-func (r *runner) doTrigger(ctx context.Context, testID, endpoint, issuer string) error {
+func (r *runner) doTrigger(ctx context.Context, testID, endpoint, issuer string, variant map[string]any) error {
 	triggerCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
-	url := "https://rp.test" + endpoint
+	triggerURL := "https://rp.localhost" + endpoint
+	query := url.Values{}
 	if issuer != "" {
-		url += "?issuer=" + issuer
+		query.Set("issuer", issuer)
 	}
 
-	req, err := http.NewRequestWithContext(triggerCtx, http.MethodGet, url, nil)
+	if isFAPI2Variant(variant) {
+		if v, ok := variant["client_auth_type"]; ok {
+			query.Set("client_auth_type", fmt.Sprintf("%v", v))
+		}
+		if v, ok := variant["sender_constrain"]; ok {
+			query.Set("sender_constrain", fmt.Sprintf("%v", v))
+		}
+		if v, ok := variant["fapi_profile"]; ok {
+			query.Set("fapi_profile", fmt.Sprintf("%v", v))
+		}
+		if v, ok := variant["fapi_request_method"]; ok {
+			query.Set("fapi_request_method", fmt.Sprintf("%v", v))
+		}
+		if v, ok := variant["fapi_response_mode"]; ok {
+			query.Set("fapi_response_mode", fmt.Sprintf("%v", v))
+		}
+	}
+
+	if len(query) > 0 {
+		triggerURL += "?" + query.Encode()
+	}
+
+	req, err := http.NewRequestWithContext(triggerCtx, http.MethodGet, triggerURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to build front-channel request: %w", err)
 	}
@@ -462,6 +489,54 @@ func chooseVariantValue(key string, values []string) string {
 		}
 	}
 
+	if lowerKey == "fapi_profile" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "plain_fapi") {
+				return value
+			}
+		}
+	}
+
+	if lowerKey == "fapi_client_type" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "oidc") {
+				return value
+			}
+		}
+	}
+
+	if lowerKey == "client_auth_type" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "private_key_jwt") {
+				return value
+			}
+		}
+	}
+
+	if lowerKey == "sender_constrain" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "dpop") {
+				return value
+			}
+		}
+	}
+
+	if lowerKey == "fapi_request_method" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "signed_non_repudiation") {
+				return value
+			}
+		}
+	}
+
+	if lowerKey == "fapi_response_mode" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "plain_response") {
+				return value
+			}
+		}
+	}
+
 	return values[0]
 }
 
@@ -473,27 +548,107 @@ func buildPlanConfig(planVariant map[string]string, alias string) map[string]any
 		alias = "lanyard-local"
 	}
 
+	isFAPI2 := isFAPI2PlanVariant(planVariant)
+
 	requestType := "plain_http_request"
 	if v := strings.TrimSpace(planVariant["request_type"]); v != "" {
 		requestType = v
 	}
 
-	return map[string]any{
+	cfg := map[string]any{
 		"alias":       alias,
 		"description": "Lanyard automated local conformance run",
 		"client": map[string]any{
 			"client_id":     "local-dev-client",
 			"client_secret": "local-dev-secret-32-bytes-minimum!!",
-			"redirect_uri":  "https://rp.test/callback",
+			"redirect_uri":  "https://rp.localhost/callback",
 			"request_type":  requestType,
 		},
 		"client2": map[string]any{
 			"client_id":     "local-dev-client-2",
 			"client_secret": "local-dev-secret-2-32-bytes-min!!",
-			"redirect_uri":  "https://rp.test/callback",
+			"redirect_uri":  "https://rp.localhost/callback",
 			"request_type":  requestType,
 		},
+		"waitTimeoutSeconds": 300,
 	}
+
+	if isFAPI2 {
+		cfg["server"] = loadJWKS("server.jwks.json")
+		cfg["client"].(map[string]any)["jwks"] = loadJWKS("client.jwks.json")
+		cfg["client2"].(map[string]any)["jwks"] = loadJWKS("client.jwks.json")
+
+		if certPEM, keyPEM, err := loadClientMTLSCert(); err == nil {
+			cfg["client"].(map[string]any)["certificate"] = certPEM
+			cfg["client2"].(map[string]any)["certificate"] = certPEM
+			_ = keyPEM
+		}
+	}
+
+	return cfg
+}
+
+func isFAPI2PlanVariant(planVariant map[string]string) bool {
+	for key := range planVariant {
+		lower := strings.ToLower(key)
+		if strings.HasPrefix(lower, "fapi_") ||
+			strings.HasPrefix(lower, "client_auth") ||
+			strings.HasPrefix(lower, "sender_") {
+			return true
+		}
+	}
+	return false
+}
+
+func isFAPI2Variant(variant map[string]any) bool {
+	if variant == nil {
+		return false
+	}
+	for key := range variant {
+		lower := strings.ToLower(key)
+		if strings.HasPrefix(lower, "fapi_") ||
+			strings.HasPrefix(lower, "client_auth") ||
+			strings.HasPrefix(lower, "sender_") {
+			return true
+		}
+	}
+	return false
+}
+
+func loadJWKS(filename string) map[string]any {
+	certsDir, err := repoPath("conformance/certs")
+	if err != nil {
+		return nil
+	}
+	path := filepath.Join(certsDir, filename)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var jwks map[string]any
+	if err := json.Unmarshal(data, &jwks); err != nil {
+		return nil
+	}
+	return jwks
+}
+
+func loadClientMTLSCert() (string, string, error) {
+	certsDir, err := repoPath("conformance/certs")
+	if err != nil {
+		return "", "", err
+	}
+	certPath := filepath.Join(certsDir, "client-mtls.pem")
+	keyPath := filepath.Join(certsDir, "client-mtls-key.pem")
+
+	certData, err := os.ReadFile(certPath)
+	if err != nil {
+		return "", "", err
+	}
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		return "", "", err
+	}
+	return string(certData), string(keyData), nil
 }
 
 func usesStaticClientRegistration(planVariant map[string]string) bool {

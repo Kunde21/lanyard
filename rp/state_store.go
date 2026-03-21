@@ -7,7 +7,10 @@ type StateData struct {
 	Nonce                  string
 	CodeVerifier           string
 	CreatedAt              time.Time
+	Expiry                 time.Time
 	Issuer                 string
+	RequestURI             string
+	UsedPAR                bool
 	UserInfoTokenTransport UserInfoTokenTransport
 }
 

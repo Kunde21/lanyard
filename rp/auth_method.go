@@ -13,6 +13,10 @@ const (
 	AuthMethodBasic AuthMethod = "client_secret_basic"
 	// AuthMethodPost sends credentials in the form body (client_secret_post).
 	AuthMethodPost AuthMethod = "client_secret_post"
+	// AuthMethodPrivateKeyJWT uses a private key signed JWT assertion (private_key_jwt).
+	AuthMethodPrivateKeyJWT AuthMethod = "private_key_jwt"
+	// AuthMethodTLSClientAuth uses mutual TLS client authentication (tls_client_auth).
+	AuthMethodTLSClientAuth AuthMethod = "tls_client_auth"
 )
 
 func (r *RP) resolveAuthMethod() error {
@@ -33,6 +37,10 @@ func (r *RP) applySupportedAuthMethods(supportedAuthMethods []string) error {
 			allowFallback = false
 		} else {
 			switch {
+			case methodSupported(AuthMethodPrivateKeyJWT, supported):
+				resolved = AuthMethodPrivateKeyJWT
+			case methodSupported(AuthMethodTLSClientAuth, supported):
+				resolved = AuthMethodTLSClientAuth
 			case methodSupported(AuthMethodPost, supported):
 				resolved = AuthMethodPost
 			case methodSupported(AuthMethodBasic, supported):
@@ -50,7 +58,7 @@ func (r *RP) applySupportedAuthMethods(supportedAuthMethods []string) error {
 		allowFallback = true
 	}
 
-	if err := validateResolvedAuthMethod(resolved, r.clientSecret); err != nil {
+	if err := r.validateResolvedAuthMethod(resolved); err != nil {
 		return err
 	}
 
@@ -97,6 +105,28 @@ func validateResolvedAuthMethod(method AuthMethod, clientSecret string) error {
 	case AuthMethodBasic, AuthMethodPost:
 		if strings.TrimSpace(clientSecret) == "" {
 			return fmt.Errorf("%w: client_secret is required for token endpoint auth method %q", ErrInvalidConfiguration, method)
+		}
+		return nil
+	default:
+		return fmt.Errorf("%w: unsupported token endpoint auth method %q", ErrInvalidConfiguration, method)
+	}
+}
+
+func (r *RP) validateResolvedAuthMethod(method AuthMethod) error {
+	switch method {
+	case AuthMethodBasic, AuthMethodPost:
+		if strings.TrimSpace(r.clientSecret) == "" {
+			return fmt.Errorf("%w: client_secret is required for token endpoint auth method %q", ErrInvalidConfiguration, method)
+		}
+		return nil
+	case AuthMethodPrivateKeyJWT:
+		if r.clientKeyProvider == nil {
+			return fmt.Errorf("%w: client_key_provider is required for token endpoint auth method %q", ErrInvalidConfiguration, method)
+		}
+		return nil
+	case AuthMethodTLSClientAuth:
+		if r.clientKeyProvider == nil || r.clientKeyProvider.TLSCertificate() == nil {
+			return fmt.Errorf("%w: tls certificate is required for token endpoint auth method %q", ErrInvalidConfiguration, method)
 		}
 		return nil
 	default:

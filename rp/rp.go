@@ -38,6 +38,10 @@ type RP struct {
 
 	userInfoTokenTransport UserInfoTokenTransport
 
+	clientKeyProvider ClientKeyProvider
+
+	requirePAR bool
+
 	resolvedAuthMethod  AuthMethod
 	allowMethodFallback bool
 	methodMu            sync.RWMutex

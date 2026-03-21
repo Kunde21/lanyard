@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // AuthorizationURL builds an authorization request URL and stores callback state.
@@ -17,6 +18,13 @@ func (r *RP) AuthorizationURL(ctx context.Context) (string, error) {
 	}
 	if metadata.AuthorizationEndpoint == "" {
 		return "", fmt.Errorf("%w: authorization endpoint missing", ErrInvalidConfiguration)
+	}
+
+	r.provider = metadata
+	r.providerSet = true
+
+	if err := r.resolveAuthMethod(); err != nil {
+		return "", err
 	}
 
 	state, err := randomToken(r.randReader, 32)
@@ -34,6 +42,39 @@ func (r *RP) AuthorizationURL(ctx context.Context) (string, error) {
 	challenge, err := codeChallengeS256(verifier)
 	if err != nil {
 		return "", err
+	}
+
+	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge)
+
+	if r.shouldUsePAR() {
+		parResp, err := r.pushAuthorizationRequest(ctx, params)
+		if err != nil {
+			return "", err
+		}
+
+		expiry := r.now().Add(time.Duration(parResp.ExpiresIn) * time.Second)
+		r.stateStore.Save(state, StateData{
+			Nonce:                  nonce,
+			CodeVerifier:           verifier,
+			CreatedAt:              r.now(),
+			Expiry:                 expiry,
+			Issuer:                 r.issuer,
+			RequestURI:             parResp.RequestURI,
+			UsedPAR:                true,
+			UserInfoTokenTransport: r.userInfoTokenTransport,
+		})
+
+		authURL, err := url.Parse(metadata.AuthorizationEndpoint)
+		if err != nil {
+			return "", fmt.Errorf("%w: invalid authorization endpoint URL: %v", ErrInvalidConfiguration, err)
+		}
+
+		q := authURL.Query()
+		q.Set("client_id", r.clientID)
+		q.Set("request_uri", parResp.RequestURI)
+		authURL.RawQuery = q.Encode()
+
+		return authURL.String(), nil
 	}
 
 	r.stateStore.Save(state, StateData{
