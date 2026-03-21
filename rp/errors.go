@@ -21,6 +21,8 @@ var (
 	ErrUserInfoValidationFailed = errors.New("userinfo validation failed")
 	// ErrAuthMethodNotSupported indicates provider does not support the requested auth method.
 	ErrAuthMethodNotSupported = errors.New("auth method not supported")
+	// ErrClientCredentialsFailed indicates client credentials token request failed.
+	ErrClientCredentialsFailed = errors.New("client credentials token request failed")
 )
 
 // AuthMethodError indicates token endpoint auth method selection/validation failure.
@@ -63,9 +65,6 @@ func (e *AuthMethodError) Is(target error) bool {
 	if target == ErrAuthMethodNotSupported {
 		return true
 	}
-	if e == nil {
-		return false
-	}
 
-	return errors.Is(e.Err, target)
+	return e != nil && errors.Is(e.Err, target)
 }
