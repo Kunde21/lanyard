@@ -114,7 +114,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
 		true,
 	)
@@ -135,7 +135,7 @@ func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportBody,
 		false,
 	)
@@ -183,7 +183,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
 		true,
 	)
@@ -251,7 +251,7 @@ func handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
 		true,
 	)
@@ -277,7 +277,7 @@ func handleDiscoveryJWKS(w http.ResponseWriter, r *http.Request) {
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
 		false,
 	)
@@ -310,7 +310,7 @@ func handleWebFingerAcct(w http.ResponseWriter, r *http.Request) {
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
 		false,
 	)
@@ -343,7 +343,7 @@ func handleWebFingerURL(w http.ResponseWriter, r *http.Request) {
 	flow, err := rpClientFromRequest(r,
 		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.test/callback"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
 		false,
 	)
