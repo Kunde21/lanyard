@@ -1,12 +1,12 @@
 # Conformance Suite API Notes
 
-This document records the API discovery results from the locally running conformance suite at `https://suite.test`.
+This document records the API discovery results from the locally running conformance suite at `https://suite.localhost`.
 
 ## Swagger / OpenAPI endpoints
 
-- Swagger UI: `https://suite.test/swagger-ui/index.html`
-- OpenAPI JSON: `https://suite.test/v3/api-docs`
-- OpenAPI YAML: `https://suite.test/v3/api-docs.yaml`
+- Swagger UI: `https://suite.localhost/swagger-ui/index.html`
+- OpenAPI JSON: `https://suite.localhost/v3/api-docs`
+- OpenAPI YAML: `https://suite.localhost/v3/api-docs.yaml`
 
 ## API metadata
 
@@ -98,14 +98,14 @@ OpenAPI currently reports 31 paths. The `/api/*` paths are:
 
 ```bash
 # Swagger UI and OpenAPI docs
-curl -skI https://suite.test/swagger-ui/index.html
-curl -sk https://suite.test/v3/api-docs | jq '.info'
+curl -skI https://suite.localhost/swagger-ui/index.html
+curl -sk https://suite.localhost/v3/api-docs | jq '.info'
 
 # Available plans
-curl -sk https://suite.test/api/plan/available | jq 'length'
+curl -sk https://suite.localhost/api/plan/available | jq 'length'
 
 # One plan's metadata
-curl -sk https://suite.test/api/plan/available \
+curl -sk https://suite.localhost/api/plan/available \
   | jq '.[] | select(.planName=="oidcc-client-basic-certification-test-plan")'
 ```
 

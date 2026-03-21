@@ -2,8 +2,10 @@
 
 Run the OpenID Foundation conformance suite locally behind trusted HTTPS at:
 
-- `https://suite.test` (conformance suite UI)
-- `https://rp.test` (example RP service in this repo)
+- `https://suite.localhost` (conformance suite UI)
+- `https://rp.localhost` (example RP service in this repo)
+
+Note: `*.localhost` domains resolve automatically to 127.0.0.1 (no /etc/hosts edits needed)
 
 This setup is Linux-focused and is intended to run and pass:
 
@@ -30,10 +32,9 @@ The script:
 
 - verifies `mkcert` is installed
 - exports `mkcert` root CA to `conformance/certs/mkcert-rootCA.pem` for container trust
-- generates certs in `conformance/certs/`
-- prints required `/etc/hosts` entries
+- generates certs in `conformance/certs/` for `suite.localhost` and `rp.localhost`
 
-Add the printed host entries manually if needed.
+No hosts file edits needed - `*.localhost` resolves automatically.
 
 ## 2) Build the upstream suite image locally
 
@@ -64,8 +65,8 @@ docker compose -f conformance/docker-compose.yml up -d
 
 Open:
 
-- `https://suite.test`
-- `https://rp.test`
+- `https://suite.localhost`
+- `https://rp.localhost`
 
 The compose stack builds local wrapper images for `suite`, `rp`, `mongo`, and `caddy` that import
 `conformance/certs/mkcert-rootCA.pem` into system trust. The suite wrapper also imports the CA into JVM
@@ -81,13 +82,13 @@ MongoDB data is ephemeral by default.
 
 ## 4) Create a Basic RP run in the suite UI
 
-In `https://suite.test`:
+In `https://suite.localhost`:
 
 1. Create a new test plan: `OpenID Connect Core: Basic Certification Profile Relying Party Tests`.
-2. Configure the RP redirect URI as `https://rp.test/callback`.
+2. Configure the RP redirect URI as `https://rp.localhost/callback`.
 3. For RP metadata fields, use values supported by the RP implementation:
    - Client type: confidential
-   - Redirect URIs: `https://rp.test/callback`
+   - Redirect URIs: `https://rp.localhost/callback`
    - Response type: `code`
    - Grant type: `authorization_code`
    - Token endpoint auth: `client_secret_basic`
@@ -124,7 +125,7 @@ docker compose -f conformance/docker-compose.yml logs -f caddy suite rp
 Common issues:
 
 - TLS warning in browser: run `mkcert -install` and trust the local CA, then retry.
-- Hostname routing fails: ensure `/etc/hosts` includes `suite.test` and `rp.test` mapped to `127.0.0.1`.
+- Hostname routing fails: `*.localhost` domains resolve automatically to 127.0.0.1 (no hosts file needed)
 - Suite container fails to start: ensure `bash conformance/scripts/build_suite.sh` completed and the expected local image exists.
 
 ## Cleanup and data lifecycle
@@ -156,7 +157,7 @@ LANYARD_CONFORMANCE=1 go test ./internal/conformanceharness -run TestConformance
 
 Selected flags:
 
-- `-suite-url` (default `https://suite.test`)
+- `-suite-url` (default `https://suite.localhost`)
 - `-artifacts-dir` (default `./artifacts`)
 - `-include-plan-regex` and `-exclude-plan-regex`
 - `-module-regex` for module/test name filtering inside selected plans

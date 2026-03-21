@@ -24,7 +24,7 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-profile` | (required) | Conformance profile: oidc-rp, fapi-rp, or all-rp |
-| `-suite-url` | `https://suite.test` | Base URL for conformance suite |
+| `-suite-url` | `https://suite.localhost` | Base URL for conformance suite |
 | `-artifacts-dir` | `./artifacts` | Directory for run artifacts |
 | `-include-plan-regex` | "" | Regex for plan names to include |
 | `-exclude-plan-regex` | "" | Regex for plan names to exclude |
@@ -46,12 +46,7 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
 3. **Bash** - Required for setup and build scripts
 4. **Git** - Required for fetching upstream conformance suite
 5. **Go 1.25+** - Required for building the RP test subject
-6. **Hosts file entries** - Must resolve `suite.test` and `rp.test` to 127.0.0.1:
-
-```bash
-# Add to /etc/hosts
-127.0.0.1 suite.test rp.test
-```
+6. **DNS Resolution** - `*.localhost` domains resolve automatically to 127.0.0.1 (no hosts file edits needed)
 
 ### Initial Setup
 
@@ -63,7 +58,7 @@ bash conformance/scripts/setup.sh
 
 This will:
 - Export the local `mkcert` root CA to `conformance/certs/mkcert-rootCA.pem`
-- Generate TLS certificates for `suite.test` and `rp.test`
+- Generate TLS certificates for `suite.localhost` and `rp.localhost`
 - Create required directories
 - Verify prerequisites
 
@@ -120,8 +115,8 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
 ```
 
 Services will remain running after the test. Access them at:
-- Suite: https://suite.test
-- RP: https://rp.test
+- Suite: https://suite.localhost
+- RP: https://rp.localhost
 
 To clean up afterward:
 
@@ -166,7 +161,7 @@ Reports are generated at `./artifacts/{RunID}/report.json`:
   "run_id": "20260223-150405",
   "timestamp": "2026-02-23T15:04:05Z",
   "git_sha": "8dcce57d4097ec956de6adb85ae45dfcb67c739d",
-  "suite_url": "https://suite.test",
+  "suite_url": "https://suite.localhost",
   "profile": "oidc-rp",
   "selected_plans": ["oidcc-client-basic-certification-test-plan"],
   "failed": false,
@@ -226,7 +221,7 @@ unzip ./artifacts/20260223-150405/plan-oidcc-client-basic-certification-test-pla
 
 When running with `-cleanup=false`, access the suite UI for interactive debugging:
 
-1. Open https://suite.test in a browser
+1. Open https://suite.localhost in a browser
 2. Navigate to the test plan
 3. Review test details and logs
 4. Complete any WAITING tests that require browser interaction
@@ -267,13 +262,13 @@ bash conformance/scripts/setup.sh
 The suite failed to start. Check:
 1. Docker is running: `docker ps`
 2. Port 443 is available: `sudo lsof -i :443`
-3. Hosts file is configured: `cat /etc/hosts | grep test`
+3. DNS resolution works: `curl -k https://suite.localhost/api/plan/available`
 4. View suite logs: `docker logs conformance-suite-1`
 
 ### "no plans selected for profile"
 
 The profile filter excluded all available plans. Check:
-1. Suite is running and accessible: `curl -k https://suite.test/api/plan/available`
+1. Suite is running and accessible: `curl -k https://suite.localhost/api/plan/available`
 2. Profile name is correct: `oidc-rp`, `fapi-rp`, or `all-rp`
 3. Regex filters are not too restrictive
 
