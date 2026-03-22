@@ -12,6 +12,8 @@ This setup is Linux-focused and is intended to run and pass:
 - `OpenID Connect Core: Basic Certification Profile Relying Party Tests`
 
 The example RP now implements Authorization Code + PKCE, ID token validation, and UserInfo validation for this profile.
+It uses the supported cookie-backed RP state store (`rp/store/cookie`) so login and callback state
+is bound to the browser session.
 
 ## Prerequisites
 
@@ -92,6 +94,10 @@ In `https://suite.localhost`:
    - Response type: `code`
    - Grant type: `authorization_code`
    - Token endpoint auth: `client_secret_basic`
+5. Optional cookie-store env vars for the example RP:
+   - `RP_STATE_COOKIE_AUTH_KEY` (32+ byte signing key)
+   - `RP_STATE_COOKIE_ENC_KEY` (16/24/32 byte encryption key)
+   - `RP_STATE_COOKIE_INSECURE=true` (only for non-HTTPS local debugging)
 4. Start the plan.
 
 Expected result: tests run to passing final states for the target profile.
@@ -139,20 +145,20 @@ Common issues:
 After one-time setup (`setup.sh`, hosts entries, and trusted mkcert CA), you can run the automation harness directly:
 
 ```bash
-LANYARD_CONFORMANCE=1 go test ./internal/conformanceharness -run TestConformanceHarness -args -profile=oidc-rp
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=oidc-rp
 ```
 
 Common variants:
 
 ```bash
 # Run all RP plans discovered from the suite API
-LANYARD_CONFORMANCE=1 go test ./internal/conformanceharness -run TestConformanceHarness -args -profile=all-rp
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=all-rp
 
 # Filter plans by regex
-LANYARD_CONFORMANCE=1 go test ./internal/conformanceharness -run TestConformanceHarness -args -profile=oidc-rp -include-plan-regex='basic|implicit'
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=oidc-rp -include-plan-regex='basic|implicit'
 
 # Exclude plans by regex
-LANYARD_CONFORMANCE=1 go test ./internal/conformanceharness -run TestConformanceHarness -args -profile=all-rp -exclude-plan-regex='private_key_jwt'
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=all-rp -exclude-plan-regex='private_key_jwt'
 ```
 
 Selected flags:

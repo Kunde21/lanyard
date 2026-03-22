@@ -16,7 +16,9 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
 
 *   **Authentication Flow**:
     *   Authorization Code flow with PKCE (RFC 7636).
-    *   State management (in-memory implementation provided).
+    *   State management with supported stores:
+        *   `rp/store/memory`
+        *   `rp/store/cookie`
     *   Dynamic client authentication methods:
         *   `client_secret_basic`
         *   `client_secret_post`
@@ -92,7 +94,10 @@ func main() {
 ```go
 import (
     "context"
+    "time"
+
     "github.com/Kunde21/lanyard/rp"
+    "github.com/Kunde21/lanyard/rp/store/memory"
 )
 
 func main() {
@@ -102,32 +107,74 @@ func main() {
     clientSecret := "your-client-secret"
     redirectURI := "https://your-app.com/callback"
 
-    rpClient, err := rp.New(ctx, issuer, clientID, clientSecret, redirectURI)
+    rpClient, err := rp.New(
+        ctx,
+        issuer,
+        clientID,
+        clientSecret,
+        redirectURI,
+        rp.WithStateStore(memory.New(10*time.Minute)),
+    )
     if err != nil {
         panic(err)
     }
 
-    // Use rpClient to generate authorization URLs and handle callbacks
-    authURL, err := rpClient.AuthorizationURL(ctx, "openid profile email", "state-value")
-    if err != nil {
-        panic(err)
-    }
-    // Redirect user to authURL
+    _ = rpClient
 }
 ```
 
-### Handling Callbacks
+### Browser Flow with Cookie Store
 
 ```go
-func handleCallback(ctx context.Context, code, state string) (*rp.CallbackResult, error) {
-    result, err := rpClient.HandleCallback(ctx, code, state)
+import (
+    "context"
+    "net/http"
+
+    "github.com/Kunde21/lanyard/rp"
+    "github.com/Kunde21/lanyard/rp/store/cookie"
+)
+
+func setupRP(ctx context.Context) (*rp.RP, error) {
+    stateStore, err := cookie.New(
+        []byte("0123456789abcdef0123456789abcdef"),
+        []byte("abcdef0123456789abcdef0123456789"),
+    )
     if err != nil {
         return nil, err
     }
 
-    // result.Subject contains the user's ID (sub claim)
-    // result.UserInfo contains claims from the UserInfo endpoint
-    return result, nil
+    return rp.New(
+        ctx,
+        "https://issuer.example.com",
+        "client-id",
+        "client-secret",
+        "https://rp.example.com/callback",
+        rp.WithStateStore(stateStore),
+    )
+}
+
+func handleLogin(rpClient *rp.RP) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        authURL, err := rpClient.AuthorizationURL(r.Context(), w, r)
+        if err != nil {
+            http.Error(w, "login failed", http.StatusInternalServerError)
+            return
+        }
+        http.Redirect(w, r, authURL, http.StatusFound)
+    }
+}
+
+func handleCallback(rpClient *rp.RP) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        result, err := rpClient.HandleCallback(r.Context(), w, r)
+        if err != nil {
+            http.Error(w, "callback failed", http.StatusBadRequest)
+            return
+        }
+
+        _ = result.Subject
+        _ = result.UserInfo
+    }
 }
 ```
 
@@ -176,6 +223,8 @@ func main() {
 *   `conformance/` - Conformance test harness and setup.
 *   `oidc/` - Core OIDC discovery, metadata, and validation logic.
 *   `rp/` - Relying Party implementation (Authorization Code flow, tokens, user info).
+*   `rp/store/memory/` - In-memory RP state store.
+*   `rp/store/cookie/` - Cookie-backed RP state store using `gorilla/sessions`.
 *   `jwks/` - Remote JSON Web Key Set (JWKS) handling.
 *   `cache/` - Caching utilities.
 

@@ -35,7 +35,9 @@ func TestAuthorizationURL(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	authURL, err := r.AuthorizationURL(context.Background())
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -75,14 +77,17 @@ func TestAuthorizationURL(t *testing.T) {
 	}
 
 	state := q.Get("state")
-	stored, ok := r.stateStore.Load(state)
+	stored, ok, err := r.stateStore.LoadState(context.Background(), nil, state)
+	if err != nil {
+		t.Fatalf("LoadState() failed: %v", err)
+	}
 	if !ok {
 		t.Fatalf("state was not stored")
 	}
-	if stored.Nonce != q.Get("nonce") {
+	if stored.Correlation.Nonce != q.Get("nonce") {
 		t.Fatalf("stored nonce mismatch")
 	}
-	if stored.CodeVerifier == "" {
+	if stored.Correlation.CodeVerifier == "" {
 		t.Fatalf("stored code verifier missing")
 	}
 }

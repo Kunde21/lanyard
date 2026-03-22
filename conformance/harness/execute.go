@@ -35,8 +35,8 @@ func newRunner(client *suiteClient, cfg harnessConfig, logf func(format string, 
 		logf = func(string, ...any) {}
 	}
 
-	if cfg.WaitingMaxRetries <= 0 {
-		cfg.WaitingMaxRetries = 10
+	if cfg.WaitingMaxRetries < 0 {
+		cfg.WaitingMaxRetries = 0
 	}
 	if cfg.WaitingRetryInterval <= 0 {
 		cfg.WaitingRetryInterval = 10 * time.Second

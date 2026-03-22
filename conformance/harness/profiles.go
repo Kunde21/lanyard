@@ -9,11 +9,8 @@ import (
 
 var (
 	oidcExplicitPlans = map[string]struct{}{
-		"oidcc-client-basic-certification-test-plan":          {},
-		"oidcc-client-test-plan":                              {},
-		"oidcc-client-formpost-basic-certification-test-plan": {},
+		"oidcc-client-basic-certification-test-plan": {},
 	}
-	oidcFallbackPattern = regexp.MustCompile(`(?i)oidc.*(client|rp)|rp.*oidc|openid.*relying`)
 	fapiFallbackPattern = regexp.MustCompile(`(?i)fapi.*(client|rp)|rp.*fapi`)
 )
 
@@ -60,11 +57,8 @@ func matchesProfile(profile string, plan AvailablePlan) bool {
 }
 
 func isOIDCRPPlan(plan AvailablePlan) bool {
-	if _, ok := oidcExplicitPlans[strings.ToLower(plan.Name)]; ok {
-		return true
-	}
-	joined := strings.ToLower(plan.Name + " " + plan.Profile)
-	return strings.Contains(joined, "rp") && oidcFallbackPattern.MatchString(joined)
+	_, ok := oidcExplicitPlans[strings.ToLower(plan.Name)]
+	return ok
 }
 
 func isFAPIRPPlan(plan AvailablePlan) bool {

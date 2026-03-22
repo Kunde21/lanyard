@@ -14,14 +14,32 @@ import (
 
 	"github.com/Kunde21/lanyard/oidc"
 	"github.com/Kunde21/lanyard/rp"
+	"github.com/Kunde21/lanyard/rp/store/cookie"
 )
 
 type flowHandler interface {
-	AuthorizationURL(ctx context.Context) (string, error)
-	HandleCallback(ctx context.Context, code, state string) (*rp.CallbackResult, error)
+	AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request) (string, error)
+	HandleCallback(ctx context.Context, w http.ResponseWriter, req *http.Request) (*rp.CallbackResult, error)
 }
 
-var sharedStateStore = rp.NewMemoryStateStore(10 * time.Minute)
+var sharedStateStore = newSharedStateStore()
+
+func newSharedStateStore() rp.StateStore {
+	authKey := []byte(envOrDefault("RP_STATE_COOKIE_AUTH_KEY", "0123456789abcdef0123456789abcdef"))
+	encryptionKey := []byte(envOrDefault("RP_STATE_COOKIE_ENC_KEY", "abcdef0123456789abcdef0123456789"))
+
+	store, err := cookie.New(
+		authKey,
+		encryptionKey,
+		cookie.WithTTL(10*time.Minute),
+		cookie.WithSecure(!envTrue("RP_STATE_COOKIE_INSECURE")),
+	)
+	if err != nil {
+		log.Fatalf("failed to create cookie-backed RP state store: %v", err)
+	}
+
+	return store
+}
 
 func main() {
 	mux := http.NewServeMux()
@@ -123,7 +141,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authURL, err := flow.AuthorizationURL(r.Context())
+	authURL, err := flow.AuthorizationURL(r.Context(), w, r)
 	if err != nil {
 		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
 		return
@@ -144,7 +162,7 @@ func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authURL, err := flow.AuthorizationURL(r.Context())
+	authURL, err := flow.AuthorizationURL(r.Context(), w, r)
 	if err != nil {
 		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
 		return
@@ -154,7 +172,7 @@ func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 
 func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authURL, err := flow.AuthorizationURL(r.Context())
+		authURL, err := flow.AuthorizationURL(r.Context(), w, r)
 		if err != nil {
 			http.Error(w, "failed to initialize login", http.StatusInternalServerError)
 			return
@@ -166,17 +184,6 @@ func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 func handleCallback(w http.ResponseWriter, r *http.Request) {
 	if authErr := strings.TrimSpace(r.URL.Query().Get("error")); authErr != "" {
 		http.Error(w, "authorization failed", http.StatusBadRequest)
-		return
-	}
-
-	code := strings.TrimSpace(r.URL.Query().Get("code"))
-	state := strings.TrimSpace(r.URL.Query().Get("state"))
-	if state == "" {
-		http.Error(w, "invalid state", http.StatusBadRequest)
-		return
-	}
-	if code == "" {
-		http.Error(w, "missing code", http.StatusBadRequest)
 		return
 	}
 
@@ -192,7 +199,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := flow.HandleCallback(r.Context(), code, state)
+	result, err := flow.HandleCallback(r.Context(), w, r)
 	if err != nil {
 		log.Printf("callback processing failed: %v", err)
 		status := callbackStatus(err)
@@ -211,18 +218,7 @@ func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
 			return
 		}
 
-		code := strings.TrimSpace(r.URL.Query().Get("code"))
-		state := strings.TrimSpace(r.URL.Query().Get("state"))
-		if state == "" {
-			http.Error(w, "invalid state", http.StatusBadRequest)
-			return
-		}
-		if code == "" {
-			http.Error(w, "missing code", http.StatusBadRequest)
-			return
-		}
-
-		result, err := flow.HandleCallback(r.Context(), code, state)
+		result, err := flow.HandleCallback(r.Context(), w, r)
 		if err != nil {
 			log.Printf("callback processing failed: %v", err)
 			status := callbackStatus(err)
@@ -239,7 +235,10 @@ func callbackStatus(err error) int {
 	if err == nil {
 		return http.StatusOK
 	}
-	if errors.Is(err, rp.ErrInvalidState) || errors.Is(err, rp.ErrMissingCode) || errors.Is(err, rp.ErrIDTokenValidationFailed) || errors.Is(err, rp.ErrUserInfoValidationFailed) || errors.Is(err, rp.ErrTokenExchangeFailed) {
+	if errors.Is(err, rp.ErrIDTokenValidationFailed) || errors.Is(err, rp.ErrUserInfoValidationFailed) {
+		return http.StatusOK
+	}
+	if errors.Is(err, rp.ErrInvalidState) || errors.Is(err, rp.ErrMissingCode) || errors.Is(err, rp.ErrTokenExchangeFailed) {
 		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError

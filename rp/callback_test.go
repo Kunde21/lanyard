@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -28,13 +29,16 @@ func TestHandleCallbackValidation(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	if _, err := r.HandleCallback(context.Background(), "code", ""); !errors.Is(err, ErrInvalidState) {
+	rec, req := callbackRequest("code", "")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("missing state should return ErrInvalidState, got %v", err)
 	}
-	if _, err := r.HandleCallback(context.Background(), "", "state"); !errors.Is(err, ErrMissingCode) {
+	rec, req = callbackRequest("", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrMissingCode) {
 		t.Fatalf("missing code should return ErrMissingCode, got %v", err)
 	}
-	if _, err := r.HandleCallback(context.Background(), "code", "state"); !errors.Is(err, ErrInvalidState) {
+	rec, req = callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("unknown state should return ErrInvalidState, got %v", err)
 	}
 }
@@ -91,29 +95,115 @@ func TestHandleCallbackFailures(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	r.stateStore.Save("state", StateData{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now})
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
 	tokenStatus = http.StatusBadRequest
 	tokenBody = `{"error":"invalid_grant"}`
-	if _, err := r.HandleCallback(context.Background(), "code", "state"); !errors.Is(err, ErrTokenExchangeFailed) {
+	rec, req := callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrTokenExchangeFailed) {
 		t.Fatalf("token error should return ErrTokenExchangeFailed, got %v", err)
 	}
 
-	r.stateStore.Save("state", StateData{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now})
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
 	tokenStatus = 0
 	badClaims := map[string]any{"iss": "https://wrong.test", "sub": "sub-123", "aud": []string{"client-id"}, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "nonce-1"}
 	tokenBody = `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", badClaims) + `"}`
 	userInfoBody = `{"sub":"sub-123"}`
-	if _, err := r.HandleCallback(context.Background(), "code", "state"); !errors.Is(err, ErrIDTokenValidationFailed) {
+	rec, req = callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrIDTokenValidationFailed) {
 		t.Fatalf("invalid id token should return ErrIDTokenValidationFailed, got %v", err)
 	}
 
-	r.stateStore.Save("state", StateData{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now})
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
 	goodClaims := map[string]any{"iss": issuer, "sub": "sub-123", "aud": []string{"client-id"}, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "nonce-1"}
 	tokenBody = `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", goodClaims) + `"}`
 	userInfoBody = `{"sub":"other"}`
-	if _, err := r.HandleCallback(context.Background(), "code", "state"); !errors.Is(err, ErrUserInfoValidationFailed) {
+	rec, req = callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrUserInfoValidationFailed) {
 		t.Fatalf("userinfo mismatch should return ErrUserInfoValidationFailed, got %v", err)
 	}
+}
+
+func TestHandleCallbackStateReplayRejected(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+	issuer := ""
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token":
+			claims := map[string]any{"iss": issuer, "sub": "sub-123", "aud": []string{"client-id"}, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "nonce-1"}
+			body := `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", claims) + `"}`
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		case "/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"sub-123"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); err != nil {
+		t.Fatalf("first HandleCallback() failed: %v", err)
+	}
+
+	rec, req = callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("replayed state should return ErrInvalidState, got %v", err)
+	}
+}
+
+func callbackRequest(code, state string) (*httptest.ResponseRecorder, *http.Request) {
+	query := url.Values{}
+	if code != "" {
+		query.Set("code", code)
+	}
+	if state != "" {
+		query.Set("state", state)
+	}
+
+	requestURL := "https://rp.test/callback"
+	if encoded := query.Encode(); encoded != "" {
+		requestURL += "?" + encoded
+	}
+
+	return httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, requestURL, nil)
 }
 
 func providerMetadataJSONWithEndpoints(issuer string) string {

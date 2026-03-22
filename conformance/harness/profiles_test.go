@@ -12,6 +12,7 @@ func TestSelectPlans_ProfileExpansion(t *testing.T) {
 		{Name: "oidcc-client-basic-certification-test-plan", Profile: "oidc-rp"},
 		{Name: "oidcc-client-test-plan", Profile: "oidcc"},
 		{Name: "oidcc-client-implicit-certification-test-plan", Profile: "oidc-rp"},
+		{Name: "oidcc-client-formpost-basic-certification-test-plan", Profile: "oidc-rp"},
 		{Name: "fapi2-security-profile-id2-client-test-plan", Profile: "fapi2-rp"},
 		{Name: "fapi2-message-signing-id1-client-test-plan", Profile: "fapi2-rp"},
 		{Name: "openid-provider-config-test-plan", Profile: "op"},
@@ -27,8 +28,6 @@ func TestSelectPlans_ProfileExpansion(t *testing.T) {
 			profile: "oidc-rp",
 			want: []string{
 				"oidcc-client-basic-certification-test-plan",
-				"oidcc-client-implicit-certification-test-plan",
-				"oidcc-client-test-plan",
 			},
 		},
 		{
@@ -46,8 +45,6 @@ func TestSelectPlans_ProfileExpansion(t *testing.T) {
 				"fapi2-message-signing-id1-client-test-plan",
 				"fapi2-security-profile-id2-client-test-plan",
 				"oidcc-client-basic-certification-test-plan",
-				"oidcc-client-implicit-certification-test-plan",
-				"oidcc-client-test-plan",
 			},
 		},
 	}
@@ -75,7 +72,7 @@ func TestSelectPlans_ProfileExpansion(t *testing.T) {
 func TestSelectPlans_Filters(t *testing.T) {
 	available := []AvailablePlan{
 		{Name: "oidcc-client-basic-certification-test-plan", Profile: "oidc-rp"},
-		{Name: "oidcc-client-implicit-certification-test-plan", Profile: "oidc-rp"},
+		{Name: "oidcc-client-test-plan", Profile: "oidcc"},
 	}
 
 	includeRE := regexp.MustCompile(`basic`)

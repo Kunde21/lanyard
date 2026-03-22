@@ -18,11 +18,23 @@ type stubFlow struct {
 	callbackResp *rp.CallbackResult
 }
 
-func (s stubFlow) AuthorizationURL(_ context.Context) (string, error) {
+func (s stubFlow) AuthorizationURL(_ context.Context, _ http.ResponseWriter, _ *http.Request) (string, error) {
 	return s.authURL, s.authErr
 }
 
-func (s stubFlow) HandleCallback(_ context.Context, _, _ string) (*rp.CallbackResult, error) {
+func (s stubFlow) HandleCallback(_ context.Context, _ http.ResponseWriter, req *http.Request) (*rp.CallbackResult, error) {
+	if req == nil {
+		return nil, rp.ErrInvalidState
+	}
+	code := strings.TrimSpace(req.URL.Query().Get("code"))
+	state := strings.TrimSpace(req.URL.Query().Get("state"))
+	if state == "" {
+		return nil, rp.ErrInvalidState
+	}
+	if code == "" {
+		return nil, rp.ErrMissingCode
+	}
+
 	if s.callbackResp != nil {
 		return s.callbackResp, s.callbackErr
 	}
@@ -88,12 +100,13 @@ func TestCallbackInvalidState(t *testing.T) {
 
 func TestCallbackErrorMappingAndNoSecrets(t *testing.T) {
 	tests := []struct {
-		name string
-		err  error
+		name       string
+		err        error
+		wantStatus int
 	}{
-		{name: "token error", err: fmt.Errorf("token failed: %w", rp.ErrTokenExchangeFailed)},
-		{name: "id token error", err: fmt.Errorf("id token failed: %w", rp.ErrIDTokenValidationFailed)},
-		{name: "userinfo error", err: fmt.Errorf("userinfo failed: %w", rp.ErrUserInfoValidationFailed)},
+		{name: "token error", err: fmt.Errorf("token failed: %w", rp.ErrTokenExchangeFailed), wantStatus: http.StatusBadRequest},
+		{name: "id token error", err: fmt.Errorf("id token failed: %w", rp.ErrIDTokenValidationFailed), wantStatus: http.StatusOK},
+		{name: "userinfo error", err: fmt.Errorf("userinfo failed: %w", rp.ErrUserInfoValidationFailed), wantStatus: http.StatusOK},
 	}
 
 	for _, tt := range tests {
@@ -104,7 +117,7 @@ func TestCallbackErrorMappingAndNoSecrets(t *testing.T) {
 
 			h.ServeHTTP(w, req)
 
-			if w.Code != http.StatusBadRequest {
+			if w.Code != tt.wantStatus {
 				t.Fatalf("status mismatch: got %d", w.Code)
 			}
 			if strings.Contains(strings.ToLower(w.Body.String()), "secret") || strings.Contains(strings.ToLower(w.Body.String()), "token") {

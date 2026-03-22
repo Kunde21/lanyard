@@ -20,11 +20,11 @@ var (
 	flagExcludePlanRegex = flag.String("exclude-plan-regex", "", "Regex for plan names to exclude")
 	flagModuleRegex      = flag.String("module-regex", "", "Regex for module names to include")
 
-	flagProvisionTimeout = flag.Duration("provision-timeout", 5*time.Minute, "Max time to provision local conformance stack")
-	flagPlanTimeout      = flag.Duration("plan-timeout", 30*time.Minute, "Max time for a single plan execution")
-	flagTestTimeout      = flag.Duration("test-timeout", 5*time.Minute, "Max time for a single test instance")
-	flagWaitingMaxReties = flag.Int("waiting-max-retries", 10, "Max front-channel trigger retries while test status is WAITING")
-	flagWaitingInterval  = flag.Duration("waiting-retry-interval", 10*time.Second, "Interval between WAITING front-channel trigger retries")
+	flagProvisionTimeout  = flag.Duration("provision-timeout", 5*time.Minute, "Max time to provision local conformance stack")
+	flagPlanTimeout       = flag.Duration("plan-timeout", 1*time.Hour, "Max time for a single plan execution")
+	flagTestTimeout       = flag.Duration("test-timeout", 10*time.Minute, "Max time for a single test instance")
+	flagWaitingMaxRetries = flag.Int("waiting-max-retries", 0, "Max front-channel trigger retries while test status is WAITING")
+	flagWaitingInterval   = flag.Duration("waiting-retry-interval", 10*time.Second, "Interval between WAITING front-channel trigger retries")
 
 	flagCleanup   = flag.Bool("cleanup", false, "Tear down docker compose services after test")
 	flagExportZip = flag.Bool("export-zip", true, "Export suite plan result ZIP artifacts")
@@ -116,7 +116,7 @@ func parseHarnessConfig() (harnessConfig, error) {
 		ExportZip:            *flagExportZip,
 		Redact:               *flagRedact,
 		RebuildSuite:         *flagRebuild,
-		WaitingMaxRetries:    *flagWaitingMaxReties,
+		WaitingMaxRetries:    *flagWaitingMaxRetries,
 		WaitingRetryInterval: *flagWaitingInterval,
 	}
 

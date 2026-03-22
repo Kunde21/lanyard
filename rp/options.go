@@ -73,7 +73,9 @@ func WithAuthMethod(method AuthMethod) Option {
 	}
 }
 
-// WithStateStore sets the state store used for callback correlation.
+// WithStateStore sets the state store used for callback correlation and caller values.
+//
+// Callers typically provide implementations from `rp/store/memory` or `rp/store/cookie`.
 func WithStateStore(store StateStore) Option {
 	return func(r *RP) {
 		if store != nil {

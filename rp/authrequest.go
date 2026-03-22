@@ -5,13 +5,14 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
 
 // AuthorizationURL builds an authorization request URL and stores callback state.
-func (r *RP) AuthorizationURL(ctx context.Context) (string, error) {
+func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request) (string, error) {
 	metadata, err := r.oidcClient.DiscoverProvider(ctx, r.issuer)
 	if err != nil {
 		return "", fmt.Errorf("failed to discover provider: %w", err)
@@ -53,7 +54,7 @@ func (r *RP) AuthorizationURL(ctx context.Context) (string, error) {
 		}
 
 		expiry := r.now().Add(time.Duration(parResp.ExpiresIn) * time.Second)
-		r.stateStore.Save(state, StateData{
+		if err := r.stateStore.SaveCorrelation(ctx, w, req, state, CallbackCorrelation{
 			Nonce:                  nonce,
 			CodeVerifier:           verifier,
 			CreatedAt:              r.now(),
@@ -61,8 +62,10 @@ func (r *RP) AuthorizationURL(ctx context.Context) (string, error) {
 			Issuer:                 r.issuer,
 			RequestURI:             parResp.RequestURI,
 			UsedPAR:                true,
-			UserInfoTokenTransport: r.userInfoTokenTransport,
-		})
+			UserInfoTokenTransport: string(r.userInfoTokenTransport),
+		}); err != nil {
+			return "", fmt.Errorf("failed to save callback correlation state: %w", err)
+		}
 
 		authURL, err := url.Parse(metadata.AuthorizationEndpoint)
 		if err != nil {
@@ -77,13 +80,15 @@ func (r *RP) AuthorizationURL(ctx context.Context) (string, error) {
 		return authURL.String(), nil
 	}
 
-	r.stateStore.Save(state, StateData{
+	if err := r.stateStore.SaveCorrelation(ctx, w, req, state, CallbackCorrelation{
 		Nonce:                  nonce,
 		CodeVerifier:           verifier,
 		CreatedAt:              r.now(),
 		Issuer:                 r.issuer,
-		UserInfoTokenTransport: r.userInfoTokenTransport,
-	})
+		UserInfoTokenTransport: string(r.userInfoTokenTransport),
+	}); err != nil {
+		return "", fmt.Errorf("failed to save callback correlation state: %w", err)
+	}
 
 	authURL, err := url.Parse(metadata.AuthorizationEndpoint)
 	if err != nil {

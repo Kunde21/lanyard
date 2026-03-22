@@ -1,22 +1,20 @@
 package rp
 
-import "time"
+import rpstore "github.com/Kunde21/lanyard/rp/store"
 
-// StateData contains callback correlation values saved at authorization start.
-type StateData struct {
-	Nonce                  string
-	CodeVerifier           string
-	CreatedAt              time.Time
-	Expiry                 time.Time
-	Issuer                 string
-	RequestURI             string
-	UsedPAR                bool
-	UserInfoTokenTransport UserInfoTokenTransport
-}
+// CallbackCorrelation contains callback correlation values owned by the RP package.
+//
+// These fields are written by RP during authorization start and consumed during callback.
+// Callers should treat them as RP-managed internals.
+type CallbackCorrelation = rpstore.CallbackCorrelation
 
-// StateStore stores and consumes state correlation data.
-type StateStore interface {
-	Save(state string, data StateData)
-	Load(state string) (StateData, bool)
-	Delete(state string)
-}
+// StateScope groups RP-managed callback correlation data with caller-owned values.
+//
+// Values are opaque named blobs controlled by callers; RP stores and retrieves them but
+// does not interpret their contents.
+type StateScope = rpstore.StateScope
+
+// StateStore persists callback correlation data and caller-owned values scoped by state.
+//
+// Supported implementations are provided by `rp/store/memory` and `rp/store/cookie`.
+type StateStore = rpstore.StateStore

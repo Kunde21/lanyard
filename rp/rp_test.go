@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/rp/store/memory"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -45,7 +46,7 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 	customHTTPClient := &http.Client{}
 	customLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	customOIDCClient := oidc.NewClient()
-	customStateStore := NewMemoryStateStore(5 * time.Minute)
+	customStateStore := memory.New(5 * time.Minute)
 
 	got, err := New(
 		context.Background(),

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/rp/store/memory"
 	"github.com/Kunde21/lanyard/validateurl"
 )
 
@@ -100,7 +101,7 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 	}
 
 	if r.stateStore == nil {
-		r.stateStore = NewMemoryStateStore(10 * time.Minute)
+		r.stateStore = memory.New(10 * time.Minute)
 	}
 
 	return r, nil

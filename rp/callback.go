@@ -3,6 +3,8 @@ package rp
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 )
 
 // CallbackResult contains data produced from callback processing.
@@ -12,7 +14,15 @@ type CallbackResult struct {
 }
 
 // HandleCallback validates callback state and performs token/userinfo processing.
-func (r *RP) HandleCallback(ctx context.Context, code, state string) (*CallbackResult, error) {
+func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *http.Request) (*CallbackResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("%w: missing callback request", ErrInvalidState)
+	}
+
+	query := req.URL.Query()
+	code := strings.TrimSpace(query.Get("code"))
+	state := strings.TrimSpace(query.Get("state"))
+
 	if state == "" {
 		return nil, fmt.Errorf("%w: missing state", ErrInvalidState)
 	}
@@ -20,11 +30,13 @@ func (r *RP) HandleCallback(ctx context.Context, code, state string) (*CallbackR
 		return nil, fmt.Errorf("%w", ErrMissingCode)
 	}
 
-	data, ok := r.stateStore.Load(state)
+	data, ok, err := r.stateStore.ConsumeCorrelation(ctx, w, req, state)
+	if err != nil {
+		return nil, fmt.Errorf("%w: failed to consume state: %v", ErrInvalidState, err)
+	}
 	if !ok {
 		return nil, fmt.Errorf("%w: unknown or expired state", ErrInvalidState)
 	}
-	r.stateStore.Delete(state)
 
 	issuer := data.Issuer
 	if issuer == "" {
@@ -63,7 +75,7 @@ func (r *RP) HandleCallback(ctx context.Context, code, state string) (*CallbackR
 	if provider.UserinfoEndpoint == "" {
 		return nil, fmt.Errorf("%w: provider missing userinfo endpoint", ErrUserInfoValidationFailed)
 	}
-	transport := data.UserInfoTokenTransport
+	transport := UserInfoTokenTransport(data.UserInfoTokenTransport)
 	if transport == "" {
 		transport = r.userInfoTokenTransport
 	}
