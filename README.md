@@ -64,156 +64,141 @@ go get github.com/Kunde21/lanyard
 
 ## Usage
 
-### Basic Discovery
+### Browser RP Flow
 
 ```go
 import (
-    "context"
-    "fmt"
-    "github.com/Kunde21/lanyard/oidc"
-)
+	"context"
+	"net/http"
+	"time"
 
-func main() {
-    ctx := context.Background()
-    client := oidc.NewClient()
-
-    // Discover provider metadata
-    provider, err := client.DiscoverProvider(ctx, "https://accounts.google.com")
-    if err != nil {
-        panic(err)
-    }
-
-    fmt.Printf("Issuer: %s\n", provider.Issuer)
-    fmt.Printf("Authorization Endpoint: %s\n", provider.AuthEndpoint)
-    fmt.Printf("Token Endpoint: %s\n", provider.TokenEndpoint)
-}
-```
-
-### Creating an RP Client
-
-```go
-import (
-    "context"
-    "time"
-
-    "github.com/Kunde21/lanyard/rp"
-    "github.com/Kunde21/lanyard/rp/store/memory"
-)
-
-func main() {
-    ctx := context.Background()
-    issuer := "https://accounts.google.com"
-    clientID := "your-client-id"
-    clientSecret := "your-client-secret"
-    redirectURI := "https://your-app.com/callback"
-
-    rpClient, err := rp.New(
-        ctx,
-        issuer,
-        clientID,
-        clientSecret,
-        redirectURI,
-        rp.WithStateStore(memory.New(10*time.Minute)),
-    )
-    if err != nil {
-        panic(err)
-    }
-
-    _ = rpClient
-}
-```
-
-### Browser Flow with Cookie Store
-
-```go
-import (
-    "context"
-    "net/http"
-
-    "github.com/Kunde21/lanyard/rp"
-    "github.com/Kunde21/lanyard/rp/store/cookie"
+	"github.com/Kunde21/lanyard/rp"
+	"github.com/Kunde21/lanyard/rp/store/cookie"
 )
 
 func setupRP(ctx context.Context) (*rp.RP, error) {
-    stateStore, err := cookie.New(
-        []byte("0123456789abcdef0123456789abcdef"),
-        []byte("abcdef0123456789abcdef0123456789"),
-    )
-    if err != nil {
-        return nil, err
-    }
+	stateStore, err := cookie.New(
+		[]byte("0123456789abcdef0123456789abcdef"),
+		[]byte("abcdef0123456789abcdef0123456789"),
+		cookie.WithTTL(10*time.Minute),
+	)
+	if err != nil {
+		return nil, err
+	}
 
-    return rp.New(
-        ctx,
-        "https://issuer.example.com",
-        "client-id",
-        "client-secret",
-        "https://rp.example.com/callback",
-        rp.WithStateStore(stateStore),
-    )
+	return rp.New(
+		ctx,
+		"https://issuer.example.com",
+		"client-id",
+		"client-secret",
+		"https://rp.example.com/callback",
+		rp.WithStateStore(stateStore),
+		rp.WithScopes("openid", "profile", "email"),
+	)
+	// If you already have metadata, add rp.WithProviderMetadata(provider)
+	// and the constructor will skip discovery.
 }
 
 func handleLogin(rpClient *rp.RP) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        authURL, err := rpClient.AuthorizationURL(r.Context(), w, r)
-        if err != nil {
-            http.Error(w, "login failed", http.StatusInternalServerError)
-            return
-        }
-        http.Redirect(w, r, authURL, http.StatusFound)
-    }
+	return func(w http.ResponseWriter, r *http.Request) {
+		authURL, err := rpClient.AuthorizationURL(r.Context(), w, r)
+		if err != nil {
+			http.Error(w, "login failed", http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, authURL, http.StatusFound)
+	}
 }
 
 func handleCallback(rpClient *rp.RP) http.HandlerFunc {
-    return func(w http.ResponseWriter, r *http.Request) {
-        result, err := rpClient.HandleCallback(r.Context(), w, r)
-        if err != nil {
-            http.Error(w, "callback failed", http.StatusBadRequest)
-            return
-        }
+	return func(w http.ResponseWriter, r *http.Request) {
+		result, err := rpClient.HandleCallback(r.Context(), w, r)
+		if err != nil {
+			http.Error(w, "callback failed", http.StatusBadRequest)
+			return
+		}
 
-        _ = result.Subject
-        _ = result.UserInfo
-    }
+		_, _ = result.Subject, result.UserInfo
+	}
+}
+```
+
+### Browser RP with Preloaded Metadata
+
+```go
+import (
+	"context"
+
+	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/rp"
+)
+
+func newRP(ctx context.Context) (*rp.RP, error) {
+	provider := oidc.ProviderMetadata{
+		Issuer:                "https://issuer.example.com",
+		AuthorizationEndpoint: "https://issuer.example.com/authorize",
+		TokenEndpoint:         "https://issuer.example.com/token",
+		UserinfoEndpoint:      "https://issuer.example.com/userinfo",
+		JWKSURI:               "https://issuer.example.com/jwks.json",
+	}
+
+	return rp.New(
+		ctx,
+		provider.Issuer,
+		"client-id",
+		"client-secret",
+		"https://rp.example.com/callback",
+		rp.WithProviderMetadata(provider),
+	)
 }
 ```
 
 ### Client Credentials Grant
 
-For service-to-service authentication using the OAuth 2.0 Client Credentials flow:
-
 ```go
 import (
-    "context"
-    "github.com/Kunde21/lanyard/rp"
+	"context"
+	"fmt"
+
+	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/rp"
 )
 
 func main() {
-    ctx := context.Background()
+	ctx := context.Background()
+	provider := oidc.ProviderMetadata{
+		Issuer:        "https://auth.example.com",
+		TokenEndpoint: "https://auth.example.com/token",
+	}
 
-    // Create client with default scopes
-    client, err := rp.NewClientCredentials(ctx,
-        "https://auth.example.com",
-        "client-id",
-        "client-secret",
-        rp.WithClientCredentialsScopes("api:read", "api:write"),
-    )
-    if err != nil {
-        panic(err)
-    }
+	client, err := rp.NewClientCredentials(
+		ctx,
+		provider.Issuer,
+		"client-id",
+		"client-secret",
+		rp.WithClientCredentialsProviderMetadata(provider),
+		rp.WithClientCredentialsScopes("api:read", "api:write"),
+	)
+	if err != nil {
+		panic(err)
+	}
 
-    // Get token
-    token, err := client.Token(ctx)
-    if err != nil {
-        panic(err)
-    }
+	token, err := client.Token(ctx)
+	if err != nil {
+		panic(err)
+	}
 
-    fmt.Printf("Access Token: %s\n", token.AccessToken)
-    fmt.Printf("Expires In: %d\n", token.ExpiresIn)
+	fmt.Printf("access token: %s\n", token.AccessToken)
+	fmt.Printf("token type: %s\n", token.TokenType)
+	fmt.Printf("expires in: %d\n", token.ExpiresIn)
 
-    // Per-request scope override via context
-    ctx = rp.WithTokenScopes(ctx, "admin:all")
-    adminToken, err := client.Token(ctx)
+	adminCtx := rp.WithTokenScopes(ctx, "admin:all")
+	adminToken, err := client.Token(adminCtx)
+	if err != nil {
+		panic(err)
+	}
+
+	_ = adminToken
 }
 ```
 

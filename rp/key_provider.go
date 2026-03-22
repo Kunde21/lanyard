@@ -35,6 +35,8 @@ type staticClientKeyProvider struct {
 	tlsCert          *tls.Certificate
 }
 
+// NewStaticClientKeyProvider returns a ClientKeyProvider backed by fixed key
+// material for private_key_jwt and mTLS client authentication.
 func NewStaticClientKeyProvider(privateKey crypto.PrivateKey, keyID, signingAlgorithm string, tlsCert *tls.Certificate) ClientKeyProvider {
 	return &staticClientKeyProvider{
 		privateKey:       privateKey,

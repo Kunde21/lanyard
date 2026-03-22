@@ -15,7 +15,7 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
-type PARResponse struct {
+type parResponse struct {
 	RequestURI string `json:"request_uri"`
 	ExpiresIn  int    `json:"expires_in"`
 }
@@ -40,7 +40,7 @@ func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge stri
 	return params
 }
 
-func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*PARResponse, error) {
+func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*parResponse, error) {
 	if r.provider.PushedAuthorizationRequestEndpoint == "" {
 		return nil, fmt.Errorf("%w: pushed authorization request endpoint not available", ErrInvalidConfiguration)
 	}
@@ -75,7 +75,7 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 		return nil, fmt.Errorf("PAR request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
-	var parResp PARResponse
+	var parResp parResponse
 	if err := json.Unmarshal(body, &parResp); err != nil {
 		return nil, fmt.Errorf("failed to parse PAR response: %w", err)
 	}

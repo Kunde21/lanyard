@@ -16,7 +16,7 @@ func TestNew_AutoNegotiatesAuthMethodPrefersPost(t *testing.T) {
 		"client",
 		"secret",
 		"https://rp.test/callback",
-		WithProviderDiscovery(providerForAuthMethods("client_secret_basic", "client_secret_post")),
+		WithProviderMetadata(providerForAuthMethods("client_secret_basic", "client_secret_post")),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -37,7 +37,7 @@ func TestNew_WithAuthMethodValidatesAgainstProviderMetadata(t *testing.T) {
 		"client",
 		"secret",
 		"https://rp.test/callback",
-		WithProviderDiscovery(providerForAuthMethods("client_secret_post")),
+		WithProviderMetadata(providerForAuthMethods("client_secret_post")),
 		WithAuthMethod(AuthMethodPost),
 	)
 	if err != nil {
@@ -56,7 +56,7 @@ func TestNew_WithAuthMethodReturnsTypedErrorWhenUnsupported(t *testing.T) {
 		"client",
 		"secret",
 		"https://rp.test/callback",
-		WithProviderDiscovery(providerForAuthMethods("client_secret_basic")),
+		WithProviderMetadata(providerForAuthMethods("client_secret_basic")),
 		WithAuthMethod(AuthMethodPost),
 	)
 	if err == nil {
@@ -79,7 +79,7 @@ func TestNew_WithSecretBasedAuthMethodRequiresClientSecret(t *testing.T) {
 		"client",
 		"",
 		"https://rp.test/callback",
-		WithProviderDiscovery(providerForAuthMethods("client_secret_post")),
+		WithProviderMetadata(providerForAuthMethods("client_secret_post")),
 		WithAuthMethod(AuthMethodPost),
 	)
 	if err == nil {

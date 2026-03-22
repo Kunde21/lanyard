@@ -27,7 +27,7 @@ func TestExchangeTokenRequestShape(t *testing.T) {
 		gotForm, _ = url.ParseQuery(string(body))
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(TokenResponse{
+		_ = json.NewEncoder(w).Encode(Token{
 			AccessToken: "access",
 			TokenType:   "Bearer",
 			ExpiresIn:   3600,
@@ -43,7 +43,7 @@ func TestExchangeTokenRequestShape(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithProviderDiscovery(providerForAuthMethods("client_secret_basic")),
+		WithProviderMetadata(providerForAuthMethods("client_secret_basic")),
 		WithAuthMethod(AuthMethodBasic),
 	)
 	if err != nil {
@@ -96,7 +96,7 @@ func TestExchangeTokenNon200PreviewBounded(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithProviderDiscovery(providerForAuthMethods("client_secret_basic")),
+		WithProviderMetadata(providerForAuthMethods("client_secret_basic")),
 		WithAuthMethod(AuthMethodBasic),
 	)
 	if err != nil {
@@ -127,7 +127,7 @@ func TestExchangeTokenRequestShapePostAuth(t *testing.T) {
 		gotForm, _ = url.ParseQuery(string(body))
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(TokenResponse{
+		_ = json.NewEncoder(w).Encode(Token{
 			AccessToken: "access",
 			TokenType:   "Bearer",
 			ExpiresIn:   3600,
@@ -143,7 +143,7 @@ func TestExchangeTokenRequestShapePostAuth(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithProviderDiscovery(providerForAuthMethods("client_secret_post")),
+		WithProviderMetadata(providerForAuthMethods("client_secret_post")),
 		WithAuthMethod(AuthMethodPost),
 	)
 	if err != nil {
@@ -200,7 +200,7 @@ func TestExchangeTokenFallbackFromPostToBasicAndCaches(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(TokenResponse{
+		_ = json.NewEncoder(w).Encode(Token{
 			AccessToken: "access",
 			TokenType:   "Bearer",
 			ExpiresIn:   3600,
@@ -216,7 +216,7 @@ func TestExchangeTokenFallbackFromPostToBasicAndCaches(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithProviderDiscovery(providerForAuthMethods()),
+		WithProviderMetadata(providerForAuthMethods()),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)

@@ -52,7 +52,8 @@ type RP struct {
 	clockSkew  time.Duration
 }
 
-// New creates a new relying party.
+// New creates a browser-flow relying party that is ready to generate an
+// authorization URL immediately after construction.
 func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string, opts ...Option) (*RP, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -100,11 +101,26 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 		return nil, err
 	}
 
+	if err := r.validateProviderReadyForAuthorizationURL(); err != nil {
+		return nil, err
+	}
+
 	if r.stateStore == nil {
 		r.stateStore = memory.New(10 * time.Minute)
 	}
 
 	return r, nil
+}
+
+func (r *RP) validateProviderReadyForAuthorizationURL() error {
+	if r.provider.AuthorizationEndpoint == "" {
+		return fmt.Errorf("%w: authorization endpoint missing", ErrInvalidConfiguration)
+	}
+	if r.requirePAR && r.provider.PushedAuthorizationRequestEndpoint == "" {
+		return fmt.Errorf("%w: pushed authorization request endpoint missing", ErrInvalidConfiguration)
+	}
+
+	return nil
 }
 
 func (r *RP) validate() error {
@@ -136,48 +152,6 @@ func validateHTTPSAbsoluteURL(field, raw string) error {
 			return fmt.Errorf("%w: %s must not include query or fragment", ErrInvalidConfiguration, field)
 		}
 		return fmt.Errorf("%w: %s must be an absolute https URL", ErrInvalidConfiguration, field)
-	}
-
-	return nil
-}
-
-func (r *RP) Discover(ctx context.Context) error {
-	provider, err := r.oidcClient.DiscoverProvider(ctx, r.issuer)
-	if err != nil {
-		return fmt.Errorf("failed to discover provider: %w", err)
-	}
-	r.provider = provider
-	r.providerSet = true
-	return nil
-}
-
-func (r *RP) DiscoverWithJWKS(ctx context.Context) error {
-	if err := r.Discover(ctx); err != nil {
-		return err
-	}
-	if r.provider.JWKSURI == "" {
-		return nil
-	}
-	keySet, err := r.oidcClient.RemoteKeySetFromJWKSURI(r.provider.JWKSURI)
-	if err != nil {
-		return err
-	}
-	_, err = keySet.Keys(ctx)
-	return err
-}
-
-func (r *RP) DiscoverFromWebFinger(ctx context.Context, resource string) error {
-	provider, err := r.oidcClient.DiscoverProviderFromResource(ctx, resource)
-	if err != nil {
-		return fmt.Errorf("failed to discover provider from webfinger: %w", err)
-	}
-
-	r.issuer = provider.Issuer
-	r.provider = provider
-	r.providerSet = true
-
-	if err := r.applySupportedAuthMethods(provider.TokenEndpointAuthMethodsSupported); err != nil {
-		return fmt.Errorf("failed to resolve token endpoint auth method after webfinger discovery: %w", err)
 	}
 
 	return nil

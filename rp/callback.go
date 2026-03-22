@@ -7,9 +7,12 @@ import (
 	"strings"
 )
 
-// CallbackResult contains data produced from callback processing.
+// CallbackResult contains the validated identity data returned from
+// [RP.HandleCallback].
 type CallbackResult struct {
-	Subject  string
+	// Subject is the OpenID Connect subject from the validated ID token.
+	Subject string
+	// UserInfo contains claims returned from the provider's UserInfo endpoint.
 	UserInfo map[string]any
 }
 

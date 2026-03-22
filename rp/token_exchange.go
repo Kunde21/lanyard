@@ -11,12 +11,12 @@ import (
 	"strings"
 )
 
-func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier string) (TokenResponse, error) {
+func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier string) (Token, error) {
 	method, allowFallback := r.authMethodState()
 
 	tokenResp, status, preview, err := r.exchangeTokenOnce(ctx, tokenEndpoint, code, verifier, method, "")
 	if err != nil {
-		return TokenResponse{}, fmt.Errorf("%w: %v", ErrTokenExchangeFailed, err)
+		return Token{}, fmt.Errorf("%w: %v", ErrTokenExchangeFailed, err)
 	}
 	if status == http.StatusOK {
 		if allowFallback {
@@ -28,20 +28,20 @@ func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier st
 	if allowFallback && method == AuthMethodPost && shouldFallbackToBasic(status) {
 		retryResp, retryStatus, retryPreview, retryErr := r.exchangeTokenOnce(ctx, tokenEndpoint, code, verifier, AuthMethodBasic, "")
 		if retryErr != nil {
-			return TokenResponse{}, fmt.Errorf("%w: %v", ErrTokenExchangeFailed, retryErr)
+			return Token{}, fmt.Errorf("%w: %v", ErrTokenExchangeFailed, retryErr)
 		}
 		if retryStatus == http.StatusOK {
 			r.setAuthMethodState(AuthMethodBasic, false)
 			return retryResp, nil
 		}
 
-		return TokenResponse{}, fmt.Errorf("%w: token endpoint returned status %d: %s", ErrTokenExchangeFailed, retryStatus, retryPreview)
+		return Token{}, fmt.Errorf("%w: token endpoint returned status %d: %s", ErrTokenExchangeFailed, retryStatus, retryPreview)
 	}
 
-	return TokenResponse{}, fmt.Errorf("%w: token endpoint returned status %d: %s", ErrTokenExchangeFailed, status, preview)
+	return Token{}, fmt.Errorf("%w: token endpoint returned status %d: %s", ErrTokenExchangeFailed, status, preview)
 }
 
-func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifier string, method AuthMethod, dpopAccessToken string) (TokenResponse, int, string, error) {
+func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifier string, method AuthMethod, dpopAccessToken string) (Token, int, string, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -54,7 +54,7 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 	case AuthMethodPrivateKeyJWT:
 		assertion, err := r.buildClientAssertion(tokenEndpoint)
 		if err != nil {
-			return TokenResponse{}, 0, "", fmt.Errorf("failed to build client assertion: %w", err)
+			return Token{}, 0, "", fmt.Errorf("failed to build client assertion: %w", err)
 		}
 		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		form.Set("client_assertion", assertion)
@@ -70,7 +70,7 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return TokenResponse{}, 0, "", fmt.Errorf("failed to build token request: %w", err)
+		return Token{}, 0, "", fmt.Errorf("failed to build token request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
@@ -84,21 +84,21 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 	if useDPoP {
 		dpopProof, err := r.generateDPoPProof(http.MethodPost, tokenEndpoint, dpopAccessToken)
 		if err != nil {
-			return TokenResponse{}, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
+			return Token{}, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
 		}
 		req.Header.Set("DPoP", dpopProof)
 	}
 
-	var tokenResp TokenResponse
+	var tokenResp Token
 	status, preview, err := doJSON(req, r.httpClient, func(body io.Reader) error {
 		return json.NewDecoder(body).Decode(&tokenResp)
 	})
 	if err != nil {
 		var decodeErr *jsonDecodeError
 		if errors.As(err, &decodeErr) {
-			return TokenResponse{}, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
+			return Token{}, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
 		}
-		return TokenResponse{}, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+		return Token{}, 0, "", fmt.Errorf("failed to execute token request: %w", err)
 	}
 
 	return tokenResp, status, preview, nil

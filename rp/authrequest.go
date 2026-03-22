@@ -13,16 +13,10 @@ import (
 
 // AuthorizationURL builds an authorization request URL and stores callback state.
 func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request) (string, error) {
-	metadata, err := r.oidcClient.DiscoverProvider(ctx, r.issuer)
-	if err != nil {
-		return "", fmt.Errorf("failed to discover provider: %w", err)
-	}
+	metadata := r.provider
 	if metadata.AuthorizationEndpoint == "" {
 		return "", fmt.Errorf("%w: authorization endpoint missing", ErrInvalidConfiguration)
 	}
-
-	r.provider = metadata
-	r.providerSet = true
 
 	if err := r.resolveAuthMethod(); err != nil {
 		return "", err

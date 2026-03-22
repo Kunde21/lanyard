@@ -47,10 +47,6 @@ func main() {
 	mux.HandleFunc("/login", handleLogin)
 	mux.HandleFunc("/login-userinfo-body", handleLoginUserInfoBody)
 	mux.HandleFunc("/callback", handleCallback)
-	mux.HandleFunc("/discovery", handleDiscovery)
-	mux.HandleFunc("/discovery-jwks", handleDiscoveryJWKS)
-	mux.HandleFunc("/webfinger-acct", handleWebFingerAcct)
-	mux.HandleFunc("/webfinger-url", handleWebFingerURL)
 
 	const addr = ":8080"
 	log.Printf("example RP listening on %s", addr)
@@ -65,30 +61,10 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 	mux.HandleFunc("/login", handleLoginWithFlow(flow))
 	mux.HandleFunc("/login-userinfo-body", handleLoginWithFlow(flow))
 	mux.HandleFunc("/callback", handleCallbackWithFlow(flow))
-	mux.HandleFunc("/discovery", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, "discovery triggered (test)")
-	})
-	mux.HandleFunc("/discovery-jwks", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, "discovery+jwks triggered (test)")
-	})
-	mux.HandleFunc("/webfinger-acct", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, "webfinger acct triggered")
-	})
-	mux.HandleFunc("/webfinger-url", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain")
-		w.WriteHeader(http.StatusOK)
-		_, _ = fmt.Fprintln(w, "webfinger url triggered")
-	})
 	return mux
 }
 
-func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI string, transport rp.UserInfoTokenTransport, skipInitialDiscovery bool) (*rp.RP, error) {
+func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI string, transport rp.UserInfoTokenTransport) (*rp.RP, error) {
 	issuer := r.URL.Query().Get("issuer")
 	if issuer == "" {
 		issuer = envOrDefault("RP_ISSUER", "https://suite.localhost")
@@ -106,9 +82,6 @@ func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI st
 		rp.WithStateStore(sharedStateStore),
 		rp.WithUserInfoTokenTransport(transport),
 		rp.WithScopes(parseScopesEnv("RP_SCOPES", []string{"openid", "profile", "email", "phone", "address"})...),
-	}
-	if skipInitialDiscovery {
-		opts = append(opts, rp.WithProviderDiscovery(oidc.ProviderMetadata{}))
 	}
 
 	return rp.New(r.Context(), issuer, clientID, clientSecret, redirectURI, opts...)
@@ -134,7 +107,6 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
-		true,
 	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
@@ -155,7 +127,6 @@ func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportBody,
-		false,
 	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
@@ -192,7 +163,6 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
 		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
-		true,
 	)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
@@ -242,124 +212,6 @@ func callbackStatus(err error) int {
 		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError
-}
-
-func handleDiscovery(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-
-	flow, err := rpClientFromRequest(r,
-		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
-		rp.UserInfoTokenTransportHeader,
-		true,
-	)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "failed to create RP client: %v", err)
-		return
-	}
-
-	if err := flow.Discover(r.Context()); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "discovery failed: %v", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintln(w, "discovery triggered")
-}
-
-func handleDiscoveryJWKS(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-
-	flow, err := rpClientFromRequest(r,
-		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
-		rp.UserInfoTokenTransportHeader,
-		false,
-	)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "failed to create RP client: %v", err)
-		return
-	}
-
-	if err := flow.DiscoverWithJWKS(r.Context()); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "discovery+jwks failed: %v", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintln(w, "discovery+jwks triggered")
-}
-
-func handleWebFingerAcct(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-
-	resource, err := webFingerAcctResource(issuerFromRequest(r))
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "invalid issuer for webfinger acct resource: %v", err)
-		return
-	}
-
-	flow, err := rpClientFromRequest(r,
-		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
-		rp.UserInfoTokenTransportHeader,
-		false,
-	)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "failed to create RP client: %v", err)
-		return
-	}
-
-	if err := flow.DiscoverFromWebFinger(r.Context(), resource); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "webfinger acct discovery failed: %v", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "webfinger acct triggered: %s\n", resource)
-}
-
-func handleWebFingerURL(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/plain")
-
-	resource, err := webFingerURLResource(issuerFromRequest(r))
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "invalid issuer for webfinger URL resource: %v", err)
-		return
-	}
-
-	flow, err := rpClientFromRequest(r,
-		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
-		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
-		rp.UserInfoTokenTransportHeader,
-		false,
-	)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "failed to create RP client: %v", err)
-		return
-	}
-
-	if err := flow.DiscoverFromWebFinger(r.Context(), resource); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = fmt.Fprintf(w, "webfinger URL discovery failed: %v", err)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprintf(w, "webfinger url triggered: %s\n", resource)
 }
 
 func issuerFromRequest(r *http.Request) string {

@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
 	jose "github.com/go-jose/go-jose/v4"
 )
 
@@ -23,7 +22,7 @@ func TestHandleCallbackValidation(t *testing.T) {
 		"client",
 		"secret",
 		"https://rp.test/callback",
-		WithProviderDiscovery(oidc.ProviderMetadata{}),
+		WithProviderMetadata(providerForAuthMethods()),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -103,6 +102,16 @@ func TestHandleCallbackFailures(t *testing.T) {
 	rec, req := callbackRequest("code", "state")
 	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrTokenExchangeFailed) {
 		t.Fatalf("token error should return ErrTokenExchangeFailed, got %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+	tokenStatus = 0
+	tokenBody = `{"access_token":"access","token_type":"Bearer","expires_in":3600}`
+	rec, req = callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrIDTokenValidationFailed) {
+		t.Fatalf("missing id token should return ErrIDTokenValidationFailed, got %v", err)
 	}
 
 	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {

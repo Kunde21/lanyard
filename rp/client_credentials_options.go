@@ -60,8 +60,10 @@ func WithClientCredentialsAuthMethod(method AuthMethod) ClientCredentialsOption 
 	}
 }
 
-// WithClientCredentialsProviderDiscovery sets already-discovered provider metadata.
-func WithClientCredentialsProviderDiscovery(provider oidc.ProviderMetadata) ClientCredentialsOption {
+// WithClientCredentialsProviderMetadata supplies provider metadata up front so
+// [NewClientCredentials] can skip discovery and use the provided token
+// endpoint immediately.
+func WithClientCredentialsProviderMetadata(provider oidc.ProviderMetadata) ClientCredentialsOption {
 	return func(c *ClientCredentials) {
 		c.provider = provider
 		c.providerSet = true

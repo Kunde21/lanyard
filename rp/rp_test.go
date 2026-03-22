@@ -59,7 +59,7 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 		WithOIDCClient(customOIDCClient),
 		WithStateStore(customStateStore),
 		WithUserInfoTokenTransport(UserInfoTokenTransportBody),
-		WithProviderDiscovery(providerForAuthMethods()),
+		WithProviderMetadata(providerForAuthMethods()),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -117,7 +117,7 @@ func TestNew_PerformsDiscoveryByDefault(t *testing.T) {
 	}
 }
 
-func TestNew_WithProviderDiscovery_SkipsDiscoveryHTTP(t *testing.T) {
+func TestNew_WithProviderMetadata_SkipsDiscoveryHTTP(t *testing.T) {
 	provider := oidc.ProviderMetadata{
 		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
 			Issuer:                "https://issuer.test",
@@ -143,56 +143,27 @@ func TestNew_WithProviderDiscovery_SkipsDiscoveryHTTP(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(failOnRequest),
-		WithProviderDiscovery(provider),
+		WithProviderMetadata(provider),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
 }
 
-func TestDiscoverWithJWKSFetchesRemoteKeys(t *testing.T) {
-	issuer := ""
-	discoveryCalls := 0
-	jwksCalls := 0
-
-	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/.well-known/openid-configuration":
-			discoveryCalls++
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
-		case "/jwks":
-			jwksCalls++
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"keys":[]}`))
-		default:
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer ts.Close()
-	issuer = ts.URL
-
-	r, err := New(
+func TestNew_WithProviderMetadataMissingAuthorizationEndpoint_ReturnsError(t *testing.T) {
+	_, err := New(
 		context.Background(),
-		issuer,
+		"https://issuer.test",
 		"client",
 		"secret",
 		"https://rp.test/callback",
-		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(oidc.ProviderMetadata{}),
 	)
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
+	if err == nil {
+		t.Fatalf("New() expected error")
 	}
-
-	if err := r.DiscoverWithJWKS(context.Background()); err != nil {
-		t.Fatalf("DiscoverWithJWKS() failed: %v", err)
-	}
-
-	if jwksCalls == 0 {
-		t.Fatalf("expected DiscoverWithJWKS() to fetch jwks_uri")
-	}
-	if discoveryCalls == 0 {
-		t.Fatalf("expected discovery endpoint to be called")
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("New() error mismatch: got %v", err)
 	}
 }
 

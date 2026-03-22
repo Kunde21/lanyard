@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/Kunde21/lanyard/oidc"
 )
 
 func TestAuthorizationURL(t *testing.T) {
@@ -89,6 +91,49 @@ func TestAuthorizationURL(t *testing.T) {
 	}
 	if stored.Correlation.CodeVerifier == "" {
 		t.Fatalf("stored code verifier missing")
+	}
+}
+
+func TestAuthorizationURLDoesNotRediscoverAfterNew(t *testing.T) {
+	issuer := ""
+	discoveryCalls := 0
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/.well-known/openid-configuration" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+
+		discoveryCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithOIDCClient(oidc.NewClient(
+			oidc.WithHTTPClient(ts.Client()),
+			oidc.WithConformanceFreshDiscovery(true),
+		)),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	if _, err := r.AuthorizationURL(context.Background(), rec, req); err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	if discoveryCalls != 1 {
+		t.Fatalf("expected 1 discovery call, got %d", discoveryCalls)
 	}
 }
 

@@ -58,8 +58,9 @@ func WithClockSkew(skew time.Duration) Option {
 	}
 }
 
-// WithProviderDiscovery sets already-discovered provider metadata.
-func WithProviderDiscovery(provider oidc.ProviderMetadata) Option {
+// WithProviderMetadata supplies provider metadata up front so [New] can skip
+// discovery and use the provided endpoints immediately.
+func WithProviderMetadata(provider oidc.ProviderMetadata) Option {
 	return func(r *RP) {
 		r.provider = provider
 		r.providerSet = true

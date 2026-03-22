@@ -10,8 +10,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-
-	"github.com/Kunde21/lanyard/oidc"
 )
 
 func TestFetchUserInfo(t *testing.T) {
@@ -24,7 +22,7 @@ func TestFetchUserInfo(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
+	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderMetadata(providerForAuthMethods()))
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -58,7 +56,7 @@ func TestFetchUserInfoBodyTransport(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
+	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderMetadata(providerForAuthMethods()))
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -98,7 +96,7 @@ func TestFetchUserInfoDistributedClaimsFromEndpoint(t *testing.T) {
 	defer ts.Close()
 	issuerURL = ts.URL
 
-	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
+	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderMetadata(providerForAuthMethods()))
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -125,7 +123,7 @@ func TestFetchUserInfoDistributedClaimsJWT(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
+	r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderMetadata(providerForAuthMethods()))
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -155,7 +153,7 @@ func TestFetchUserInfoErrors(t *testing.T) {
 			ts := httptest.NewTLSServer(tt.handler)
 			defer ts.Close()
 
-			r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderDiscovery(oidc.ProviderMetadata{}))
+			r, err := New(context.Background(), "https://issuer.test", "client", "secret", "https://rp.test/callback", WithHTTPClient(ts.Client()), WithProviderMetadata(providerForAuthMethods()))
 			if err != nil {
 				t.Fatalf("New() failed: %v", err)
 			}

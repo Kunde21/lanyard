@@ -14,20 +14,20 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
-type DPoPProof struct {
-	Header    DPoPHeader
-	Payload   DPoPPayload
+type dpopProof struct {
+	Header    dpopHeader
+	Payload   dpopPayload
 	Signature string
 }
 
-type DPoPHeader struct {
+type dpopHeader struct {
 	Typ string  `json:"typ"`
 	Alg string  `json:"alg"`
 	Kid string  `json:"kid"`
-	JWK DPoPJWK `json:"jwk"`
+	JWK dpopJWK `json:"jwk"`
 }
 
-type DPoPJWK struct {
+type dpopJWK struct {
 	Kty string `json:"kty"`
 	Crv string `json:"crv"`
 	X   string `json:"x"`
@@ -36,7 +36,7 @@ type DPoPJWK struct {
 	E   string `json:"e,omitempty"`
 }
 
-type DPoPPayload struct {
+type dpopPayload struct {
 	JTI string `json:"jti"`
 	HTM string `json:"htm"`
 	HTU string `json:"htu"`
@@ -57,7 +57,7 @@ func (r *RP) generateDPoPProof(method, url, accessToken string) (string, error) 
 	alg := r.clientKeyProvider.SigningAlgorithm()
 	kid := r.clientKeyProvider.KeyID()
 
-	var jwk DPoPJWK
+	var jwk dpopJWK
 	switch key := privateKey.(type) {
 	case *rsa.PrivateKey:
 		jwk = rsaToJWK(key)
@@ -67,7 +67,7 @@ func (r *RP) generateDPoPProof(method, url, accessToken string) (string, error) 
 		return "", fmt.Errorf("unsupported key type for DPoP: %T", privateKey)
 	}
 
-	header := DPoPHeader{
+	header := dpopHeader{
 		Typ: "dpop+jwt",
 		Alg: alg,
 		Kid: kid,
@@ -77,7 +77,7 @@ func (r *RP) generateDPoPProof(method, url, accessToken string) (string, error) 
 	jti := generateJTI(r.randReader)
 
 	iat := time.Now().Unix()
-	payload := DPoPPayload{
+	payload := dpopPayload{
 		JTI: jti,
 		HTM: method,
 		HTU: url,
@@ -147,15 +147,15 @@ func signDpop(input string, privateKey crypto.PrivateKey, alg string) (string, e
 	return sig.CompactSerialize()
 }
 
-func rsaToJWK(key *rsa.PrivateKey) DPoPJWK {
-	return DPoPJWK{
+func rsaToJWK(key *rsa.PrivateKey) dpopJWK {
+	return dpopJWK{
 		Kty: "RSA",
 		N:   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
 		E:   base64.RawURLEncoding.EncodeToString([]byte{1, 0, 1}),
 	}
 }
 
-func ecdsaToJWK(key *ecdsa.PrivateKey) DPoPJWK {
+func ecdsaToJWK(key *ecdsa.PrivateKey) dpopJWK {
 	curve := key.Curve.Params().Name
 	crv := "P-256"
 	if curve == "P-384" {
@@ -164,7 +164,7 @@ func ecdsaToJWK(key *ecdsa.PrivateKey) DPoPJWK {
 		crv = "P-521"
 	}
 
-	return DPoPJWK{
+	return dpopJWK{
 		Kty: "EC",
 		Crv: crv,
 		X:   base64.RawURLEncoding.EncodeToString(key.X.Bytes()),
@@ -199,7 +199,7 @@ func validateDPoPProof(proof, method, url, expectedAth string) error {
 		return fmt.Errorf("failed to decode DPoP header: %w", err)
 	}
 
-	var header DPoPHeader
+	var header dpopHeader
 	if err := json.Unmarshal(headerBytes, &header); err != nil {
 		return fmt.Errorf("failed to parse DPoP header: %w", err)
 	}
@@ -213,7 +213,7 @@ func validateDPoPProof(proof, method, url, expectedAth string) error {
 		return fmt.Errorf("failed to decode DPoP payload: %w", err)
 	}
 
-	var payload DPoPPayload
+	var payload dpopPayload
 	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 		return fmt.Errorf("failed to parse DPoP payload: %w", err)
 	}

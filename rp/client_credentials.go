@@ -259,9 +259,9 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 		// mTLS is handled by httpClient Transport
 	}
 
-	var tokenResp TokenResponse
+	var token Token
 	status, preview, err := doJSON(req, c.httpClient, func(body io.Reader) error {
-		return json.NewDecoder(body).Decode(&tokenResp)
+		return json.NewDecoder(body).Decode(&token)
 	})
 	if err != nil {
 		var decodeErr *jsonDecodeError
@@ -275,17 +275,11 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 		return nil, status, preview, nil
 	}
 
-	if tokenResp.AccessToken == "" {
+	if token.AccessToken == "" {
 		return nil, status, "", fmt.Errorf("token response missing access_token")
 	}
 
-	token := &Token{
-		AccessToken: tokenResp.AccessToken,
-		TokenType:   tokenResp.TokenType,
-		ExpiresIn:   tokenResp.ExpiresIn,
-	}
-
-	return token, status, "", nil
+	return &token, status, "", nil
 }
 
 func (c *ClientCredentials) buildClientAssertion() (string, error) {
