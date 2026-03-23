@@ -10,6 +10,9 @@
 // [NewClientCredentials] and request a shared [Token] value with
 // [ClientCredentials.Token].
 //
+// For configuration validation or provider inspection before construction, use
+// [DiscoverProvider].
+//
 // State store implementations for the browser flow are available under the
 // rp/store packages, including rp/store/memory and rp/store/cookie.
 package rp

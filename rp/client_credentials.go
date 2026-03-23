@@ -77,7 +77,9 @@ func NewClientCredentials(ctx context.Context, issuer, clientID, clientSecret st
 	}
 
 	if !c.providerSet {
-		provider, err := c.oidcClient.DiscoverProvider(ctx, c.issuer)
+		provider, err := DiscoverProvider(ctx, c.issuer,
+			WithDiscoveryOIDCClient(c.oidcClient),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
 		}

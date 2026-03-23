@@ -153,6 +153,28 @@ func newRP(ctx context.Context) (*rp.RP, error) {
 }
 ```
 
+### Validate Provider Configuration
+
+```go
+import (
+	"context"
+
+	"github.com/Kunde21/lanyard/rp"
+)
+
+func validateIssuer(ctx context.Context, issuer string) error {
+	provider, err := rp.DiscoverProvider(ctx, issuer)
+	if err != nil {
+		return err
+	}
+
+	_ = provider.AuthorizationEndpoint
+	_ = provider.TokenEndpoint
+	_ = provider.JWKSURI
+	return nil
+}
+```
+
 ### Client Credentials Grant
 
 ```go

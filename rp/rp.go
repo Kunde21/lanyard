@@ -89,7 +89,9 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 	}
 
 	if !r.providerSet {
-		provider, err := r.oidcClient.DiscoverProvider(ctx, r.issuer)
+		provider, err := DiscoverProvider(ctx, r.issuer,
+			WithDiscoveryOIDCClient(r.oidcClient),
+		)
 		if err != nil {
 			return nil, fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
 		}

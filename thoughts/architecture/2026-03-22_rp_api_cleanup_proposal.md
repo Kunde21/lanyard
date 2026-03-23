@@ -111,20 +111,24 @@ These should become unexported or move behind explicitly internal implementation
 - `DPoPJWK`
 - `DPoPPayload`
 
-### Reconsider exported RP mutators
+### Standalone provider discovery
 
-These methods should not remain on the long-term primary surface without a stronger caller story:
+Users still need provider discovery outside of `RP` construction, especially when validating issuer configuration as it is being entered. That use case should not require constructing an `RP` instance or mutating long-lived RP state.
 
-- `(*RP).Discover`
-- `(*RP).DiscoverWithJWKS`
-- `(*RP).DiscoverFromWebFinger`
+The recommended shape is a standalone function:
 
-The main design should choose one of two directions:
+```go
+func DiscoverProvider(ctx context.Context, issuer string, opts ...ProviderDiscoveryOption) (oidc.ProviderMetadata, error)
+```
 
-1. remove them from the public surface and keep discovery as constructor-managed behavior
-2. move discovery concerns into a separate advanced construction path
+This function should:
 
-The first direction is recommended. It keeps `RP` focused on running the browser flow rather than exposing mutable setup stages.
+- return the discovery payload directly to callers
+- support plain issuer discovery and WebFinger-based discovery through options
+- optionally preload JWKS for validation-oriented workflows
+- accept HTTP/logging/client overrides through discovery-specific options
+
+This keeps `RP` constructor-first for the browser-flow story while still supporting configuration validation and inspection as a first-class public API.
 
 ## Token Type Consolidation
 
@@ -196,7 +200,7 @@ Rationale:
 
 ### Advanced discovery
 
-If WebFinger-based or explicit refresh-driven discovery must remain available, expose it as advanced construction helpers or separate package-level functions rather than mutable methods on `RP`.
+Advanced discovery should live behind `DiscoverProvider` options rather than mutable `RP` methods. That keeps discovery available without diluting the main `RP` lifecycle.
 
 ## Documentation Expectations
 
@@ -233,7 +237,7 @@ This cleanup shipped as an intentional breaking revision within the branch.
 - remove exported `PARResponse`
 - remove exported `DPoP*` structs
 - rename provider metadata options
-- remove exported `RP` discovery mutators
+- remove exported `RP` discovery mutators in favor of standalone discovery
 
 ### Compatibility aids if needed
 
@@ -243,7 +247,7 @@ If the repository later wants a softer landing before a major version boundary, 
 
 - keep renamed option aliases temporarily with deprecation comments
 - keep `TokenResponse` as a deprecated alias to `Token` for one release window
-- keep discovery mutators deprecated for a short migration window
+- add a standalone discovery function before removing RP-bound discovery methods
 
 For the aggressive target state, these should be transitional only, not permanent. The branch now follows that target state for renamed options and token types.
 
@@ -253,6 +257,7 @@ For the aggressive target state, these should be transitional only, not permanen
 - `TokenResponse` is removed rather than retained as a deprecated alias
 - constructor-owned provider metadata is authoritative for `AuthorizationURL`
 - mutable RP discovery methods are removed from `RP`
+- standalone discovery remains available through `DiscoverProvider`
 
 ## Proposed End State In Godoc
 
@@ -275,14 +280,15 @@ That is the right scale for this package.
 4. Internalize `PARResponse`
 5. Internalize `DPoP*` structs unless a real public use case emerges
 6. Stop rediscovery inside `AuthorizationURL`
-7. Decide whether `RP` discovery mutators are removed immediately or deprecated first
-8. Update README and examples to reflect the reduced API
-9. Add release notes that describe the new stable surface
+7. Add standalone `DiscoverProvider` with discovery-specific options
+8. Remove RP-bound discovery mutators
+9. Update README and examples to reflect the reduced API
+10. Add release notes that describe the new stable surface
 
 ## Open Questions
 
 - Should `Token` include only currently used response fields, or should it include other common token endpoint fields such as `refresh_token` and `scope` now to avoid another public shape change later?
-- Should advanced discovery helpers remain in `rp` as package-level functions, or should they move entirely out of the main public package surface?
+- Should `DiscoverProvider` expose both issuer-based and WebFinger-based lookup through one option set, or should WebFinger validation remain a separate helper?
 - Is there any real external caller for exported `DPoP*` structs today, or are they purely accidental API?
 
 ## Recommendation
@@ -297,4 +303,5 @@ The highest-value design moves are:
 - rename provider metadata options
 - internalize `PARResponse` and `DPoP*`
 - simplify `RP` lifecycle around constructor-owned discovery
+- keep standalone provider discovery available for configuration validation via `DiscoverProvider`
 - invest in package docs and export comments so godoc reflects the intended API story
