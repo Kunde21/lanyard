@@ -8,12 +8,32 @@ import (
 )
 
 func repoRoot() (string, error) {
+	if envRoot := os.Getenv("LANYARD_REPO_ROOT"); envRoot != "" {
+		if root, err := findRepoRoot(envRoot); err == nil {
+			return root, nil
+		}
+	}
+
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		return "", fmt.Errorf("failed to resolve caller path")
 	}
+	if root, err := findRepoRoot(filepath.Dir(file)); err == nil {
+		return root, nil
+	}
 
-	dir := filepath.Dir(file)
+	wd, err := os.Getwd()
+	if err == nil {
+		if root, findErr := findRepoRoot(wd); findErr == nil {
+			return root, nil
+		}
+	}
+
+	return "", fmt.Errorf("failed to locate repository root from %q", file)
+}
+
+func findRepoRoot(start string) (string, error) {
+	dir := filepath.Clean(start)
 	for {
 		candidate := filepath.Join(dir, "go.mod")
 		if _, err := os.Stat(candidate); err == nil {
@@ -21,7 +41,7 @@ func repoRoot() (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("failed to locate repository root from %q", file)
+			return "", fmt.Errorf("failed to locate repository root from %q", start)
 		}
 		dir = parent
 	}

@@ -63,5 +63,13 @@ func isOIDCRPPlan(plan AvailablePlan) bool {
 
 func isFAPIRPPlan(plan AvailablePlan) bool {
 	joined := strings.ToLower(plan.Name + " " + plan.Profile)
-	return strings.Contains(joined, "rp") && fapiFallbackPattern.MatchString(joined)
+	if !fapiFallbackPattern.MatchString(joined) {
+		return false
+	}
+	profile := strings.ToLower(plan.Profile)
+	if strings.Contains(profile, "relying party") || strings.Contains(profile, "oauth2 client") {
+		return true
+	}
+	name := strings.ToLower(plan.Name)
+	return strings.Contains(name, "client-test-plan") || strings.Contains(name, "client-test") || strings.Contains(name, "-rp-")
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"log"
@@ -10,35 +9,13 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
 	"github.com/Kunde21/lanyard/rp"
-	"github.com/Kunde21/lanyard/rp/store/cookie"
 )
 
 type flowHandler interface {
 	AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request) (string, error)
 	HandleCallback(ctx context.Context, w http.ResponseWriter, req *http.Request) (*rp.CallbackResult, error)
-}
-
-var sharedStateStore = newSharedStateStore()
-
-func newSharedStateStore() rp.StateStore {
-	authKey := []byte(envOrDefault("RP_STATE_COOKIE_AUTH_KEY", "0123456789abcdef0123456789abcdef"))
-	encryptionKey := []byte(envOrDefault("RP_STATE_COOKIE_ENC_KEY", "abcdef0123456789abcdef0123456789"))
-
-	store, err := cookie.New(
-		authKey,
-		encryptionKey,
-		cookie.WithTTL(10*time.Minute),
-		cookie.WithSecure(!envTrue("RP_STATE_COOKIE_INSECURE")),
-	)
-	if err != nil {
-		log.Fatalf("failed to create cookie-backed RP state store: %v", err)
-	}
-
-	return store
 }
 
 func main() {
@@ -47,6 +24,8 @@ func main() {
 	mux.HandleFunc("/login", handleLogin)
 	mux.HandleFunc("/login-userinfo-body", handleLoginUserInfoBody)
 	mux.HandleFunc("/callback", handleCallback)
+	mux.HandleFunc("/callback/", handleCallback)
+	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 
 	const addr = ":8080"
 	log.Printf("example RP listening on %s", addr)
@@ -61,39 +40,17 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 	mux.HandleFunc("/login", handleLoginWithFlow(flow))
 	mux.HandleFunc("/login-userinfo-body", handleLoginWithFlow(flow))
 	mux.HandleFunc("/callback", handleCallbackWithFlow(flow))
+	mux.HandleFunc("/callback/", handleCallbackWithFlow(flow))
+	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 	return mux
 }
 
 func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI string, transport rp.UserInfoTokenTransport) (*rp.RP, error) {
-	issuer := r.URL.Query().Get("issuer")
-	if issuer == "" {
-		issuer = envOrDefault("RP_ISSUER", "https://suite.localhost")
+	resolved, err := resolveRPRequest(r, clientID, clientSecret, redirectURI, transport)
+	if err != nil {
+		return nil, err
 	}
-	httpClient := newRPHTTPClient()
-	oidcOpts := []oidc.Option{oidc.WithHTTPClient(httpClient)}
-	if envTrue("RP_CONFORMANCE_FRESH_DISCOVERY") {
-		oidcOpts = append(oidcOpts, oidc.WithConformanceFreshDiscovery(true))
-	}
-	oidcClient := oidc.NewClient(oidcOpts...)
-
-	opts := []rp.Option{
-		rp.WithHTTPClient(httpClient),
-		rp.WithOIDCClient(oidcClient),
-		rp.WithStateStore(sharedStateStore),
-		rp.WithUserInfoTokenTransport(transport),
-		rp.WithScopes(parseScopesEnv("RP_SCOPES", []string{"openid", "profile", "email", "phone", "address"})...),
-	}
-
-	return rp.New(r.Context(), issuer, clientID, clientSecret, redirectURI, opts...)
-}
-
-func newRPHTTPClient() *http.Client {
-	transport := &http.Transport{}
-	if strings.EqualFold(strings.TrimSpace(os.Getenv("RP_INSECURE_TLS")), "true") {
-		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true}
-	}
-
-	return &http.Client{Timeout: 15 * time.Second, Transport: transport}
+	return buildRPFromResolvedRequest(r, resolved)
 }
 
 func handleRoot(w http.ResponseWriter, _ *http.Request) {

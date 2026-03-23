@@ -1,9 +1,17 @@
 suite.localhost {
 	tls /etc/caddy/certs/suite.localhost.pem /etc/caddy/certs/suite.localhost-key.pem
-	reverse_proxy suite:8080
+	reverse_proxy suite:8080 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Port 443
+	}
 }
 
 rp.localhost {
 	tls /etc/caddy/certs/rp.localhost.pem /etc/caddy/certs/rp.localhost-key.pem
-	reverse_proxy rp:8080
+	reverse_proxy rp:8080 {
+		header_up X-Forwarded-Proto https
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Port 443
+	}
 }

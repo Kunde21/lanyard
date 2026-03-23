@@ -164,3 +164,39 @@ func TestWebFingerResourceBuilders(t *testing.T) {
 		t.Fatalf("url resource mismatch: %q", resourceURL)
 	}
 }
+
+func TestResolveRPRequest_RequiresRegisteredRuntimeForExplicitIssuerAlias(t *testing.T) {
+	conformanceRuntimes = newRuntimeRegistry()
+	req := httptest.NewRequest(http.MethodGet, "/login?issuer=https://suite.localhost/test/a/unknown/", nil)
+	_, err := resolveRPRequest(req, "client", "secret", "https://rp.localhost/callback", rp.UserInfoTokenTransportHeader)
+	if err == nil || !strings.Contains(err.Error(), "no registered conformance runtime") {
+		t.Fatalf("resolveRPRequest() error = %v, want missing runtime error", err)
+	}
+}
+
+func TestResolveRPRequest_UsesCallbackAliasRuntime(t *testing.T) {
+	conformanceRuntimes = newRuntimeRegistry()
+	if err := conformanceRuntimes.Register(rpRuntimeConfig{
+		Alias:        "alias-a",
+		Issuer:       "https://suite.localhost/test/a/alias-a/",
+		ClientID:     "client-a",
+		ClientSecret: "secret-a",
+		RedirectURI:  "https://rp.localhost/callback/alias-a",
+		Namespace:    "alias-a",
+		Scopes:       []string{"openid"},
+	}); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/callback/alias-a?code=abc&state=s", nil)
+	resolved, err := resolveRPRequest(req, "fallback-client", "fallback-secret", "https://rp.localhost/callback", rp.UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("resolveRPRequest() failed: %v", err)
+	}
+	if resolved.issuer != "https://suite.localhost/test/a/alias-a/" {
+		t.Fatalf("issuer = %q, want callback runtime issuer", resolved.issuer)
+	}
+	if resolved.redirectURI != "https://rp.localhost/callback/alias-a" {
+		t.Fatalf("redirectURI = %q, want alias callback URI", resolved.redirectURI)
+	}
+}

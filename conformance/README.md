@@ -159,6 +159,17 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
 
 # Exclude plans by regex
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=all-rp -exclude-plan-regex='private_key_jwt'
+
+# Run jobs in parallel
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=fapi-rp -parallel=true -max-parallel-runs=4
+
+# Expand the first plain_fapi matrix subset
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args \
+  -profile=fapi-rp \
+  -include-plan-regex='fapi2-security-profile-final-client-test-plan' \
+  -parallel=true \
+  -max-parallel-runs=4 \
+  -matrix=fapi2-sp-final-plain-fapi-first4
 ```
 
 Selected flags:
@@ -172,13 +183,26 @@ Selected flags:
 - `-cleanup=false` to keep services running for local debugging
 - `-export-zip` to save suite evidence ZIPs per plan
 - `-redact` to redact obvious sensitive values in report fields
+- `-parallel` to execute expanded jobs concurrently
+- `-max-parallel-runs` to bound job concurrency
+- `-matrix` to expand a selected plan into a named job matrix
+- `-fail-fast` to stop launching queued jobs after the first failure
 
 Artifacts are written to:
 
 ```text
 ./artifacts/<run-id>/report.json
-./artifacts/<run-id>/plan-<planName>-<planID>.zip
+./artifacts/<run-id>/jobs/<job-id>/plan-<planName>-<planID>.zip
 ```
 
-`report.json` contains run metadata, selected plans, per-plan timing/outcome, per-test status/result, and ZIP paths.
+`report.json` contains run metadata, selected plans, per-job plan timing/outcome, per-test status/result, variant metadata, and ZIP paths.
 The harness exits non-zero through `go test` failure semantics when a selected test fails or execution errors.
+
+## Parallel runner notes
+
+- The runner expands selected plans into isolated jobs before execution.
+- Each job gets a unique alias, independent cookie jar, independent RP runtime registration, and job-scoped artifacts.
+- Matrix modes currently include:
+  - `fapi2-sp-final-plain-fapi-first4`
+  - `fapi2-sp-final-plain-fapi-all16`
+- The RP exposes a local-only runtime registration endpoint used by the harness to align client behavior with each suite profile.

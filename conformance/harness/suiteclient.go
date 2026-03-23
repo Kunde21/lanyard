@@ -121,11 +121,10 @@ func (c *suiteClient) CreateTestInstance(ctx context.Context, testName, planID s
 	}
 
 	var body any
-	if planID == "" {
-		if config == nil {
-			config = map[string]any{}
-		}
+	if config != nil {
 		body = config
+	} else if planID == "" {
+		body = map[string]any{}
 	}
 
 	var payload json.RawMessage

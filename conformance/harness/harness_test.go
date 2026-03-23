@@ -19,12 +19,17 @@ var (
 	flagIncludePlanRegex = flag.String("include-plan-regex", "", "Regex for plan names to include")
 	flagExcludePlanRegex = flag.String("exclude-plan-regex", "", "Regex for plan names to exclude")
 	flagModuleRegex      = flag.String("module-regex", "", "Regex for module names to include")
+	flagParallel         = flag.Bool("parallel", false, "Run selected conformance jobs in parallel")
+	flagMaxParallelRuns  = flag.Int("max-parallel-runs", 1, "Maximum number of conformance jobs to run concurrently")
+	flagMatrix           = flag.String("matrix", "", "Named matrix expansion to apply to selected plans")
+	flagFailFast         = flag.Bool("fail-fast", false, "Cancel queued jobs after the first job failure")
 
 	flagProvisionTimeout  = flag.Duration("provision-timeout", 5*time.Minute, "Max time to provision local conformance stack")
 	flagPlanTimeout       = flag.Duration("plan-timeout", 1*time.Hour, "Max time for a single plan execution")
 	flagTestTimeout       = flag.Duration("test-timeout", 10*time.Minute, "Max time for a single test instance")
 	flagWaitingMaxRetries = flag.Int("waiting-max-retries", 0, "Max front-channel trigger retries while test status is WAITING")
 	flagWaitingInterval   = flag.Duration("waiting-retry-interval", 10*time.Second, "Interval between WAITING front-channel trigger retries")
+	flagSkipProvision     = flag.Bool("skip-provision", false, "Skip docker compose provisioning and use an already-running stack")
 
 	flagCleanup   = flag.Bool("cleanup", false, "Tear down docker compose services after test")
 	flagExportZip = flag.Bool("export-zip", true, "Export suite plan result ZIP artifacts")
@@ -55,10 +60,12 @@ func TestConformanceHarness(t *testing.T) {
 		t.Fatalf("prerequisite validation failed: %v", err)
 	}
 
-	if err := ensureProvisioned(ctx, cfg); err != nil {
-		t.Fatalf("failed to provision conformance stack: %v", err)
+	if !cfg.SkipProvision {
+		if err := ensureProvisioned(ctx, cfg); err != nil {
+			t.Fatalf("failed to provision conformance stack: %v", err)
+		}
 	}
-	if cfg.Cleanup {
+	if cfg.Cleanup && !cfg.SkipProvision {
 		t.Cleanup(func() {
 			downCtx, downCancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			defer downCancel()
@@ -109,9 +116,14 @@ func parseHarnessConfig() (harnessConfig, error) {
 		Profile:              strings.TrimSpace(*flagProfile),
 		SuiteURL:             strings.TrimSpace(*flagSuiteURL),
 		ArtifactsDir:         strings.TrimSpace(*flagArtifactsDir),
+		Parallel:             *flagParallel,
+		MaxParallelRuns:      *flagMaxParallelRuns,
+		Matrix:               strings.TrimSpace(*flagMatrix),
+		FailFast:             *flagFailFast,
 		ProvisionTimeout:     *flagProvisionTimeout,
 		PlanTimeout:          *flagPlanTimeout,
 		TestTimeout:          *flagTestTimeout,
+		SkipProvision:        *flagSkipProvision,
 		Cleanup:              *flagCleanup,
 		ExportZip:            *flagExportZip,
 		Redact:               *flagRedact,
@@ -141,6 +153,9 @@ func parseHarnessConfig() (harnessConfig, error) {
 	}
 	if cfg.ProvisionTimeout <= 0 || cfg.PlanTimeout <= 0 || cfg.TestTimeout <= 0 {
 		return harnessConfig{}, fmt.Errorf("timeouts must be positive durations")
+	}
+	if cfg.MaxParallelRuns <= 0 {
+		return harnessConfig{}, fmt.Errorf("-max-parallel-runs must be >= 1")
 	}
 	if cfg.WaitingMaxRetries < 0 {
 		return harnessConfig{}, fmt.Errorf("-waiting-max-retries must be >= 0")

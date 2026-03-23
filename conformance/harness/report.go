@@ -88,13 +88,23 @@ func exportPlanZip(ctx context.Context, cfg harnessConfig, runDir string, plan p
 		return "", err
 	}
 
-	safeName := sanitizePathComponent(plan.PlanName)
-	filename := fmt.Sprintf("plan-%s-%s.zip", safeName, plan.PlanID)
-	path := filepath.Join(runDir, filename)
+	path := planZipPath(runDir, plan)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("failed creating plan zip directory: %w", err)
+	}
 	if err := os.WriteFile(filepath.Clean(path), zipData, 0o644); err != nil {
 		return "", fmt.Errorf("failed writing zip file: %w", err)
 	}
 	return path, nil
+}
+
+func planZipPath(runDir string, plan planResult) string {
+	safeName := sanitizePathComponent(plan.PlanName)
+	filename := fmt.Sprintf("plan-%s-%s.zip", safeName, plan.PlanID)
+	if strings.TrimSpace(plan.JobID) == "" {
+		return filepath.Join(runDir, filename)
+	}
+	return filepath.Join(runDir, "jobs", sanitizePathComponent(plan.JobID), filename)
 }
 
 func sanitizePathComponent(raw string) string {

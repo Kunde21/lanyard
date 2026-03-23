@@ -184,7 +184,21 @@ const (
 	SenderConstrainMTLS senderConstrainType = "mtls"
 )
 
+func normalizeSenderConstrain(raw string) senderConstrainType {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case string(SenderConstrainDPoP):
+		return SenderConstrainDPoP
+	case string(SenderConstrainMTLS):
+		return SenderConstrainMTLS
+	default:
+		return SenderConstrainNone
+	}
+}
+
 func (r *RP) shouldUseDPoP() bool {
+	if r.senderConstrain != SenderConstrainNone {
+		return r.senderConstrain == SenderConstrainDPoP && r.clientKeyProvider != nil && isDPoPSupported(r.resolvedAuthMethod)
+	}
 	return r.clientKeyProvider != nil && isDPoPSupported(r.resolvedAuthMethod)
 }
 

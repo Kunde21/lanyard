@@ -2,13 +2,11 @@ package conformanceharness
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -24,10 +22,9 @@ type testInfoGetter interface {
 }
 
 type runner struct {
-	client      *suiteClient
-	cfg         harnessConfig
-	logf        func(format string, args ...any)
-	frontClient *http.Client
+	client *suiteClient
+	cfg    harnessConfig
+	logf   func(format string, args ...any)
 }
 
 func newRunner(client *suiteClient, cfg harnessConfig, logf func(format string, args ...any)) *runner {
@@ -42,20 +39,7 @@ func newRunner(client *suiteClient, cfg harnessConfig, logf func(format string, 
 		cfg.WaitingRetryInterval = 10 * time.Second
 	}
 
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		jar = nil
-	}
-
-	frontClient := &http.Client{
-		Timeout: 45 * time.Second,
-		Jar:     jar,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true},
-		},
-	}
-
-	return &runner{client: client, cfg: cfg, logf: logf, frontClient: frontClient}
+	return &runner{client: client, cfg: cfg, logf: logf}
 }
 
 type runReport struct {
@@ -68,38 +52,59 @@ type runReport struct {
 }
 
 type planResult struct {
-	PlanName      string       `json:"plan_name"`
-	PlanID        string       `json:"plan_id,omitempty"`
-	StartedAt     time.Time    `json:"started_at"`
-	FinishedAt    time.Time    `json:"finished_at"`
-	Duration      string       `json:"duration"`
-	Failed        bool         `json:"failed"`
-	FailureReason string       `json:"failure_reason,omitempty"`
-	Tests         []testResult `json:"tests"`
-	ArtifactPath  string       `json:"artifact_path,omitempty"`
+	JobID         string            `json:"job_id"`
+	Alias         string            `json:"alias"`
+	PlanName      string            `json:"plan_name"`
+	PlanID        string            `json:"plan_id,omitempty"`
+	Variant       map[string]string `json:"variant"`
+	StartedAt     time.Time         `json:"started_at"`
+	FinishedAt    time.Time         `json:"finished_at"`
+	Duration      string            `json:"duration"`
+	Failed        bool              `json:"failed"`
+	FailureReason string            `json:"failure_reason,omitempty"`
+	Tests         []testResult      `json:"tests"`
+	ArtifactPath  string            `json:"artifact_path,omitempty"`
 }
 
 type testResult struct {
-	ModuleName string    `json:"module_name"`
-	TestID     string    `json:"test_id"`
-	Status     string    `json:"status"`
-	Result     string    `json:"result"`
-	Summary    string    `json:"summary,omitempty"`
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at"`
-	Duration   string    `json:"duration"`
-	Alias      string    `json:"alias"`
+	JobID      string            `json:"job_id"`
+	ModuleName string            `json:"module_name"`
+	TestID     string            `json:"test_id"`
+	Status     string            `json:"status"`
+	Result     string            `json:"result"`
+	Summary    string            `json:"summary,omitempty"`
+	Variant    map[string]string `json:"variant"`
+	StartedAt  time.Time         `json:"started_at"`
+	FinishedAt time.Time         `json:"finished_at"`
+	Duration   string            `json:"duration"`
+	Alias      string            `json:"alias"`
 }
 
 func (r *runner) Execute(ctx context.Context, plans []AvailablePlan) runReport {
+	runID := time.Now().UTC().Format("20060102-150405")
+	jobs := expandRunJobs(runID, r.cfg, plans)
 	run := runReport{
-		RunID:     time.Now().UTC().Format("20060102-150405"),
+		RunID:     runID,
 		StartedAt: time.Now().UTC(),
-		Plans:     make([]planResult, 0, len(plans)),
+		Plans:     make([]planResult, 0, len(jobs)),
 	}
 
-	for planIndex, selected := range plans {
-		planRes := r.executePlan(ctx, selected, planIndex)
+	maxParallelRuns := 1
+	if r.cfg.Parallel {
+		maxParallelRuns = r.cfg.MaxParallelRuns
+	}
+
+	results, err := scheduleJobs(ctx, schedulerConfig{MaxParallelRuns: maxParallelRuns, FailFast: r.cfg.FailFast}, jobs, func(jobCtx context.Context, job RunJob) planResult {
+		return newJobRunner(r.client, r.cfg, job, r.logf).execute(jobCtx)
+	})
+	if err != nil {
+		run.Failed = true
+		run.FailureReason = err.Error()
+		run.FinishedAt = time.Now().UTC()
+		return run
+	}
+
+	for _, planRes := range results {
 		run.Plans = append(run.Plans, planRes)
 		if planRes.Failed {
 			run.Failed = true
@@ -115,42 +120,52 @@ func (r *runner) Execute(ctx context.Context, plans []AvailablePlan) runReport {
 	return run
 }
 
-func (r *runner) executePlan(ctx context.Context, selected AvailablePlan, planIndex int) planResult {
+func (jr *jobRunner) execute(ctx context.Context) planResult {
 	startedAt := time.Now().UTC()
 	planRes := planResult{
-		PlanName:  selected.Name,
+		JobID:     jr.job.JobID,
+		Alias:     jr.job.Alias,
+		PlanName:  jr.job.PlanName,
+		Variant:   stableVariantMap(jr.job.PlanVariant),
 		StartedAt: startedAt,
 		Tests:     []testResult{},
 	}
-	r.logf("plan start: %s", selected.Name)
+	jr.logf("plan start: job=%s plan=%s alias=%s", jr.job.JobID, jr.job.PlanName, jr.job.Alias)
 
-	planCtx, cancel := context.WithTimeout(ctx, r.cfg.PlanTimeout)
+	planCtx, cancel := context.WithTimeout(ctx, jr.cfg.PlanTimeout)
 	defer cancel()
+	runtimeCleanup, err := jr.registerRuntime(planCtx)
+	if err != nil {
+		failPlan(&planRes, fmt.Sprintf("register runtime failed: %v", err))
+		jr.logf("plan failed: job=%s plan=%s (%s)", jr.job.JobID, jr.job.PlanName, planRes.FailureReason)
+		return planRes
+	}
+	defer runtimeCleanup()
 
-	planVariant := mergePlanVariant(selectPlanVariant(selected), r.cfg.ForcedVariants)
-	planConfig := buildPlanConfig(planVariant, fmt.Sprintf("lanyard-%d-%d", time.Now().UTC().UnixNano(), planIndex+1))
-	created, err := r.client.CreatePlan(planCtx, selected.Name, planVariant, planConfig)
+	planVariant := mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants)
+	planConfig := buildPlanConfig(planVariant, jr.job.Alias)
+	created, err := jr.client.CreatePlan(planCtx, jr.job.PlanName, planVariant, planConfig)
 	if err != nil {
 		failPlan(&planRes, fmt.Sprintf("create plan failed: %v", err))
-		r.logf("plan failed: %s (%s)", selected.Name, planRes.FailureReason)
+		jr.logf("plan failed: job=%s plan=%s (%s)", jr.job.JobID, jr.job.PlanName, planRes.FailureReason)
 		return planRes
 	}
 	planRes.PlanID = created.PlanID
 
 	modules := created.Modules
 	if len(modules) == 0 {
-		modules = selected.Modules
+		modules = jr.job.Plan.Modules
 	}
-	modules = filterModules(modules, r.cfg.ModuleRegex)
+	modules = filterModules(modules, jr.cfg.ModuleRegex)
 
 	if len(modules) == 0 {
 		failPlan(&planRes, "plan contains no executable modules after filtering")
-		r.logf("plan failed: %s (%s)", selected.Name, planRes.FailureReason)
+		jr.logf("plan failed: job=%s plan=%s (%s)", jr.job.JobID, jr.job.PlanName, planRes.FailureReason)
 		return planRes
 	}
 
 	for moduleIndex, module := range modules {
-		testRes := r.executeModule(planCtx, selected, module, created.PlanID, planIndex, moduleIndex)
+		testRes := jr.executeModule(planCtx, module, created.PlanID, moduleIndex)
 		planRes.Tests = append(planRes.Tests, testRes)
 		if moduleFailed(testRes) {
 			planRes.Failed = true
@@ -161,50 +176,51 @@ func (r *runner) executePlan(ctx context.Context, selected AvailablePlan, planIn
 	if planRes.Failed && planRes.FailureReason == "" {
 		planRes.FailureReason = "one or more tests failed"
 	}
-	r.logf("plan done: %s tests=%d failed=%t", selected.Name, len(planRes.Tests), planRes.Failed)
+	jr.logf("plan done: job=%s plan=%s tests=%d failed=%t", jr.job.JobID, jr.job.PlanName, len(planRes.Tests), planRes.Failed)
 
 	return planRes
 }
 
-func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, module PlanModule, planID string, planIndex, moduleIndex int) testResult {
+func (jr *jobRunner) executeModule(ctx context.Context, module PlanModule, planID string, moduleIndex int) testResult {
 	startedAt := time.Now().UTC()
-	alias := fmt.Sprintf("lanyard-%d-%d", planIndex+1, moduleIndex+1)
+	alias := fmt.Sprintf("%s-%d", jr.job.Alias, moduleIndex+1)
 
-	res := testResult{ModuleName: module.Name, Alias: alias, StartedAt: startedAt}
-	r.logf("  test start: plan=%s module=%s alias=%s", selected.Name, module.Name, alias)
+	res := testResult{JobID: jr.job.JobID, ModuleName: module.Name, Alias: alias, Variant: stableVariantMap(jr.job.PlanVariant), StartedAt: startedAt}
+	jr.logf("  test start: job=%s plan=%s module=%s alias=%s", jr.job.JobID, jr.job.PlanName, module.Name, alias)
 
-	moduleVariant := mergeModuleVariant(module.Variant, r.cfg.ForcedVariants)
-	instance, err := r.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, nil)
+	planConfig := buildPlanConfig(mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants), jr.job.Alias)
+	moduleVariant := mergeModuleVariant(module.Variant, jr.cfg.ForcedVariants)
+	instance, err := jr.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, planConfig)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("create test instance failed: %v", err))
-		r.logf("  test failed: plan=%s module=%s alias=%s test_id=%s err=%v", selected.Name, module.Name, alias, instance.ID, err)
+		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, instance.ID, err)
 		return res
 	}
 	res.TestID = instance.ID
 	testID := instance.ID
 
-	info, err := r.client.GetTestInfo(ctx, testID)
+	info, err := jr.client.GetTestInfo(ctx, testID)
 	if err != nil {
-		r.logf("  warning: failed to get test info: %v", err)
+		jr.logf("  warning: failed to get test info: %v", err)
 	}
-	suiteAlias := strings.TrimSpace(info.Alias)
-	r.logf("  test context: plan=%s module=%s test_id=%s local_alias=%s suite_alias=%s", selected.Name, module.Name, testID, alias, suiteAlias)
+	suiteAlias := effectiveSuiteAlias(info.Alias, jr.job.Alias)
+	jr.logf("  test context: job=%s plan=%s module=%s test_id=%s local_alias=%s suite_alias=%s", jr.job.JobID, jr.job.PlanName, module.Name, testID, alias, suiteAlias)
 
-	issuer := constructIssuer(r.cfg.SuiteURL, info.PlanID, info.Alias)
+	issuer := constructIssuer(jr.cfg.SuiteURL, info.PlanID, suiteAlias)
 
-	pollCtx, cancel := context.WithTimeout(ctx, r.cfg.TestTimeout)
+	pollCtx, cancel := context.WithTimeout(ctx, jr.cfg.TestTimeout)
 	defer cancel()
 
-	trigger := r.frontChannelTriggerForModule(module.Name, issuer, moduleVariant)
-	pollInfo, err := pollTestResultWithConfig(pollCtx, r.client, testID, trigger, r.cfg.WaitingMaxRetries, r.cfg.WaitingRetryInterval)
+	trigger := jr.frontChannelTriggerForModule(module.Name, issuer, moduleVariant)
+	pollInfo, err := pollTestResultWithConfig(pollCtx, jr.client, testID, trigger, jr.cfg.WaitingMaxRetries, jr.cfg.WaitingRetryInterval)
 	if err != nil {
-		cleanupErr := r.cancelTestAndWaitTerminal(testID, selected.Name, module.Name, alias, suiteAlias)
+		cleanupErr := jr.cancelTestAndWaitTerminal(testID, jr.job.PlanName, module.Name, alias, suiteAlias)
 		summary := fmt.Sprintf("poll failed: %v", err)
 		if cleanupErr != nil {
 			summary = fmt.Sprintf("%s (cleanup failed: %v)", summary, cleanupErr)
 		}
 		failTest(&res, "ERROR", "FAILED", summary)
-		r.logf("  test failed: plan=%s module=%s alias=%s suite_alias=%s test_id=%s err=%v cleanup_err=%v", selected.Name, module.Name, alias, suiteAlias, testID, err, cleanupErr)
+		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s suite_alias=%s test_id=%s err=%v cleanup_err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, suiteAlias, testID, err, cleanupErr)
 		return res
 	}
 
@@ -212,29 +228,29 @@ func (r *runner) executeModule(ctx context.Context, selected AvailablePlan, modu
 	res.Result = pollInfo.Result
 	res.Summary = pollInfo.Summary
 	finalizeTest(&res)
-	r.logf("  test done: plan=%s module=%s alias=%s suite_alias=%s test_id=%s status=%s result=%s", selected.Name, module.Name, alias, suiteAlias, testID, res.Status, res.Result)
+	jr.logf("  test done: job=%s plan=%s module=%s alias=%s suite_alias=%s test_id=%s status=%s result=%s", jr.job.JobID, jr.job.PlanName, module.Name, alias, suiteAlias, testID, res.Status, res.Result)
 	return res
 }
 
-func (r *runner) cancelTestAndWaitTerminal(testID, planName, moduleName, localAlias, suiteAlias string) error {
+func (jr *jobRunner) cancelTestAndWaitTerminal(testID, planName, moduleName, localAlias, suiteAlias string) error {
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
-	cancelErr := r.client.CancelTest(cleanupCtx, testID)
+	cancelErr := jr.client.CancelTest(cleanupCtx, testID)
 	if cancelErr != nil {
-		r.logf("  cleanup warning: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s failed to cancel test: %v", planName, moduleName, localAlias, suiteAlias, testID, cancelErr)
+		jr.logf("  cleanup warning: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s failed to cancel test: %v", planName, moduleName, localAlias, suiteAlias, testID, cancelErr)
 	}
 
-	waitErr := waitForTerminalTestState(cleanupCtx, r.client, testID)
+	waitErr := waitForTerminalTestState(cleanupCtx, jr.client, testID)
 	if waitErr != nil {
-		r.logf("  cleanup warning: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s failed waiting for terminal state: %v", planName, moduleName, localAlias, suiteAlias, testID, waitErr)
+		jr.logf("  cleanup warning: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s failed waiting for terminal state: %v", planName, moduleName, localAlias, suiteAlias, testID, waitErr)
 	}
 
 	if cancelErr != nil || waitErr != nil {
 		return errors.Join(cancelErr, waitErr)
 	}
 
-	r.logf("  cleanup done: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s reached terminal state", planName, moduleName, localAlias, suiteAlias, testID)
+	jr.logf("  cleanup done: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s reached terminal state", planName, moduleName, localAlias, suiteAlias, testID)
 	return nil
 }
 
@@ -245,18 +261,25 @@ func constructIssuer(suiteURL, planID, testAlias string) string {
 	return strings.TrimRight(suiteURL, "/") + "/test/a/" + testAlias + "/"
 }
 
-func (r *runner) triggerFrontChannelStep(ctx context.Context, testID string) error {
-	return r.doTrigger(ctx, testID, "/login", "", nil)
+func effectiveSuiteAlias(infoAlias, jobAlias string) string {
+	if alias := strings.TrimSpace(infoAlias); alias != "" {
+		return alias
+	}
+	return strings.TrimSpace(jobAlias)
 }
 
-func (r *runner) frontChannelTriggerForModule(moduleName, issuer string, variant map[string]any) func(context.Context, string) error {
+func (jr *jobRunner) triggerFrontChannelStep(ctx context.Context, testID string) error {
+	return jr.doTrigger(ctx, testID, "/login", "", nil)
+}
+
+func (jr *jobRunner) frontChannelTriggerForModule(moduleName, issuer string, variant map[string]any) func(context.Context, string) error {
 	return func(ctx context.Context, testID string) error {
 		endpoint := moduleTriggerEndpoint(moduleName)
-		return r.doTrigger(ctx, testID, endpoint, issuer, variant)
+		return jr.doTrigger(ctx, testID, endpoint, issuer, variant)
 	}
 }
 
-func (r *runner) doTrigger(ctx context.Context, testID, endpoint, issuer string, variant map[string]any) error {
+func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer string, variant map[string]any) error {
 	triggerCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
@@ -293,14 +316,14 @@ func (r *runner) doTrigger(ctx context.Context, testID, endpoint, issuer string,
 		return fmt.Errorf("failed to build front-channel request: %w", err)
 	}
 
-	resp, err := r.frontClient.Do(req)
+	resp, err := jr.frontClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed calling rp front-channel endpoint: %w", err)
 	}
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	r.logf("    front-channel trigger: test_id=%s endpoint=%s issuer=%q status=%d", testID, endpoint, issuer, resp.StatusCode)
+	jr.logf("    front-channel trigger: job=%s test_id=%s endpoint=%s issuer=%q status=%d", jr.job.JobID, testID, endpoint, issuer, resp.StatusCode)
 	return nil
 }
 
@@ -547,6 +570,7 @@ func buildPlanConfig(planVariant map[string]string, alias string) map[string]any
 	if strings.TrimSpace(alias) == "" {
 		alias = "lanyard-local"
 	}
+	redirectURI := runtimeRedirectURI(alias)
 
 	isFAPI2 := isFAPI2PlanVariant(planVariant)
 
@@ -561,13 +585,13 @@ func buildPlanConfig(planVariant map[string]string, alias string) map[string]any
 		"client": map[string]any{
 			"client_id":     "local-dev-client",
 			"client_secret": "local-dev-secret-32-bytes-minimum!!",
-			"redirect_uri":  "https://rp.localhost/callback",
+			"redirect_uri":  redirectURI,
 			"request_type":  requestType,
 		},
 		"client2": map[string]any{
 			"client_id":     "local-dev-client-2",
 			"client_secret": "local-dev-secret-2-32-bytes-min!!",
-			"redirect_uri":  "https://rp.localhost/callback",
+			"redirect_uri":  redirectURI,
 			"request_type":  requestType,
 		},
 		"waitTimeoutSeconds": 300,
@@ -586,6 +610,14 @@ func buildPlanConfig(planVariant map[string]string, alias string) map[string]any
 	}
 
 	return cfg
+}
+
+func runtimeRedirectURI(alias string) string {
+	trimmed := strings.TrimSpace(alias)
+	if trimmed == "" {
+		return "https://rp.localhost/callback"
+	}
+	return "https://rp.localhost/callback/" + url.PathEscape(trimmed)
 }
 
 func isFAPI2PlanVariant(planVariant map[string]string) bool {

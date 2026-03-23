@@ -1,7 +1,11 @@
 package conformanceharness
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 )
 
@@ -86,5 +90,34 @@ func TestFirstStringHelper(t *testing.T) {
 	}
 	if v := firstString(m, "planName", "name"); v != "primary" {
 		t.Fatalf("expected primary, got %q", v)
+	}
+}
+
+func TestCreateTestInstance_SendsConfigBodyForPlanModules(t *testing.T) {
+	var gotBody map[string]any
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(body) failed: %v", err)
+		}
+		if err := json.Unmarshal(data, &gotBody); err != nil {
+			t.Fatalf("Unmarshal(body) failed: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"test-1"}`))
+	}))
+	defer ts.Close()
+
+	client := newSuiteClient(ts.URL)
+	client.http = ts.Client()
+	_, err := client.CreateTestInstance(context.Background(), "module-a", "plan-1", nil, map[string]any{"alias": "job-a"})
+	if err != nil {
+		t.Fatalf("CreateTestInstance() failed: %v", err)
+	}
+	if gotBody["alias"] != "job-a" {
+		t.Fatalf("config body alias = %#v, want %q", gotBody["alias"], "job-a")
 	}
 }

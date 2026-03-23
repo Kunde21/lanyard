@@ -3,6 +3,7 @@ package conformanceharness
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -275,5 +276,44 @@ func TestModuleTriggerEndpoint(t *testing.T) {
 				t.Errorf("moduleTriggerEndpoint(%q) = %q, want %q", tc.moduleName, got, tc.want)
 			}
 		})
+	}
+}
+
+func TestEffectiveSuiteAlias_FallsBackToJobAlias(t *testing.T) {
+	if got := effectiveSuiteAlias("", "job-alias"); got != "job-alias" {
+		t.Fatalf("effectiveSuiteAlias() = %q, want %q", got, "job-alias")
+	}
+	if got := effectiveSuiteAlias("suite-alias", "job-alias"); got != "suite-alias" {
+		t.Fatalf("effectiveSuiteAlias() = %q, want %q", got, "suite-alias")
+	}
+}
+
+func TestNewJobRunner_IsolatesMutableExecutionState(t *testing.T) {
+	cfg := harnessConfig{ArtifactsDir: t.TempDir()}
+	client := newSuiteClient("https://suite.localhost")
+
+	jobA := RunJob{JobID: "job-a", Alias: "alias-a", PlanName: "plan-a"}
+	jobB := RunJob{JobID: "job-b", Alias: "alias-b", PlanName: "plan-b"}
+
+	runnerA := newJobRunner(client, cfg, jobA, t.Logf)
+	runnerB := newJobRunner(client, cfg, jobB, t.Logf)
+
+	if runnerA.frontClient == runnerB.frontClient {
+		t.Fatal("job runners unexpectedly share front-channel HTTP client")
+	}
+	if runnerA.frontClient.Jar == runnerB.frontClient.Jar {
+		t.Fatal("job runners unexpectedly share cookie jar")
+	}
+	if runnerA.job.Alias == runnerB.job.Alias {
+		t.Fatal("job runners unexpectedly share alias")
+	}
+
+	wantA := filepath.Join(cfg.ArtifactsDir, "jobs", jobA.JobID)
+	wantB := filepath.Join(cfg.ArtifactsDir, "jobs", jobB.JobID)
+	if runnerA.artifactDir != wantA {
+		t.Fatalf("runnerA artifactDir = %q, want %q", runnerA.artifactDir, wantA)
+	}
+	if runnerB.artifactDir != wantB {
+		t.Fatalf("runnerB artifactDir = %q, want %q", runnerB.artifactDir, wantB)
 	}
 }

@@ -14,6 +14,12 @@ func validatePrerequisites(cfg harnessConfig) error {
 	}
 
 	for _, host := range []string{"suite.localhost", "rp.localhost"} {
+		if cfg.SkipProvision {
+			if err := ensureResolvable(host); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := ensureLocalHostResolution(host); err != nil {
 			return err
 		}
@@ -70,6 +76,13 @@ func ensureLocalHostResolution(host string) error {
 		}
 	}
 	return fmt.Errorf("%q resolves to %v, expected 127.0.0.1 or ::1", host, addrs)
+}
+
+func ensureResolvable(host string) error {
+	if _, err := net.LookupHost(host); err != nil {
+		return fmt.Errorf("failed to resolve %q: %w", host, err)
+	}
+	return nil
 }
 
 func isLocalAddress(addr string) bool {

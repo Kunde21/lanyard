@@ -75,6 +75,7 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	originalIncludePlanRegex := *flagIncludePlanRegex
 	originalExcludePlanRegex := *flagExcludePlanRegex
 	originalModuleRegex := *flagModuleRegex
+	originalSkipProvision := *flagSkipProvision
 	originalForceVariants := append(repeatableStringFlag(nil), flagForceVariants...)
 
 	defer func() {
@@ -84,6 +85,7 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 		*flagIncludePlanRegex = originalIncludePlanRegex
 		*flagExcludePlanRegex = originalExcludePlanRegex
 		*flagModuleRegex = originalModuleRegex
+		*flagSkipProvision = originalSkipProvision
 		flagForceVariants = originalForceVariants
 	}()
 
@@ -93,6 +95,7 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	*flagIncludePlanRegex = ""
 	*flagExcludePlanRegex = ""
 	*flagModuleRegex = ""
+	*flagSkipProvision = true
 	flagForceVariants = repeatableStringFlag{
 		"client_auth_type=client_secret_post",
 		"response_type=code",
@@ -109,5 +112,8 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, cfg.ForcedVariants); diff != "" {
 		t.Fatalf("forced variants mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(true, cfg.SkipProvision); diff != "" {
+		t.Fatalf("skip provision mismatch (-want +got):\n%s", diff)
 	}
 }

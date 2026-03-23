@@ -3,3 +3,5 @@ conformance/.upstream/
 conformance/.cache/
 conformance/artifacts/
 artifacts/
+/example-rp
+/conformance-harness.test

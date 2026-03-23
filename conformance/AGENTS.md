@@ -36,6 +36,10 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
 | `-export-zip` | `true` | Export plan result ZIP artifacts |
 | `-redact` | `true` | Redact sensitive keys in output |
 | `-rebuild-suite` | `false` | Force rebuild suite image |
+| `-parallel` | `false` | Run expanded jobs in parallel |
+| `-max-parallel-runs` | `1` | Maximum concurrent jobs |
+| `-matrix` | `""` | Named matrix expansion for selected plans |
+| `-fail-fast` | `false` | Stop launching queued jobs after the first failure |
 
 ## Setup Requirements
 
@@ -114,6 +118,19 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
   -args -profile=oidc-rp -cleanup=false -redact=false
 ```
 
+### Parallel Matrix Smoke Run
+
+Run the first four `plain_fapi` matrix cases in parallel:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi2-security-profile-final-client-test-plan' \
+  -parallel=true \
+  -max-parallel-runs=4 \
+  -matrix=fapi2-sp-final-plain-fapi-first4
+```
+
 Services will remain running after the test. Access them at:
 - Suite: https://suite.localhost
 - RP: https://rp.localhost
@@ -175,20 +192,26 @@ Reports are generated at `./artifacts/{RunID}/report.json`:
       "failed": false,
       "tests": [
         {
+          "job_id": "job-001",
           "module_name": "oidcc-client-test",
           "test_id": "test-xyz789",
           "status": "FINISHED",
           "result": "PASSED",
           "summary": "Test completed successfully",
           "duration": "45s",
-          "alias": "lanyard-1-1"
+          "alias": "20260323-150405-001",
+          "variant": {
+            "client_registration": "static_client"
+          }
         }
       ],
-      "artifact_path": "./artifacts/20260223-150405/plan-oidcc-client-basic-certification-test-plan-plan-abc123.zip"
+      "artifact_path": "./artifacts/20260223-150405/jobs/job-001/plan-oidcc-client-basic-certification-test-plan-plan-abc123.zip"
     }
   ]
 }
 ```
+
+In parallel mode, each plan entry in the report corresponds to one isolated job execution. Multiple entries may share the same `plan_name` when a matrix expansion is active.
 
 ### Analyzing Failures
 

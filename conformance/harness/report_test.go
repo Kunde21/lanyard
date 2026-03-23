@@ -108,3 +108,84 @@ func TestWriteReport_CreatesRunReportPath(t *testing.T) {
 		t.Fatalf("report path mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestWriteReport_IncludesJobIdentityFields(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := harnessConfig{
+		SuiteURL:          "https://suite.localhost",
+		Profile:           "fapi-rp",
+		ArtifactsDir:      tempDir,
+		ExportZip:         false,
+		Redact:            false,
+		SelectedPlanNames: []string{"fapi2-security-profile-final-client-test-plan"},
+	}
+
+	run := runReport{
+		RunID:      "20260323-111213",
+		StartedAt:  time.Now().UTC().Add(-time.Minute),
+		FinishedAt: time.Now().UTC(),
+		Plans: []planResult{{
+			PlanName:   "fapi2-security-profile-final-client-test-plan",
+			PlanID:     "plan-1",
+			StartedAt:  time.Now().UTC().Add(-time.Minute),
+			FinishedAt: time.Now().UTC(),
+			Duration:   "1m0s",
+			Tests: []testResult{{
+				ModuleName: "module-a",
+				TestID:     "test-1",
+				Status:     "FINISHED",
+				Result:     "PASSED",
+				Alias:      "alias-a",
+			}},
+		}},
+	}
+
+	reportPath, err := writeReport(context.Background(), cfg, run)
+	if err != nil {
+		t.Fatalf("writeReport() failed: %v", err)
+	}
+
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("ReadFile(report) failed: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("json.Unmarshal(report) failed: %v", err)
+	}
+
+	plans, ok := decoded["plans"].([]any)
+	if !ok || len(plans) != 1 {
+		t.Fatalf("decoded plans = %#v, want one plan", decoded["plans"])
+	}
+	plan, ok := plans[0].(map[string]any)
+	if !ok {
+		t.Fatalf("decoded plan = %#v, want object", plans[0])
+	}
+	tests, ok := plan["tests"].([]any)
+	if !ok || len(tests) != 1 {
+		t.Fatalf("decoded tests = %#v, want one test", plan["tests"])
+	}
+	testEntry, ok := tests[0].(map[string]any)
+	if !ok {
+		t.Fatalf("decoded test entry = %#v, want object", tests[0])
+	}
+
+	for _, field := range []string{"job_id", "variant"} {
+		if _, ok := testEntry[field]; !ok {
+			t.Fatalf("report test entry missing field %q: %#v", field, testEntry)
+		}
+	}
+}
+
+func TestExportPlanZip_UsesJobScopedArtifactPath(t *testing.T) {
+	runDir := t.TempDir()
+	plan := planResult{JobID: "job-001", PlanName: "shared-plan", PlanID: "plan-123"}
+
+	got := planZipPath(runDir, plan)
+	want := filepath.Join(runDir, "jobs", "job-001", "plan-shared-plan-plan-123.zip")
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("planZipPath() mismatch (-want +got):\n%s", diff)
+	}
+}

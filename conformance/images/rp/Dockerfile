@@ -6,3 +6,6 @@ RUN apt-get update \
 
 COPY conformance/certs/mkcert-rootCA.pem /usr/local/share/ca-certificates/mkcert-rootCA.crt
 RUN update-ca-certificates
+
+WORKDIR /build
+COPY example-rp /usr/local/bin/example-rp

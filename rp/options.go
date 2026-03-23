@@ -108,6 +108,14 @@ func WithRequirePAR(require bool) Option {
 	}
 }
 
+// WithSenderConstrain sets the sender-constraining mode used for outbound requests.
+// Supported values are "", "mtls", and "dpop".
+func WithSenderConstrain(mode string) Option {
+	return func(r *RP) {
+		r.senderConstrain = normalizeSenderConstrain(mode)
+	}
+}
+
 func withNow(now func() time.Time) Option {
 	return func(r *RP) {
 		if now != nil {

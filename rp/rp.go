@@ -41,7 +41,8 @@ type RP struct {
 
 	clientKeyProvider ClientKeyProvider
 
-	requirePAR bool
+	requirePAR      bool
+	senderConstrain senderConstrainType
 
 	resolvedAuthMethod  AuthMethod
 	allowMethodFallback bool

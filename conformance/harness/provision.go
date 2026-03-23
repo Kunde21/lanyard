@@ -24,6 +24,10 @@ func ensureProvisioned(ctx context.Context, cfg harnessConfig) error {
 		}
 	}
 
+	if err := buildExampleRPBinary(ctx); err != nil {
+		return fmt.Errorf("failed to build example rp binary: %w", err)
+	}
+
 	if err := composeUp(ctx); err != nil {
 		return err
 	}
@@ -35,6 +39,14 @@ func ensureProvisioned(ctx context.Context, cfg harnessConfig) error {
 	}
 
 	return nil
+}
+
+func buildExampleRPBinary(ctx context.Context) error {
+	binaryPath, err := repoPath("example-rp")
+	if err != nil {
+		return err
+	}
+	return runCommand(ctx, "go", "build", "-o", binaryPath, "./cmd/example-rp")
 }
 
 func composeUp(ctx context.Context) error {

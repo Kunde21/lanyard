@@ -1,0 +1,126 @@
+package conformanceharness
+
+import (
+	"bytes"
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+
+	"github.com/Kunde21/lanyard/rp"
+)
+
+type rpRuntimeRequest struct {
+	Alias                    string                    `json:"alias"`
+	Issuer                   string                    `json:"issuer,omitempty"`
+	ClientID                 string                    `json:"client_id"`
+	ClientSecret             string                    `json:"client_secret,omitempty"`
+	RedirectURI              string                    `json:"redirect_uri"`
+	Scopes                   []string                  `json:"scopes,omitempty"`
+	Namespace                string                    `json:"namespace,omitempty"`
+	UserInfoTokenTransport   rp.UserInfoTokenTransport `json:"userinfo_token_transport,omitempty"`
+	ClientAuthType           string                    `json:"client_auth_type,omitempty"`
+	SenderConstrain          string                    `json:"sender_constrain,omitempty"`
+	AuthorizationRequestType string                    `json:"authorization_request_type,omitempty"`
+	FAPIClientType           string                    `json:"fapi_client_type,omitempty"`
+	FAPIProfile              string                    `json:"fapi_profile,omitempty"`
+	RequestType              string                    `json:"request_type,omitempty"`
+	RequirePAR               bool                      `json:"require_par,omitempty"`
+}
+
+type rpRuntimeClient interface {
+	Register(ctx context.Context, req rpRuntimeRequest) error
+	Delete(ctx context.Context, alias string) error
+}
+
+type httpRPRuntimeClient struct {
+	baseURL string
+	http    *http.Client
+}
+
+func newRPRuntimeClient(rawURL string) *httpRPRuntimeClient {
+	return &httpRPRuntimeClient{
+		baseURL: strings.TrimRight(rawURL, "/"),
+		http: &http.Client{
+			Transport: &http.Transport{TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true}},
+		},
+	}
+}
+
+func (c *httpRPRuntimeClient) Register(ctx context.Context, req rpRuntimeRequest) error {
+	endpoint := c.baseURL + "/conformance/runtime"
+	body, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("marshal runtime request: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build runtime register request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("register runtime request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
+		return fmt.Errorf("register runtime failed: status=%d body=%q", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func (c *httpRPRuntimeClient) Delete(ctx context.Context, alias string) error {
+	query := url.Values{}
+	query.Set("alias", alias)
+	endpoint := c.baseURL + "/conformance/runtime?" + query.Encode()
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("build runtime delete request: %w", err)
+	}
+	resp, err := c.http.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("delete runtime request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
+		return fmt.Errorf("delete runtime failed: status=%d body=%q", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func buildRPRuntimeRequest(job RunJob, planVariant map[string]string, suiteURL string) rpRuntimeRequest {
+	requestType := planVariant["request_type"]
+	if strings.TrimSpace(requestType) == "" {
+		requestType = "plain_http_request"
+	}
+	clientID := "local-dev-client"
+	clientSecret := "local-dev-secret-32-bytes-minimum!!"
+	redirectURI := runtimeRedirectURI(job.Alias)
+	transport := rp.UserInfoTokenTransportHeader
+	if strings.Contains(strings.ToLower(job.PlanName), "userinfo-bearer-body") {
+		transport = rp.UserInfoTokenTransportBody
+	}
+	return rpRuntimeRequest{
+		Alias:                    job.Alias,
+		Issuer:                   constructIssuer(suiteURL, "", job.Alias),
+		ClientID:                 clientID,
+		ClientSecret:             clientSecret,
+		RedirectURI:              redirectURI,
+		Scopes:                   []string{"openid", "profile", "email", "phone", "address"},
+		Namespace:                job.Alias,
+		UserInfoTokenTransport:   transport,
+		ClientAuthType:           planVariant["client_auth_type"],
+		SenderConstrain:          planVariant["sender_constrain"],
+		AuthorizationRequestType: planVariant["authorization_request_type"],
+		FAPIClientType:           planVariant["fapi_client_type"],
+		FAPIProfile:              planVariant["fapi_profile"],
+		RequestType:              requestType,
+		RequirePAR:               isFAPI2PlanVariant(planVariant),
+	}
+}
