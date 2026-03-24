@@ -22,6 +22,12 @@ func TestProviderMetadataClaimsUnknownFields(t *testing.T) {
 	if metadata.PushedAuthorizationRequestEndpoint == "" {
 		t.Fatalf("expected pushed_authorization_request_endpoint to be parsed")
 	}
+	if diff := cmp.Diff("https://mtls.fapi.example.com/token", metadata.MTLSEndpointAliases.TokenEndpoint); diff != "" {
+		t.Fatalf("MTLSEndpointAliases.TokenEndpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("https://mtls.fapi.example.com/par", metadata.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint); diff != "" {
+		t.Fatalf("MTLSEndpointAliases.PushedAuthorizationRequestEndpoint mismatch (-want +got):\n%s", diff)
+	}
 
 	var custom struct {
 		GrantManagementEndpoint  string   `json:"grant_management_endpoint"`

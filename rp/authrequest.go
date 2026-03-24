@@ -14,7 +14,8 @@ import (
 // AuthorizationURL builds an authorization request URL and stores callback state.
 func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request) (string, error) {
 	metadata := r.provider
-	if metadata.AuthorizationEndpoint == "" {
+	authorizationEndpoint := r.authorizationEndpoint(metadata)
+	if authorizationEndpoint == "" {
 		return "", fmt.Errorf("%w: authorization endpoint missing", ErrInvalidConfiguration)
 	}
 
@@ -61,7 +62,7 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 			return "", fmt.Errorf("failed to save callback correlation state: %w", err)
 		}
 
-		authURL, err := url.Parse(metadata.AuthorizationEndpoint)
+		authURL, err := url.Parse(authorizationEndpoint)
 		if err != nil {
 			return "", fmt.Errorf("%w: invalid authorization endpoint URL: %v", ErrInvalidConfiguration, err)
 		}
@@ -84,7 +85,7 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 		return "", fmt.Errorf("failed to save callback correlation state: %w", err)
 	}
 
-	authURL, err := url.Parse(metadata.AuthorizationEndpoint)
+	authURL, err := url.Parse(authorizationEndpoint)
 	if err != nil {
 		return "", fmt.Errorf("%w: invalid authorization endpoint URL: %v", ErrInvalidConfiguration, err)
 	}

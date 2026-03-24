@@ -24,7 +24,7 @@ func (r *RP) shouldUsePAR() bool {
 	if r.requirePAR {
 		return true
 	}
-	return r.provider.PushedAuthorizationRequestEndpoint != "" && r.provider.RequirePushedAuthorizationRequests != nil && *r.provider.RequirePushedAuthorizationRequests
+	return r.pushedAuthorizationRequestEndpoint(r.provider) != "" && r.provider.RequirePushedAuthorizationRequests != nil && *r.provider.RequirePushedAuthorizationRequests
 }
 
 func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge string) url.Values {
@@ -41,11 +41,12 @@ func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge stri
 }
 
 func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*parResponse, error) {
-	if r.provider.PushedAuthorizationRequestEndpoint == "" {
+	parEndpoint := r.pushedAuthorizationRequestEndpoint(r.provider)
+	if parEndpoint == "" {
 		return nil, fmt.Errorf("%w: pushed authorization request endpoint not available", ErrInvalidConfiguration)
 	}
 
-	parReq, err := http.NewRequestWithContext(ctx, http.MethodPost, r.provider.PushedAuthorizationRequestEndpoint, strings.NewReader(params.Encode()))
+	parReq, err := http.NewRequestWithContext(ctx, http.MethodPost, parEndpoint, strings.NewReader(params.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build PAR request: %w", err)
 	}
@@ -53,11 +54,14 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 	parReq.Header.Set("Accept", "application/json")
 
 	if r.clientKeyProvider != nil && r.resolvedAuthMethod == AuthMethodPrivateKeyJWT {
-		assertion, err := r.buildClientAssertion(r.provider.PushedAuthorizationRequestEndpoint)
+		assertion, err := r.buildClientAssertion(r.issuer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build client assertion for PAR: %w", err)
 		}
-		parReq.Header.Set("Authorization", "Bearer "+assertion)
+		params.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+		params.Set("client_assertion", assertion)
+		parReq.Body = io.NopCloser(strings.NewReader(params.Encode()))
+		parReq.ContentLength = int64(len(params.Encode()))
 	}
 
 	resp, err := r.httpClient.Do(parReq)

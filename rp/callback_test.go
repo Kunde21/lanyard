@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -198,6 +199,132 @@ func TestHandleCallbackStateReplayRejected(t *testing.T) {
 	}
 }
 
+func TestHandleCallback_UsesMTLSAliasForTokenEndpoint(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+	issuer := ""
+	var tokenPath string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithMTLSEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token", "/mtls/token":
+			tokenPath = r.URL.Path
+			claims := map[string]any{"iss": issuer, "sub": "sub-123", "aud": []string{"client-id"}, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "nonce-1"}
+			body := `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", claims) + `"}`
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		case "/userinfo", "/mtls/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"sub-123"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", &tls.Certificate{})),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+
+	if tokenPath != "/mtls/token" {
+		t.Fatalf("token path = %q, want /mtls/token", tokenPath)
+	}
+}
+
+func TestHandleCallback_UsesMTLSAliasForUserInfoWhenSenderConstrainMTLS(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+	issuer := ""
+	var userInfoPath string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithMTLSEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token", "/mtls/token":
+			claims := map[string]any{"iss": issuer, "sub": "sub-123", "aud": []string{"client-id"}, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "nonce-1"}
+			body := `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", claims) + `"}`
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		case "/userinfo", "/mtls/userinfo":
+			userInfoPath = r.URL.Path
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"sub-123"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithAuthMethod(AuthMethodPost),
+		WithSenderConstrain("mtls"),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+
+	if userInfoPath != "/mtls/userinfo" {
+		t.Fatalf("userinfo path = %q, want /mtls/userinfo", userInfoPath)
+	}
+}
+
 func callbackRequest(code, state string) (*httptest.ResponseRecorder, *http.Request) {
 	query := url.Values{}
 	if code != "" {
@@ -217,4 +344,8 @@ func callbackRequest(code, state string) (*httptest.ResponseRecorder, *http.Requ
 
 func providerMetadataJSONWithEndpoints(issuer string) string {
 	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}`
+}
+
+func providerMetadataJSONWithMTLSEndpoints(issuer string) string {
+	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","mtls_endpoint_aliases":{"token_endpoint":"` + issuer + `/mtls/token","userinfo_endpoint":"` + issuer + `/mtls/userinfo"},"response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}`
 }

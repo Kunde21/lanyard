@@ -52,7 +52,11 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 
 	switch method {
 	case AuthMethodPrivateKeyJWT:
-		assertion, err := r.buildClientAssertion(tokenEndpoint)
+		audience := r.issuer
+		if audience == "" {
+			audience = tokenEndpoint
+		}
+		assertion, err := r.buildClientAssertion(audience)
 		if err != nil {
 			return Token{}, 0, "", fmt.Errorf("failed to build client assertion: %w", err)
 		}

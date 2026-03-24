@@ -116,10 +116,10 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 }
 
 func (r *RP) validateProviderReadyForAuthorizationURL() error {
-	if r.provider.AuthorizationEndpoint == "" {
+	if r.authorizationEndpoint(r.provider) == "" {
 		return fmt.Errorf("%w: authorization endpoint missing", ErrInvalidConfiguration)
 	}
-	if r.requirePAR && r.provider.PushedAuthorizationRequestEndpoint == "" {
+	if r.requirePAR && r.pushedAuthorizationRequestEndpoint(r.provider) == "" {
 		return fmt.Errorf("%w: pushed authorization request endpoint missing", ErrInvalidConfiguration)
 	}
 

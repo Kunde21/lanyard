@@ -51,16 +51,18 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	if err != nil {
 		return nil, fmt.Errorf("%w: discovery failed: %v", ErrTokenExchangeFailed, err)
 	}
-	if provider.TokenEndpoint == "" {
-		return nil, fmt.Errorf("%w: provider missing token endpoint", ErrTokenExchangeFailed)
-	}
 	if len(provider.TokenEndpointAuthMethodsSupported) > 0 {
 		if err := r.applySupportedAuthMethods(provider.TokenEndpointAuthMethodsSupported); err != nil {
 			return nil, fmt.Errorf("%w: auth method negotiation failed: %v", ErrTokenExchangeFailed, err)
 		}
 	}
 
-	tokenResp, err := r.exchangeToken(ctx, provider.TokenEndpoint, code, data.CodeVerifier)
+	tokenEndpoint := r.tokenEndpoint(provider)
+	if tokenEndpoint == "" {
+		return nil, fmt.Errorf("%w: provider missing token endpoint", ErrTokenExchangeFailed)
+	}
+
+	tokenResp, err := r.exchangeToken(ctx, tokenEndpoint, code, data.CodeVerifier)
 	if err != nil {
 		return nil, err
 	}
@@ -75,14 +77,15 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	if err != nil {
 		return nil, err
 	}
-	if provider.UserinfoEndpoint == "" {
+	userInfoEndpoint := r.userInfoEndpoint(provider)
+	if userInfoEndpoint == "" {
 		return nil, fmt.Errorf("%w: provider missing userinfo endpoint", ErrUserInfoValidationFailed)
 	}
 	transport := UserInfoTokenTransport(data.UserInfoTokenTransport)
 	if transport == "" {
 		transport = r.userInfoTokenTransport
 	}
-	userinfo, err := r.fetchUserInfo(ctx, provider.UserinfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
+	userinfo, err := r.fetchUserInfo(ctx, userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
 	if err != nil {
 		return nil, err
 	}
