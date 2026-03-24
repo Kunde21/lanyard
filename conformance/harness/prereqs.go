@@ -28,6 +28,8 @@ func validatePrerequisites(cfg harnessConfig) error {
 	certRelPaths := []string{
 		"conformance/certs/suite.localhost.pem",
 		"conformance/certs/suite.localhost-key.pem",
+		"conformance/certs/localhost.pem",
+		"conformance/certs/localhost-key.pem",
 		"conformance/certs/rp.localhost.pem",
 		"conformance/certs/rp.localhost-key.pem",
 		"conformance/certs/mkcert-rootCA.pem",

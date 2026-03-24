@@ -121,7 +121,7 @@ func (c *suiteClient) CreateTestInstance(ctx context.Context, testName, planID s
 	}
 
 	var body any
-	if config != nil {
+	if planID == "" && config != nil {
 		body = config
 	} else if planID == "" {
 		body = map[string]any{}

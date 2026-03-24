@@ -93,8 +93,8 @@ func TestFirstStringHelper(t *testing.T) {
 	}
 }
 
-func TestCreateTestInstance_SendsConfigBodyForPlanModules(t *testing.T) {
-	var gotBody map[string]any
+func TestCreateTestInstance_OmitsConfigBodyForPlanModules(t *testing.T) {
+	var gotBody []byte
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Fatalf("method = %s, want POST", r.Method)
@@ -103,9 +103,7 @@ func TestCreateTestInstance_SendsConfigBodyForPlanModules(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadAll(body) failed: %v", err)
 		}
-		if err := json.Unmarshal(data, &gotBody); err != nil {
-			t.Fatalf("Unmarshal(body) failed: %v", err)
-		}
+		gotBody = data
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"test-1"}`))
 	}))
@@ -117,7 +115,7 @@ func TestCreateTestInstance_SendsConfigBodyForPlanModules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTestInstance() failed: %v", err)
 	}
-	if gotBody["alias"] != "job-a" {
-		t.Fatalf("config body alias = %#v, want %q", gotBody["alias"], "job-a")
+	if len(gotBody) != 0 {
+		t.Fatalf("config body = %q, want empty body for plan modules", string(gotBody))
 	}
 }

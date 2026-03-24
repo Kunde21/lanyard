@@ -188,9 +188,8 @@ func (jr *jobRunner) executeModule(ctx context.Context, module PlanModule, planI
 	res := testResult{JobID: jr.job.JobID, ModuleName: module.Name, Alias: alias, Variant: stableVariantMap(jr.job.PlanVariant), StartedAt: startedAt}
 	jr.logf("  test start: job=%s plan=%s module=%s alias=%s", jr.job.JobID, jr.job.PlanName, module.Name, alias)
 
-	planConfig := buildPlanConfig(mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants), jr.job.Alias)
 	moduleVariant := mergeModuleVariant(module.Variant, jr.cfg.ForcedVariants)
-	instance, err := jr.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, planConfig)
+	instance, err := jr.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, nil)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("create test instance failed: %v", err))
 		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, instance.ID, err)
@@ -583,7 +582,7 @@ func chooseVariantValue(key string, values []string) string {
 }
 
 func buildPlanConfig(planVariant map[string]string, alias string) map[string]any {
-	if !usesStaticClientRegistration(planVariant) {
+	if !usesStaticClientRegistration(planVariant) && !isFAPI2PlanVariant(planVariant) {
 		return map[string]any{}
 	}
 	if strings.TrimSpace(alias) == "" {
@@ -617,9 +616,9 @@ func buildPlanConfig(planVariant map[string]string, alias string) map[string]any
 	}
 
 	if isFAPI2 {
-		cfg["server"] = loadJWKS("server.jwks.json")
-		cfg["client"].(map[string]any)["jwks"] = loadJWKS("client.jwks.json")
-		cfg["client2"].(map[string]any)["jwks"] = loadJWKS("client.jwks.json")
+		cfg["server"] = map[string]any{"jwks": loadJWKS("server.jwks.json")}
+		cfg["client"].(map[string]any)["jwks"] = loadPublicJWKS("client.jwks.json")
+		cfg["client2"].(map[string]any)["jwks"] = loadPublicJWKS("client.jwks.json")
 
 		if certPEM, keyPEM, err := loadClientMTLSCert(); err == nil {
 			cfg["client"].(map[string]any)["certificate"] = certPEM
@@ -680,6 +679,34 @@ func loadJWKS(filename string) map[string]any {
 	if err := json.Unmarshal(data, &jwks); err != nil {
 		return nil
 	}
+	return jwks
+}
+
+func loadPublicJWKS(filename string) map[string]any {
+	jwks := loadJWKS(filename)
+	keys, ok := jwks["keys"].([]any)
+	if !ok {
+		return jwks
+	}
+	publicKeys := make([]any, 0, len(keys))
+	for _, rawKey := range keys {
+		key, ok := rawKey.(map[string]any)
+		if !ok {
+			publicKeys = append(publicKeys, rawKey)
+			continue
+		}
+		publicKey := make(map[string]any, len(key))
+		for k, v := range key {
+			switch strings.ToLower(k) {
+			case "d", "p", "q", "dp", "dq", "qi", "oth", "k":
+				continue
+			default:
+				publicKey[k] = v
+			}
+		}
+		publicKeys = append(publicKeys, publicKey)
+	}
+	jwks["keys"] = publicKeys
 	return jwks
 }
 

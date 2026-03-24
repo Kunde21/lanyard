@@ -54,3 +54,24 @@ func TestBuildRPRuntimeRequest_UsesDistinctAliasAndProfileValues(t *testing.T) {
 		t.Fatalf("RedirectURI = %q, want alias-specific callback", req.RedirectURI)
 	}
 }
+
+func TestBuildPlanConfig_FAPI2IncludesStaticClientConfigWithoutRegistrationVariant(t *testing.T) {
+	cfg := buildPlanConfig(map[string]string{
+		"client_auth_type": "private_key_jwt",
+		"fapi_profile":     "plain_fapi",
+	}, "alias-a")
+	if got := cfg["alias"]; got != "alias-a" {
+		t.Fatalf("alias = %#v, want %q", got, "alias-a")
+	}
+	server, ok := cfg["server"].(map[string]any)
+	if !ok || len(server) == 0 {
+		t.Fatalf("server jwks config missing: %#v", cfg["server"])
+	}
+	if _, ok := server["jwks"]; !ok {
+		t.Fatalf("server jwks field missing: %#v", server)
+	}
+	client, ok := cfg["client"].(map[string]any)
+	if !ok || client["redirect_uri"] != "https://rp.localhost/callback/alias-a" {
+		t.Fatalf("client config mismatch: %#v", cfg["client"])
+	}
+}

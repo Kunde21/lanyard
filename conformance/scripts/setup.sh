@@ -38,6 +38,12 @@ mkcert \
 	-key-file "${CERT_DIR}/suite.localhost-key.pem" \
 	suite.localhost
 
+echo "==> Generating certificate for localhost"
+mkcert \
+	-cert-file "${CERT_DIR}/localhost.pem" \
+	-key-file "${CERT_DIR}/localhost-key.pem" \
+	localhost
+
 echo "==> Generating certificate for rp.localhost"
 mkcert \
 	-cert-file "${CERT_DIR}/rp.localhost.pem" \
