@@ -288,6 +288,23 @@ func TestEffectiveSuiteAlias_FallsBackToJobAlias(t *testing.T) {
 	}
 }
 
+func TestFrontChannelTriggerStatusError_IncludesBody(t *testing.T) {
+	err := frontChannelTriggerStatusError(500, "runtime missing")
+	if err == nil {
+		t.Fatal("expected error for failing front-channel status")
+	}
+	if !strings.Contains(err.Error(), "status=500") {
+		t.Fatalf("error = %q, want status detail", err)
+	}
+	if !strings.Contains(err.Error(), "runtime missing") {
+		t.Fatalf("error = %q, want body detail", err)
+	}
+
+	if err := frontChannelTriggerStatusError(302, "redirect"); err != nil {
+		t.Fatalf("expected nil for redirect status, got %v", err)
+	}
+}
+
 func TestNewJobRunner_IsolatesMutableExecutionState(t *testing.T) {
 	cfg := harnessConfig{ArtifactsDir: t.TempDir()}
 	client := newSuiteClient("https://suite.localhost")

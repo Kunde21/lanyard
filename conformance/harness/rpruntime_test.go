@@ -102,6 +102,95 @@ func TestJobRunner_RegistersAndDeletesRuntime(t *testing.T) {
 	}
 }
 
+func TestJobRunner_RegisterRuntimeAlias_UsesProvidedAlias(t *testing.T) {
+	var got rpRuntimeRequest
+
+	runtimeClient := &stubRuntimeClient{
+		registerFn: func(_ context.Context, req rpRuntimeRequest) error {
+			got = req
+			return nil
+		},
+		deleteFn: func(_ context.Context, alias string) error {
+			return nil
+		},
+	}
+
+	job := RunJob{
+		JobID:    "job-001",
+		Alias:    "job-alias",
+		PlanName: "plan-a",
+		PlanVariant: map[string]string{
+			"client_auth_type":           "mtls",
+			"sender_constrain":           "mtls",
+			"authorization_request_type": "simple",
+			"fapi_client_type":           "oidc",
+			"fapi_profile":               "plain_fapi",
+		},
+	}
+	jr := newJobRunner(newSuiteClient("https://suite.localhost"), harnessConfig{ArtifactsDir: t.TempDir(), SuiteURL: "https://suite.localhost"}, job, t.Logf)
+	jr.runtimeClient = runtimeClient
+
+	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias"); err != nil {
+		t.Fatalf("registerRuntimeAlias() failed: %v", err)
+	}
+
+	if got.Alias != "suite-alias" {
+		t.Fatalf("Alias = %q, want %q", got.Alias, "suite-alias")
+	}
+	if got.Issuer != "https://suite.localhost/test/a/suite-alias/" {
+		t.Fatalf("Issuer = %q, want %q", got.Issuer, "https://suite.localhost/test/a/suite-alias/")
+	}
+	if got.RedirectURI != "https://rp.localhost/callback/suite-alias" {
+		t.Fatalf("RedirectURI = %q, want %q", got.RedirectURI, "https://rp.localhost/callback/suite-alias")
+	}
+	if got.Namespace != "suite-alias" {
+		t.Fatalf("Namespace = %q, want %q", got.Namespace, "suite-alias")
+	}
+}
+
+func TestJobRunner_RuntimeCleanupDeletesAllRegisteredAliases(t *testing.T) {
+	var mu sync.Mutex
+	deleted := []string{}
+
+	runtimeClient := &stubRuntimeClient{
+		registerFn: func(_ context.Context, req rpRuntimeRequest) error {
+			return nil
+		},
+		deleteFn: func(_ context.Context, alias string) error {
+			mu.Lock()
+			defer mu.Unlock()
+			deleted = append(deleted, alias)
+			return nil
+		},
+	}
+
+	job := RunJob{JobID: "job-001", Alias: "job-alias", PlanName: "plan-a"}
+	jr := newJobRunner(newSuiteClient("https://suite.localhost"), harnessConfig{ArtifactsDir: t.TempDir(), SuiteURL: "https://suite.localhost"}, job, t.Logf)
+	jr.runtimeClient = runtimeClient
+
+	cleanup, err := jr.registerRuntime(context.Background())
+	if err != nil {
+		t.Fatalf("registerRuntime() failed: %v", err)
+	}
+	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias"); err != nil {
+		t.Fatalf("registerRuntimeAlias() failed: %v", err)
+	}
+	cleanup()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(deleted) != 2 {
+		t.Fatalf("deleted aliases = %v, want 2 aliases", deleted)
+	}
+	seen := map[string]bool{}
+	for _, alias := range deleted {
+		seen[alias] = true
+	}
+	if !seen["job-alias"] || !seen["suite-alias"] {
+		t.Fatalf("deleted aliases = %v, want both job and suite aliases", deleted)
+	}
+}
+
 type stubRuntimeClient struct {
 	registerFn func(context.Context, rpRuntimeRequest) error
 	deleteFn   func(context.Context, string) error

@@ -95,25 +95,33 @@ func (c *httpRPRuntimeClient) Delete(ctx context.Context, alias string) error {
 }
 
 func buildRPRuntimeRequest(job RunJob, planVariant map[string]string, suiteURL string) rpRuntimeRequest {
+	return buildRPRuntimeRequestForAlias(job, planVariant, suiteURL, job.Alias)
+}
+
+func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, suiteURL, alias string) rpRuntimeRequest {
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		alias = job.Alias
+	}
 	requestType := planVariant["request_type"]
 	if strings.TrimSpace(requestType) == "" {
 		requestType = "plain_http_request"
 	}
 	clientID := "local-dev-client"
 	clientSecret := "local-dev-secret-32-bytes-minimum!!"
-	redirectURI := runtimeRedirectURI(job.Alias)
+	redirectURI := runtimeRedirectURI(alias)
 	transport := rp.UserInfoTokenTransportHeader
 	if strings.Contains(strings.ToLower(job.PlanName), "userinfo-bearer-body") {
 		transport = rp.UserInfoTokenTransportBody
 	}
 	return rpRuntimeRequest{
-		Alias:                    job.Alias,
-		Issuer:                   constructIssuer(suiteURL, "", job.Alias),
+		Alias:                    alias,
+		Issuer:                   constructIssuer(suiteURL, "", alias),
 		ClientID:                 clientID,
 		ClientSecret:             clientSecret,
 		RedirectURI:              redirectURI,
 		Scopes:                   []string{"openid", "profile", "email", "phone", "address"},
-		Namespace:                job.Alias,
+		Namespace:                alias,
 		UserInfoTokenTransport:   transport,
 		ClientAuthType:           planVariant["client_auth_type"],
 		SenderConstrain:          planVariant["sender_constrain"],

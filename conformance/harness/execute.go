@@ -210,6 +210,11 @@ func (jr *jobRunner) executeModule(ctx context.Context, module PlanModule, planI
 
 	pollCtx, cancel := context.WithTimeout(ctx, jr.cfg.TestTimeout)
 	defer cancel()
+	if err := jr.registerRuntimeAlias(pollCtx, suiteAlias); err != nil {
+		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("register runtime alias failed: %v", err))
+		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s suite_alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, suiteAlias, testID, err)
+		return res
+	}
 
 	trigger := jr.frontChannelTriggerForModule(module.Name, issuer, moduleVariant)
 	pollInfo, err := pollTestResultWithConfig(pollCtx, jr.client, testID, trigger, jr.cfg.WaitingMaxRetries, jr.cfg.WaitingRetryInterval)
@@ -321,10 +326,24 @@ func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer str
 		return fmt.Errorf("failed calling rp front-channel endpoint: %w", err)
 	}
 	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
 
 	jr.logf("    front-channel trigger: job=%s test_id=%s endpoint=%s issuer=%q status=%d", jr.job.JobID, testID, endpoint, issuer, resp.StatusCode)
+	if err := frontChannelTriggerStatusError(resp.StatusCode, string(body)); err != nil {
+		return err
+	}
 	return nil
+}
+
+func frontChannelTriggerStatusError(statusCode int, body string) error {
+	if statusCode >= 200 && statusCode < 400 {
+		return nil
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return fmt.Errorf("front-channel trigger failed: status=%d", statusCode)
+	}
+	return fmt.Errorf("front-channel trigger failed: status=%d body=%q", statusCode, body)
 }
 
 func moduleTriggerEndpoint(moduleName string) string {
