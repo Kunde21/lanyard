@@ -70,31 +70,29 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 	alias, err := issuerAlias(issuer)
 	if err == nil {
 		runtimeCfg, ok := conformanceRuntimes.Lookup(alias)
-		if !ok {
-			if explicitIssuer != "" {
-				return resolvedRPRequest{}, fmt.Errorf("no registered conformance runtime for issuer alias %q", alias)
+		if ok {
+			resolved.clientID = runtimeCfg.ClientID
+			resolved.clientSecret = runtimeCfg.ClientSecret
+			resolved.redirectURI = runtimeCfg.RedirectURI
+			resolved.scopes = append([]string(nil), runtimeCfg.Scopes...)
+			resolved.stateStore = newNamespacedStateStore(sharedStateStore, runtimeCfg.Namespace)
+			if runtimeCfg.UserInfoTokenTransport != "" {
+				resolved.userInfoTransport = runtimeCfg.UserInfoTokenTransport
 			}
-			return resolved, nil
+			if method, ok := authMethodForRuntime(runtimeCfg); ok {
+				resolved.authMethod = method
+				resolved.hasAuthMethod = true
+			}
+			resolved.requirePAR = strings.HasPrefix(strings.ToLower(runtimeCfg.FAPIProfile), "plain_fapi") || runtimeCfg.RequirePAR
+			resolved.senderConstrain = runtimeCfg.SenderConstrain
+			keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType)
+			if err != nil {
+				return resolvedRPRequest{}, err
+			}
+			resolved.keyProvider = keyProvider
+		} else if explicitIssuer != "" {
+			return resolvedRPRequest{}, fmt.Errorf("no registered conformance runtime for issuer alias %q", alias)
 		}
-		resolved.clientID = runtimeCfg.ClientID
-		resolved.clientSecret = runtimeCfg.ClientSecret
-		resolved.redirectURI = runtimeCfg.RedirectURI
-		resolved.scopes = append([]string(nil), runtimeCfg.Scopes...)
-		resolved.stateStore = newNamespacedStateStore(sharedStateStore, runtimeCfg.Namespace)
-		if runtimeCfg.UserInfoTokenTransport != "" {
-			resolved.userInfoTransport = runtimeCfg.UserInfoTokenTransport
-		}
-		if method, ok := authMethodForRuntime(runtimeCfg); ok {
-			resolved.authMethod = method
-			resolved.hasAuthMethod = true
-		}
-		resolved.requirePAR = strings.HasPrefix(strings.ToLower(runtimeCfg.FAPIProfile), "plain_fapi") || runtimeCfg.RequirePAR
-		resolved.senderConstrain = runtimeCfg.SenderConstrain
-		keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType)
-		if err != nil {
-			return resolvedRPRequest{}, err
-		}
-		resolved.keyProvider = keyProvider
 	}
 	if pathAlias != "" {
 		runtimeCfg, ok := conformanceRuntimes.Lookup(pathAlias)

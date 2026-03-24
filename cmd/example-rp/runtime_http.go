@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -14,6 +15,7 @@ func handleConformanceRuntime(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid runtime payload", http.StatusBadRequest)
 			return
 		}
+		slog.Info("registering runtime", "alias", cfg.Alias, "issuer", cfg.Issuer, "client_id", cfg.ClientID)
 		if err := conformanceRuntimes.Register(cfg); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
