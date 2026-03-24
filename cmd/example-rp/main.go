@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	stdlog "log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,9 +29,9 @@ func main() {
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 
 	const addr = ":8080"
-	log.Printf("example RP listening on %s", addr)
+	slog.Info("example RP listening", "addr", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatalf("example RP server failed: %v", err)
+		stdlog.Fatalf("example RP server failed: %v", err)
 	}
 }
 
@@ -72,6 +73,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	authURL, err := flow.AuthorizationURL(r.Context(), w, r)
 	if err != nil {
+		slog.Info("login initialization failed", "err", err)
 		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
 		return
 	}
@@ -92,6 +94,7 @@ func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 
 	authURL, err := flow.AuthorizationURL(r.Context(), w, r)
 	if err != nil {
+		slog.Info("login initialization failed", "err", err)
 		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
 		return
 	}
@@ -102,6 +105,7 @@ func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authURL, err := flow.AuthorizationURL(r.Context(), w, r)
 		if err != nil {
+			slog.Info("login initialization failed", "err", err)
 			http.Error(w, "failed to initialize login", http.StatusInternalServerError)
 			return
 		}
@@ -128,7 +132,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 	result, err := flow.HandleCallback(r.Context(), w, r)
 	if err != nil {
-		log.Printf("callback processing failed: %v", err)
+		slog.Info("callback processing failed", "err", err)
 		status := callbackStatus(err)
 		http.Error(w, "callback processing failed", status)
 		return
@@ -147,7 +151,7 @@ func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
 
 		result, err := flow.HandleCallback(r.Context(), w, r)
 		if err != nil {
-			log.Printf("callback processing failed: %v", err)
+			slog.Info("callback processing failed", "err", err)
 			status := callbackStatus(err)
 			http.Error(w, "callback processing failed", status)
 			return
