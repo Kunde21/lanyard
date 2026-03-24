@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
 	"flag"
@@ -54,15 +55,9 @@ func generateServerJWKS(dir string) error {
 		return fmt.Errorf("generate RSA: %w", err)
 	}
 
-	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return fmt.Errorf("generate EC: %w", err)
-	}
-
 	jwks := map[string]any{
 		"keys": []map[string]any{
 			rsaToJWK(rsaKey, "server-signing-rsa"),
-			ecToJWK(ecKey, "server-signing-ec"),
 		},
 	}
 
@@ -121,9 +116,13 @@ func generateClientMTLSCert(dir string) error {
 		SerialNumber: big.NewInt(1),
 		NotBefore:    time.Now(),
 		NotAfter:     time.Now().Add(365 * 24 * time.Hour),
-		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
-		DNSNames:     []string{"client-mtls.localhost"},
+		Subject: pkix.Name{
+			CommonName:   "client-mtls.localhost",
+			Organization: []string{"Lanyard Conformance"},
+		},
+		KeyUsage:    x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		DNSNames:    []string{"client-mtls.localhost"},
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
@@ -145,15 +144,20 @@ func generateClientMTLSCert(dir string) error {
 }
 
 func rsaToJWK(key *rsa.PrivateKey, kid string) map[string]any {
+	key.Precompute()
 	return map[string]any{
 		"kty": "RSA",
 		"kid": kid,
 		"use": "sig",
+		"alg": "PS256",
 		"n":   base64URLEncode(key.PublicKey.N.Bytes()),
 		"e":   base64URLEncode(big.NewInt(int64(key.PublicKey.E)).Bytes()),
 		"d":   base64URLEncode(key.D.Bytes()),
 		"p":   base64URLEncode(key.Primes[0].Bytes()),
 		"q":   base64URLEncode(key.Primes[1].Bytes()),
+		"dp":  base64URLEncode(key.Precomputed.Dp.Bytes()),
+		"dq":  base64URLEncode(key.Precomputed.Dq.Bytes()),
+		"qi":  base64URLEncode(key.Precomputed.Qinv.Bytes()),
 	}
 }
 
@@ -162,6 +166,7 @@ func ecToJWK(key *ecdsa.PrivateKey, kid string) map[string]any {
 		"kty": "EC",
 		"kid": kid,
 		"use": "sig",
+		"alg": "ES256",
 		"crv": "P-256",
 		"x":   base64URLEncode(key.PublicKey.X.Bytes()),
 		"y":   base64URLEncode(key.PublicKey.Y.Bytes()),
