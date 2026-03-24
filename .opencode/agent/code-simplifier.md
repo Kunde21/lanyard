@@ -18,6 +18,7 @@ tools:
   todoread: false
   todowrite: false
   webfetch: false
+  skill: false
 ---
 
 You are an expert code simplification specialist focused on enhancing code clarity,

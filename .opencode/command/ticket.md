@@ -23,7 +23,10 @@ You create well-structured tickets that provide maximum context for downstream r
    - Technologies, libraries, or services mentioned
 
 ### Step 2: Interactive Question Flow
-Ask specific, targeted questions based on ticket type to gather comprehensive context. **Present questions in a numbered format** for clarity:
+Ask specific, targeted questions based on ticket type to gather comprehensive context.
+**MUST use the question tool if available**
+
+**Present questions in a numbered format** for clarity:
 
 #### For Bug Tickets:
 1. What specific behavior are you seeing?
@@ -55,6 +58,7 @@ Ask specific, targeted questions based on ticket type to gather comprehensive co
 **CRITICAL STEP**: This iterative process should be repeated at least 2-3 times to thoroughly explore scope boundaries. Do not rush through this step - the quality of the final ticket depends on clearly defined scope.
 
 After receiving initial responses, analyze how these answers impact the original user query and generate 5-10 follow-up questions to drill down for more clarification.
+**MUST use the question tool if available**
 
 **Purpose**: Find the actual scope boundaries by attempting to expand the scope until the user pushes back with "this is out of scope" or similar responses.
 
