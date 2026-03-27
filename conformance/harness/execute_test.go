@@ -154,7 +154,7 @@ func TestPollTestResultStartsConfiguredTest(t *testing.T) {
 		if callCount == 1 {
 			return testInfo{ID: tid, Status: "CONFIGURED", Result: ""}, nil
 		}
-		return testInfo{ID: tid, Status: "RUNNING", Result: "PASSED"}, nil
+		return testInfo{ID: tid, Status: "FINISHED", Result: "PASSED"}, nil
 	}
 	client.onStart = func(tid string) error {
 		startCalled = true
@@ -225,6 +225,44 @@ func TestIsTerminalStatus(t *testing.T) {
 			got := isTerminalStatus(testInfo{Status: tc.status})
 			if got != tc.want {
 				t.Fatalf("isTerminalStatus(%q) = %t, want %t", tc.status, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRequestTypeForPlanVariant(t *testing.T) {
+	tests := []struct {
+		name    string
+		variant map[string]string
+		want    string
+	}{
+		{
+			name:    "explicit request type wins",
+			variant: map[string]string{"request_type": "custom"},
+			want:    "custom",
+		},
+		{
+			name:    "simple maps to plain http request",
+			variant: map[string]string{"authorization_request_type": "simple"},
+			want:    "plain_http_request",
+		},
+		{
+			name:    "par maps to pushed authorization request",
+			variant: map[string]string{"authorization_request_type": "par"},
+			want:    "pushed_authorization_request",
+		},
+		{
+			name:    "default is plain http request",
+			variant: map[string]string{},
+			want:    "plain_http_request",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := requestTypeForPlanVariant(tc.variant)
+			if got != tc.want {
+				t.Fatalf("requestTypeForPlanVariant() = %q, want %q", got, tc.want)
 			}
 		})
 	}

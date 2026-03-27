@@ -200,3 +200,44 @@ func TestResolveRPRequest_UsesCallbackAliasRuntime(t *testing.T) {
 		t.Fatalf("redirectURI = %q, want alias callback URI", resolved.redirectURI)
 	}
 }
+
+func TestRuntimeRequiresPAR(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  rpRuntimeConfig
+		want bool
+	}{
+		{
+			name: "explicit require par",
+			cfg:  rpRuntimeConfig{RequirePAR: true, FAPIProfile: "plain_fapi"},
+			want: true,
+		},
+		{
+			name: "simple plain fapi does not force par",
+			cfg: rpRuntimeConfig{
+				FAPIProfile:              "plain_fapi",
+				AuthorizationRequestType: "simple",
+			},
+			want: false,
+		},
+		{
+			name: "authorization request type par",
+			cfg:  rpRuntimeConfig{AuthorizationRequestType: "par"},
+			want: true,
+		},
+		{
+			name: "request type par",
+			cfg:  rpRuntimeConfig{RequestType: "pushed_authorization_request"},
+			want: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runtimeRequiresPAR(tc.cfg)
+			if got != tc.want {
+				t.Fatalf("runtimeRequiresPAR() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}

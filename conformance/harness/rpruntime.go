@@ -103,10 +103,7 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 	if alias == "" {
 		alias = job.Alias
 	}
-	requestType := planVariant["request_type"]
-	if strings.TrimSpace(requestType) == "" {
-		requestType = "plain_http_request"
-	}
+	requestType := requestTypeForPlanVariant(planVariant)
 	clientID := "local-dev-client"
 	clientSecret := "local-dev-secret-32-bytes-minimum!!"
 	redirectURI := runtimeRedirectURI(alias)
@@ -114,13 +111,18 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 	if strings.Contains(strings.ToLower(job.PlanName), "userinfo-bearer-body") {
 		transport = rp.UserInfoTokenTransportBody
 	}
+	scopes := []string{"openid", "profile", "email", "phone", "address"}
+	if isFAPI2PlanVariant(planVariant) {
+		scopes = []string{"openid"}
+	}
+
 	return rpRuntimeRequest{
 		Alias:                    alias,
 		Issuer:                   constructIssuer(suiteURL, "", alias),
 		ClientID:                 clientID,
 		ClientSecret:             clientSecret,
 		RedirectURI:              redirectURI,
-		Scopes:                   []string{"openid", "profile", "email", "phone", "address"},
+		Scopes:                   scopes,
 		Namespace:                alias,
 		UserInfoTokenTransport:   transport,
 		ClientAuthType:           planVariant["client_auth_type"],

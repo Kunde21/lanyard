@@ -15,7 +15,14 @@ func handleConformanceRuntime(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid runtime payload", http.StatusBadRequest)
 			return
 		}
-		slog.Info("registering runtime", "alias", cfg.Alias, "issuer", cfg.Issuer, "client_id", cfg.ClientID)
+		slog.Info(
+			"registering runtime",
+			"alias", cfg.Alias,
+			"issuer", cfg.Issuer,
+			"client_id", cfg.ClientID,
+			"client_auth_type", cfg.ClientAuthType,
+			"sender_constrain", cfg.SenderConstrain,
+		)
 		if err := conformanceRuntimes.Register(cfg); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return

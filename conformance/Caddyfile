@@ -7,6 +7,8 @@ suite.localhost {
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Port 443
 			header_up X-Ssl-Protocol {tls_version}
+			header_up X-Ssl-Protocol "tls1.3" "TLSv1.3"
+			header_up X-Ssl-Protocol "tls1.2" "TLSv1.2"
 			header_up X-Ssl-Cipher {tls_cipher}
 			header_up X-Test-Mtls-Called-On-Wrong-Host true
 		}
@@ -17,6 +19,8 @@ suite.localhost {
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Port 443
 			header_up X-Ssl-Protocol {tls_version}
+			header_up X-Ssl-Protocol "tls1.3" "TLSv1.3"
+			header_up X-Ssl-Protocol "tls1.2" "TLSv1.2"
 			header_up X-Ssl-Cipher {tls_cipher}
 		}
 	}
@@ -33,6 +37,8 @@ suite.localhost:8444 {
 		header_up X-Forwarded-Proto https
 		header_up X-Forwarded-Port 8444
 		header_up X-Ssl-Protocol {tls_version}
+		header_up X-Ssl-Protocol "tls1.3" "TLSv1.3"
+		header_up X-Ssl-Protocol "tls1.2" "TLSv1.2"
 		header_up X-Ssl-Cipher {tls_cipher}
 		header_up X-Ssl-Cert {http.request.tls.client.certificate_pem}
 		header_up X-Ssl-Cert "[\r\n]+" " "
@@ -48,6 +54,8 @@ rp.localhost {
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Port 443
 			header_up X-Ssl-Protocol {tls_version}
+			header_up X-Ssl-Protocol "tls1.3" "TLSv1.3"
+			header_up X-Ssl-Protocol "tls1.2" "TLSv1.2"
 			header_up X-Ssl-Cipher {tls_cipher}
 			header_up X-Test-Mtls-Called-On-Wrong-Host true
 		}
@@ -58,6 +66,8 @@ rp.localhost {
 			header_up X-Forwarded-Proto https
 			header_up X-Forwarded-Port 443
 			header_up X-Ssl-Protocol {tls_version}
+			header_up X-Ssl-Protocol "tls1.3" "TLSv1.3"
+			header_up X-Ssl-Protocol "tls1.2" "TLSv1.2"
 			header_up X-Ssl-Cipher {tls_cipher}
 		}
 	}
@@ -74,6 +84,8 @@ rp.localhost:8444 {
 		header_up X-Forwarded-Proto https
 		header_up X-Forwarded-Port 8444
 		header_up X-Ssl-Protocol {tls_version}
+		header_up X-Ssl-Protocol "tls1.3" "TLSv1.3"
+		header_up X-Ssl-Protocol "tls1.2" "TLSv1.2"
 		header_up X-Ssl-Cipher {tls_cipher}
 		header_up X-Ssl-Cert {http.request.tls.client.certificate_pem}
 		header_up X-Ssl-Cert "[\r\n]+" " "

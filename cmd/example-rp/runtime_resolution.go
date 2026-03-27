@@ -12,10 +12,12 @@ import (
 	"github.com/Kunde21/lanyard/oidc"
 	"github.com/Kunde21/lanyard/rp"
 	"github.com/Kunde21/lanyard/rp/store/cookie"
+	"github.com/Kunde21/lanyard/rp/store/memory"
 )
 
 var (
 	sharedStateStore    = newSharedStateStore()
+	sharedMemoryStore   = memory.New(10 * time.Minute)
 	conformanceRuntimes = newRuntimeRegistry()
 )
 
@@ -75,7 +77,7 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 			resolved.clientSecret = runtimeCfg.ClientSecret
 			resolved.redirectURI = runtimeCfg.RedirectURI
 			resolved.scopes = append([]string(nil), runtimeCfg.Scopes...)
-			resolved.stateStore = newNamespacedStateStore(sharedStateStore, runtimeCfg.Namespace)
+			resolved.stateStore = stateStoreForRuntime(runtimeCfg)
 			if runtimeCfg.UserInfoTokenTransport != "" {
 				resolved.userInfoTransport = runtimeCfg.UserInfoTokenTransport
 			}
@@ -83,9 +85,9 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 				resolved.authMethod = method
 				resolved.hasAuthMethod = true
 			}
-			resolved.requirePAR = strings.HasPrefix(strings.ToLower(runtimeCfg.FAPIProfile), "plain_fapi") || runtimeCfg.RequirePAR
+			resolved.requirePAR = runtimeRequiresPAR(runtimeCfg)
 			resolved.senderConstrain = runtimeCfg.SenderConstrain
-			keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType)
+			keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
 			if err != nil {
 				return resolvedRPRequest{}, err
 			}
@@ -104,15 +106,15 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 		resolved.clientSecret = runtimeCfg.ClientSecret
 		resolved.redirectURI = runtimeCfg.RedirectURI
 		resolved.scopes = append([]string(nil), runtimeCfg.Scopes...)
-		resolved.stateStore = newNamespacedStateStore(sharedStateStore, runtimeCfg.Namespace)
+		resolved.stateStore = stateStoreForRuntime(runtimeCfg)
 		resolved.userInfoTransport = runtimeCfg.UserInfoTokenTransport
 		if method, ok := authMethodForRuntime(runtimeCfg); ok {
 			resolved.authMethod = method
 			resolved.hasAuthMethod = true
 		}
-		resolved.requirePAR = strings.HasPrefix(strings.ToLower(runtimeCfg.FAPIProfile), "plain_fapi") || runtimeCfg.RequirePAR
+		resolved.requirePAR = runtimeRequiresPAR(runtimeCfg)
 		resolved.senderConstrain = runtimeCfg.SenderConstrain
-		keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType)
+		keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
 		if err != nil {
 			return resolvedRPRequest{}, err
 		}
@@ -120,6 +122,39 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 	}
 
 	return resolved, nil
+}
+
+func stateStoreForRuntime(cfg rpRuntimeConfig) rp.StateStore {
+	if isFAPI2Profile(cfg) {
+		return newNamespacedStateStore(sharedMemoryStore, cfg.Namespace)
+	}
+	return newNamespacedStateStore(sharedStateStore, cfg.Namespace)
+}
+
+func isFAPI2Profile(cfg rpRuntimeConfig) bool {
+	profile := strings.ToLower(strings.TrimSpace(cfg.FAPIProfile))
+	return strings.HasPrefix(profile, "plain_fapi") ||
+		strings.Contains(profile, "fapi2") ||
+		cfg.ClientAuthType == "private_key_jwt" ||
+		cfg.ClientAuthType == "mtls"
+}
+
+func runtimeRequiresPAR(cfg rpRuntimeConfig) bool {
+	if cfg.RequirePAR {
+		return true
+	}
+
+	switch strings.ToLower(strings.TrimSpace(cfg.AuthorizationRequestType)) {
+	case "par", "pushed_authorization_request":
+		return true
+	}
+
+	switch strings.ToLower(strings.TrimSpace(cfg.RequestType)) {
+	case "par", "pushed_authorization_request":
+		return true
+	}
+
+	return false
 }
 
 func callbackAliasFromPath(path string) string {

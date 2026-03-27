@@ -473,7 +473,7 @@ func isTerminalStatus(info testInfo) bool {
 
 func moduleFailed(result testResult) bool {
 	res := strings.ToUpper(strings.TrimSpace(result.Result))
-	if res == "PASSED" || res == "SUCCESS" || res == "SKIPPED" {
+	if res == "PASSED" || res == "SUCCESS" || res == "SKIPPED" || res == "WARNING" {
 		return false
 	}
 	return true
@@ -592,10 +592,7 @@ func buildPlanConfig(planVariant map[string]string, alias string) map[string]any
 
 	isFAPI2 := isFAPI2PlanVariant(planVariant)
 
-	requestType := "plain_http_request"
-	if v := strings.TrimSpace(planVariant["request_type"]); v != "" {
-		requestType = v
-	}
+	requestType := requestTypeForPlanVariant(planVariant)
 
 	cfg := map[string]any{
 		"alias":       alias,
@@ -604,12 +601,14 @@ func buildPlanConfig(planVariant map[string]string, alias string) map[string]any
 			"client_id":     "local-dev-client",
 			"client_secret": "local-dev-secret-32-bytes-minimum!!",
 			"redirect_uri":  redirectURI,
+			"scope":         "openid",
 			"request_type":  requestType,
 		},
 		"client2": map[string]any{
 			"client_id":     "local-dev-client-2",
 			"client_secret": "local-dev-secret-2-32-bytes-min!!",
 			"redirect_uri":  redirectURI,
+			"scope":         "openid",
 			"request_type":  requestType,
 		},
 		"waitTimeoutSeconds": 300,
@@ -636,6 +635,21 @@ func runtimeRedirectURI(alias string) string {
 		return "https://rp.localhost/callback"
 	}
 	return "https://rp.localhost/callback/" + url.PathEscape(trimmed)
+}
+
+func requestTypeForPlanVariant(planVariant map[string]string) string {
+	if v := strings.TrimSpace(planVariant["request_type"]); v != "" {
+		return v
+	}
+
+	switch strings.ToLower(strings.TrimSpace(planVariant["authorization_request_type"])) {
+	case "", "simple":
+		return "plain_http_request"
+	case "par", "pushed_authorization_request":
+		return "pushed_authorization_request"
+	default:
+		return "plain_http_request"
+	}
 }
 
 func isFAPI2PlanVariant(planVariant map[string]string) bool {

@@ -79,7 +79,7 @@ func readConformanceKeySet() (conformanceKeySet, error) {
 	}, nil
 }
 
-func loadClientKeyProvider(authType string) (rp.ClientKeyProvider, error) {
+func loadClientKeyProvider(authType, senderConstrain string) (rp.ClientKeyProvider, error) {
 	switch strings.ToLower(strings.TrimSpace(authType)) {
 	case "private_key_jwt", "mtls":
 	default:
@@ -93,7 +93,11 @@ func loadClientKeyProvider(authType string) (rp.ClientKeyProvider, error) {
 
 	switch strings.ToLower(strings.TrimSpace(authType)) {
 	case "private_key_jwt":
-		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, nil), nil
+		var mtlsCert *tls.Certificate
+		if strings.EqualFold(strings.TrimSpace(senderConstrain), "mtls") {
+			mtlsCert = keys.mtlsCert
+		}
+		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, mtlsCert), nil
 	case "mtls":
 		privateKey, ok := keys.mtlsCert.PrivateKey.(*ecdsa.PrivateKey)
 		if !ok {
