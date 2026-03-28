@@ -1,3 +1,7 @@
+{
+	admin off
+}
+
 suite.localhost {
 	tls /etc/caddy/certs/suite.localhost.pem /etc/caddy/certs/suite.localhost-key.pem
 

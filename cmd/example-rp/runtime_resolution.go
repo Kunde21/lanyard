@@ -73,53 +73,48 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 	if err == nil {
 		runtimeCfg, ok := conformanceRuntimes.Lookup(alias)
 		if ok {
-			resolved.clientID = runtimeCfg.ClientID
-			resolved.clientSecret = runtimeCfg.ClientSecret
-			resolved.redirectURI = runtimeCfg.RedirectURI
-			resolved.scopes = append([]string(nil), runtimeCfg.Scopes...)
-			resolved.stateStore = stateStoreForRuntime(runtimeCfg)
-			if runtimeCfg.UserInfoTokenTransport != "" {
-				resolved.userInfoTransport = runtimeCfg.UserInfoTokenTransport
-			}
-			if method, ok := authMethodForRuntime(runtimeCfg); ok {
-				resolved.authMethod = method
-				resolved.hasAuthMethod = true
-			}
-			resolved.requirePAR = runtimeRequiresPAR(runtimeCfg)
-			resolved.senderConstrain = runtimeCfg.SenderConstrain
-			keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
-			if err != nil {
-				return resolvedRPRequest{}, err
-			}
-			resolved.keyProvider = keyProvider
-		} else if explicitIssuer != "" {
+			return applyRuntimeConfig(resolved, runtimeCfg)
+		}
+		if explicitIssuer != "" {
 			return resolvedRPRequest{}, fmt.Errorf("no registered conformance runtime for issuer alias %q", alias)
 		}
 	}
+
 	if pathAlias != "" {
 		runtimeCfg, ok := conformanceRuntimes.Lookup(pathAlias)
 		if !ok {
 			return resolvedRPRequest{}, fmt.Errorf("no registered conformance runtime for callback alias %q", pathAlias)
 		}
-		resolved.issuer = runtimeCfg.Issuer
-		resolved.clientID = runtimeCfg.ClientID
-		resolved.clientSecret = runtimeCfg.ClientSecret
-		resolved.redirectURI = runtimeCfg.RedirectURI
-		resolved.scopes = append([]string(nil), runtimeCfg.Scopes...)
-		resolved.stateStore = stateStoreForRuntime(runtimeCfg)
-		resolved.userInfoTransport = runtimeCfg.UserInfoTokenTransport
-		if method, ok := authMethodForRuntime(runtimeCfg); ok {
-			resolved.authMethod = method
-			resolved.hasAuthMethod = true
-		}
-		resolved.requirePAR = runtimeRequiresPAR(runtimeCfg)
-		resolved.senderConstrain = runtimeCfg.SenderConstrain
-		keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
-		if err != nil {
-			return resolvedRPRequest{}, err
-		}
-		resolved.keyProvider = keyProvider
+		return applyRuntimeConfig(resolved, runtimeCfg)
 	}
+
+	return resolved, nil
+}
+
+func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig) (resolvedRPRequest, error) {
+	if strings.TrimSpace(runtimeCfg.Issuer) != "" {
+		resolved.issuer = runtimeCfg.Issuer
+	}
+	resolved.clientID = runtimeCfg.ClientID
+	resolved.clientSecret = runtimeCfg.ClientSecret
+	resolved.redirectURI = runtimeCfg.RedirectURI
+	resolved.scopes = append([]string(nil), runtimeCfg.Scopes...)
+	resolved.stateStore = stateStoreForRuntime(runtimeCfg)
+	if runtimeCfg.UserInfoTokenTransport != "" {
+		resolved.userInfoTransport = runtimeCfg.UserInfoTokenTransport
+	}
+	if method, ok := authMethodForRuntime(runtimeCfg); ok {
+		resolved.authMethod = method
+		resolved.hasAuthMethod = true
+	}
+	resolved.requirePAR = runtimeRequiresPAR(runtimeCfg)
+	resolved.senderConstrain = runtimeCfg.SenderConstrain
+
+	keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
+	if err != nil {
+		return resolvedRPRequest{}, err
+	}
+	resolved.keyProvider = keyProvider
 
 	return resolved, nil
 }
@@ -128,7 +123,7 @@ func stateStoreForRuntime(cfg rpRuntimeConfig) rp.StateStore {
 	if isFAPI2Profile(cfg) {
 		return newNamespacedStateStore(sharedMemoryStore, cfg.Namespace)
 	}
-	return newNamespacedStateStore(sharedStateStore, cfg.Namespace)
+	return wrapWithIssuerShorthand(newNamespacedStateStore(sharedStateStore, cfg.Namespace))
 }
 
 func isFAPI2Profile(cfg rpRuntimeConfig) bool {
