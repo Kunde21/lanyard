@@ -4,20 +4,42 @@ This document provides guidance for working with the OpenID Connect RP conforman
 
 ## Quick Reference
 
-### One-Command Execution
+### One-Command Execution (Recommended)
 
-Run the full conformance suite with a single command:
+Run the full conformance suite (OIDC basic + FAPI2 all16 matrix) in parallel:
 
 ```bash
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -args -profile=oidc-rp
+  -args -profile=all-rp \
+  -include-plan-regex='oidcc-client-basic|fapi2-security-profile-final-client-test-plan' \
+  -matrix=fapi2-sp-final-plain-fapi-all16 \
+  -parallel \
+  -max-parallel-runs=8
 ```
+
+This runs 17 plans (1 OIDC + 16 FAPI2 matrix variants) with 334 total tests in ~4 minutes.
 
 ### Available Profiles
 
 - `oidc-rp` - OIDC Relying Party conformance tests
 - `fapi-rp` - FAPI Relying Party conformance tests
 - `all-rp` - Both OIDC and FAPI RP tests
+
+### Available Matrices
+
+Matrices expand a single plan into multiple variants with different configurations:
+
+| Matrix | Plan | Variants | Description |
+|--------|------|----------|-------------|
+| `fapi2-sp-final-plain-fapi-all16` | fapi2-security-profile-final | 16 | Full matrix: all auth types, constrains, request types, client types |
+| `fapi2-sp-final-plain-fapi-first4` | fapi2-security-profile-final | 4 | Smoke test: first 4 variants only |
+| `fapi2-sp-final-plain-fapi-mtls` | fapi2-security-profile-final | 2 | MTLS-only variants |
+
+The all16 matrix covers:
+- Client auth: `private_key_jwt`, `mtls`
+- Sender constrain: `mtls`, `dpop`
+- Authorization request: `simple`, `rar`
+- Client type: `oidc`, `plain_oauth`
 
 ### Common Flags
 
@@ -81,15 +103,6 @@ When the compose stack starts, local wrapper images import `conformance/certs/mk
 
 ## Running Conformance Tests
 
-### Basic Run
-
-Run OIDC RP conformance tests:
-
-```bash
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -args -profile=oidc-rp
-```
-
 ### Run with Plan Filtering
 
 Run only specific plans:
@@ -108,6 +121,41 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
   -args -profile=oidc-rp -module-regex="certification"
 ```
 
+### Smoke Test (Fast)
+
+Run a quick smoke test with just 4 FAPI2 variants:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi2-security-profile-final-client-test-plan' \
+  -matrix=fapi2-sp-final-plain-fapi-first4 \
+  -parallel \
+  -max-parallel-runs=4
+```
+
+### OIDC Basic Only
+
+Run just the OIDC basic certification tests:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=oidc-rp
+```
+
+### FAPI2 All16 Matrix Only
+
+Run all 16 FAPI2 matrix variants in parallel:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi2-security-profile-final-client-test-plan' \
+  -matrix=fapi2-sp-final-plain-fapi-all16 \
+  -parallel \
+  -max-parallel-runs=8
+```
+
 ### Debug Mode
 
 Keep services running and disable redaction for debugging:
@@ -115,19 +163,6 @@ Keep services running and disable redaction for debugging:
 ```bash
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
   -args -profile=oidc-rp -cleanup=false -redact=false
-```
-
-### Parallel Matrix Smoke Run
-
-Run the first four `plain_fapi` matrix cases in parallel:
-
-```bash
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -args -profile=fapi-rp \
-  -include-plan-regex='fapi2-security-profile-final-client-test-plan' \
-  -parallel=true \
-  -max-parallel-runs=4 \
-  -matrix=fapi2-sp-final-plain-fapi-first4
 ```
 
 Services will remain running after the test. Access them at:
