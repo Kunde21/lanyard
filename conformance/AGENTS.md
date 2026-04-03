@@ -21,25 +21,26 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
 
 ### Common Flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-profile` | (required) | Conformance profile: oidc-rp, fapi-rp, or all-rp |
-| `-suite-url` | `https://suite.localhost` | Base URL for conformance suite |
-| `-artifacts-dir` | `./artifacts` | Directory for run artifacts |
-| `-include-plan-regex` | "" | Regex for plan names to include |
-| `-exclude-plan-regex` | "" | Regex for plan names to exclude |
-| `-module-regex` | "" | Regex for module names to include |
-| `-provision-timeout` | `5m` | Max time to provision services |
-| `-plan-timeout` | `30m` | Max time for a single plan |
-| `-test-timeout` | `5m` | Max time for a single test instance |
-| `-cleanup` | `false` | Tear down services after test |
-| `-export-zip` | `true` | Export plan result ZIP artifacts |
-| `-redact` | `true` | Redact sensitive keys in output |
-| `-rebuild-suite` | `false` | Force rebuild suite image |
-| `-parallel` | `false` | Run expanded jobs in parallel |
-| `-max-parallel-runs` | `1` | Maximum concurrent jobs |
-| `-matrix` | `""` | Named matrix expansion for selected plans |
-| `-fail-fast` | `false` | Stop launching queued jobs after the first failure |
+| Flag                  | Default                   | Description                                        |
+|-----------------------|---------------------------|----------------------------------------------------|
+| `-profile`            | (required)                | Conformance profile: oidc-rp, fapi-rp, or all-rp   |
+| `-suite-url`          | `https://suite.localhost` | Base URL for conformance suite                     |
+| `-artifacts-dir`      | `./artifacts`             | Directory for run artifacts                        |
+| `-include-plan-regex` | ""                        | Regex for plan names to include                    |
+| `-exclude-plan-regex` | ""                        | Regex for plan names to exclude                    |
+| `-module-regex`       | ""                        | Regex for module names to include                  |
+| `-provision-timeout`  | `5m`                      | Max time to provision services                     |
+| `-plan-timeout`       | `30m`                     | Max time for a single plan                         |
+| `-test-timeout`       | `60s`                     | Max time for harness to wait for test before calling stop API |
+| `-suite-wait-timeout` | `5s`                      | Suite waitTimeoutSeconds sent to test configuration |
+| `-cleanup`            | `false`                   | Tear down services after test                      |
+| `-export-zip`         | `true`                    | Export plan result ZIP artifacts                   |
+| `-redact`             | `true`                    | Redact sensitive keys in output                    |
+| `-rebuild-suite`      | `false`                   | Force rebuild suite image                          |
+| `-parallel`           | `false`                   | Run expanded jobs in parallel                      |
+| `-max-parallel-runs`  | `1`                       | Maximum concurrent jobs                            |
+| `-matrix`             | `""`                      | Named matrix expansion for selected plans          |
+| `-fail-fast`          | `false`                   | Stop launching queued jobs after the first failure |
 
 ## Setup Requirements
 
@@ -76,9 +77,7 @@ bash conformance/scripts/build_suite.sh
 
 This downloads the upstream OpenID conformance suite and builds a Docker image.
 
-When the compose stack starts, local wrapper images import `conformance/certs/mkcert-rootCA.pem` into
-OS trust for all services (`suite`, `rp`, `mongo`, `caddy`). The suite wrapper also imports it into JVM
-`cacerts` for Java HTTPS trust.
+When the compose stack starts, local wrapper images import `conformance/certs/mkcert-rootCA.pem` into OS trust for all services (`suite`, `rp`, `mongo`, `caddy`). The suite wrapper also imports it into JVM `cacerts` for Java HTTPS trust.
 
 ## Running Conformance Tests
 
@@ -276,6 +275,7 @@ The harness validates the operating system. Run only on Linux.
 ### "missing prerequisite" / "missing suite build script"
 
 Run setup first:
+
 ```bash
 bash conformance/scripts/setup.sh
 ```
@@ -302,6 +302,25 @@ Some tests require browser interaction. Either:
 2. Exclude those modules: `-module-regex="^(?!.*waiting-required)"`
 3. Accept the timeout and review which tests need manual completion
 
+When a timeout needs to be adjusted for only specific plan modules, the upstream suite supports per-module plan config overrides via an `override` object keyed by module name. For example:
+
+```json
+{
+  "waitTimeoutSeconds": 10,
+  "override": {
+    "fapi2-security-profile-final-client-test-invalid-missing-exp": {
+      "waitTimeoutSeconds": 3
+    }
+  }
+}
+```
+
+This works because plan-based test creation reads module config from the saved plan config and merges `override.<moduleName>` into the base config. It does not work by sending a config body when starting an individual test from an existing plan.
+
+For FAPI happy-path tests, `WAITING` can also mean the suite is expecting the RP to call the exported resource endpoint after login completes. The example RP now does this by calling the suite `accounts_endpoint` once the callback succeeds.
+
+The harness also reports each visited front-channel browser URL back to the suite with the browser visit API while following redirects. Keep that behavior intact when changing redirect handling, or the suite may remain in `WAITING` even when the RP flow succeeds.
+
 ### Certificate errors
 
 If you see TLS/certificate errors:
@@ -316,8 +335,13 @@ If you see TLS/certificate errors:
 - `conformance/harness/config.go:8` - Configuration structure
 - `conformance/harness/provision.go:15` - Docker provisioning
 - `conformance/harness/execute.go:58` - Test execution
+- `conformance/harness/suiteclient.go` - Suite browser visit reporting
 - `conformance/harness/profiles.go:18` - Plan selection
 - `conformance/harness/report.go:27` - Report generation
+
+### RP Conformance Behavior
+- `cmd/example-rp/main.go` - Calls the exported FAPI `accounts_endpoint` after successful callback handling
+- `rp/callback.go` - Returns the access token needed for post-login conformance resource calls
 
 ### Configuration
 - `conformance/docker-compose.yml` - Service definitions

@@ -1,7 +1,9 @@
 ---
 name: conformance-runner
 description: Sets up and runs the local OpenID conformance suite, then summarizes all plans and test modules with detailed failure analysis.
-model: openai/gpt-5.4-mini
+#model: openai/gpt-5.4-mini
+#model: synthetic/hf:MiniMaxAI/MiniMax-M2.5
+model: synthetic/hf:zai-org/GLM-4.7
 mode: subagent
 temperature: 0.1
 tools:
