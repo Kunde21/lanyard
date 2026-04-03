@@ -17,6 +17,7 @@ func TestPublicAPIOptionNames(t *testing.T) {
 	_ = rp.WithDiscoveryWebFingerResource("acct:alice@example.com")
 	_ = rp.WithDiscoveryPreloadJWKS(true)
 	_ = rp.SetAuthorizationDetails([]map[string]any{{"type": "account_information"}})
+	_ = rp.SetAuthParam("resource", "urn:example:api")
 
 	tok := rp.Token{
 		AccessToken:  "at",

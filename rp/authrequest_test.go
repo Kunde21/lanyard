@@ -226,6 +226,44 @@ func TestAuthorizationURL_SetAuthorizationDetailsOverridesConfiguredValue(t *tes
 	}
 }
 
+func TestAuthorizationURL_SetAuthParamAddsCustomQueryValue(t *testing.T) {
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req, SetAuthParam("resource", "urn:example:api"))
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+	if got := parsed.Query().Get("resource"); got != "urn:example:api" {
+		t.Fatalf("resource mismatch: got %q", got)
+	}
+}
+
 func providerMetadataJSON(issuer string) string {
 	return fmt.Sprintf(`{
 		"issuer": %q,

@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -21,6 +20,7 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 
 	cfg := authorizationURLConfig{
 		authorizationDetails: r.authorizationDetails,
+		parameters:           make(url.Values),
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -49,7 +49,7 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 		return "", err
 	}
 
-	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails)
+	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails, cfg.parameters)
 
 	if r.shouldUsePAR() {
 		parResp, err := r.pushAuthorizationRequest(ctx, params)
@@ -100,16 +100,10 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 	}
 
 	q := authURL.Query()
-	q.Set("response_type", "code")
-	q.Set("client_id", r.clientID)
-	q.Set("redirect_uri", r.redirectURI)
-	q.Set("scope", strings.Join(r.scopes, " "))
-	q.Set("state", state)
-	q.Set("nonce", nonce)
-	q.Set("code_challenge", challenge)
-	q.Set("code_challenge_method", "S256")
-	if strings.TrimSpace(cfg.authorizationDetails) != "" {
-		q.Set("authorization_details", cfg.authorizationDetails)
+	for key, values := range params {
+		for _, value := range values {
+			q.Add(key, value)
+		}
 	}
 	authURL.RawQuery = q.Encode()
 

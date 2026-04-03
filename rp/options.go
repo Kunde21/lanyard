@@ -5,6 +5,8 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/Kunde21/lanyard/oidc"
@@ -18,6 +20,7 @@ type AuthorizationURLOption func(*authorizationURLConfig)
 
 type authorizationURLConfig struct {
 	authorizationDetails string
+	parameters           url.Values
 }
 
 // WithOIDCClient sets the OIDC discovery and JWKS client.
@@ -189,6 +192,25 @@ func SetAuthorizationDetails(details []map[string]any) AuthorizationURLOption {
 			return
 		}
 		cfg.authorizationDetails = authorizationDetails
+	}
+}
+
+// SetAuthParam sets a single authorization request parameter for a
+// specific authorization URL generation. The parameter is added to the browser
+// redirect query or pushed authorization request body.
+func SetAuthParam(key, value string) AuthorizationURLOption {
+	return func(cfg *authorizationURLConfig) {
+		if cfg == nil {
+			return
+		}
+		name := strings.TrimSpace(key)
+		if name == "" {
+			return
+		}
+		if cfg.parameters == nil {
+			cfg.parameters = make(url.Values)
+		}
+		cfg.parameters.Set(name, value)
 	}
 }
 

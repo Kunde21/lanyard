@@ -206,7 +206,7 @@ func TestPushAuthorizationRequest_RetriesWithDpopNonce(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	params := r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "")
+	params := r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "", nil)
 	parResp, err := r.pushAuthorizationRequest(context.Background(), params)
 	if err != nil {
 		t.Fatalf("pushAuthorizationRequest() failed: %v", err)
@@ -325,6 +325,49 @@ func TestPushAuthorizationRequest_SetAuthorizationDetailsOverridesConfiguredValu
 	}
 	if !strings.Contains(got, "payment_initiation") {
 		t.Fatalf("authorization_details should include override, got %q", got)
+	}
+}
+
+func TestPushAuthorizationRequest_SetAuthParamAddsCustomPARField(t *testing.T) {
+	var gotBody string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(body) failed: %v", err)
+		}
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:test:request-uri", "expires_in": 90})
+	}))
+	defer ts.Close()
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(providerWithAuthorizationAndPAR(ts.URL)),
+		WithRequirePAR(true),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	w := httptest.NewRecorder()
+	if _, err := r.AuthorizationURL(context.Background(), w, req, SetAuthParam("resource", "urn:example:api")); err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	values, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("ParseQuery(body) failed: %v", err)
+	}
+	if got := values.Get("resource"); got != "urn:example:api" {
+		t.Fatalf("resource mismatch: got %q", got)
 	}
 }
 
