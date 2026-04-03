@@ -207,7 +207,13 @@ func isUseDPoPNonce(resp *http.Response) bool {
 	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnauthorized {
 		return false
 	}
-	return strings.Contains(resp.Header.Get("WWW-Authenticate"), `error="use_dpop_nonce"`)
+	if strings.Contains(resp.Header.Get("WWW-Authenticate"), `error="use_dpop_nonce"`) {
+		return true
+	}
+	if resp.Header.Get("DPoP-Nonce") != "" {
+		return true
+	}
+	return false
 }
 
 func isDPoPSupported(method AuthMethod) bool {
