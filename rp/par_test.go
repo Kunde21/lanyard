@@ -191,6 +191,53 @@ func TestPushAuthorizationRequest_RetriesWithDpopNonce(t *testing.T) {
 	}
 }
 
+func TestPushAuthorizationRequest_IncludesAuthorizationDetailsWhenConfigured(t *testing.T) {
+	var gotBody string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(body) failed: %v", err)
+		}
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:test:request-uri", "expires_in": 90})
+	}))
+	defer ts.Close()
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(providerWithAuthorizationAndPAR(ts.URL)),
+		WithRequirePAR(true),
+		WithScopes("accounts"),
+		WithAuthorizationDetails([]map[string]any{
+			{"type": "account_information"},
+		}),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	w := httptest.NewRecorder()
+	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	values, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("ParseQuery(body) failed: %v", err)
+	}
+	if got := values.Get("authorization_details"); got == "" {
+		t.Fatal("authorization_details must be present in PAR body")
+	}
+}
+
 func providerWithAuthorizationAndPAR(parEndpoint string, methods ...string) oidc.ProviderMetadata {
 	provider := providerForAuthMethods(methods...)
 	provider.AuthorizationEndpoint = "https://issuer.test/authorize"

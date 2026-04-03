@@ -48,6 +48,9 @@ func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge stri
 	params.Set("nonce", nonce)
 	params.Set("code_challenge", challenge)
 	params.Set("code_challenge_method", "S256")
+	if strings.TrimSpace(r.authorizationDetails) != "" {
+		params.Set("authorization_details", r.authorizationDetails)
+	}
 	return params
 }
 

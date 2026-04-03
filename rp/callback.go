@@ -79,25 +79,35 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	if err != nil {
 		return nil, err
 	}
-	if tokenResp.IDToken == "" {
-		return nil, fmt.Errorf("%w: token response missing id_token", ErrIDTokenValidationFailed)
-	}
 	if tokenResp.AccessToken == "" {
 		return nil, fmt.Errorf("%w: token response missing access_token", ErrUserInfoValidationFailed)
+	}
+
+	if !r.usesOpenIDScope() {
+		return &CallbackResult{
+			AccessToken: tokenResp.AccessToken,
+		}, nil
+	}
+
+	if tokenResp.IDToken == "" {
+		return nil, fmt.Errorf("%w: token response missing id_token", ErrIDTokenValidationFailed)
 	}
 
 	claims, err := r.validateIDToken(ctx, tokenResp.IDToken, data.Nonce, provider.JWKSURI, provider.IDTokenSigningAlgValuesSupported)
 	if err != nil {
 		return nil, err
 	}
+
 	userInfoEndpoint := r.userInfoEndpoint(provider)
 	if userInfoEndpoint == "" {
 		return nil, fmt.Errorf("%w: provider missing userinfo endpoint", ErrUserInfoValidationFailed)
 	}
+
 	transport := UserInfoTokenTransport(data.UserInfoTokenTransport)
 	if transport == "" {
 		transport = r.userInfoTokenTransport
 	}
+
 	userinfo, err := r.fetchUserInfo(ctx, userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
 	if err != nil {
 		return nil, err
@@ -108,4 +118,13 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 
 func (r *RP) isFAPIProfile() bool {
 	return r.fapiProfile.isFAPI()
+}
+
+func (r *RP) usesOpenIDScope() bool {
+	for _, scope := range r.scopes {
+		if strings.EqualFold(strings.TrimSpace(scope), "openid") {
+			return true
+		}
+	}
+	return false
 }

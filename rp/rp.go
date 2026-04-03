@@ -81,6 +81,8 @@ type RP struct {
 	randReader io.Reader
 	clockSkew  time.Duration
 	dpopNonces *dpopNonceStore
+
+	authorizationDetails string
 }
 
 // New creates a browser-flow relying party that is ready to generate an

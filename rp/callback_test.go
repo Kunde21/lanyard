@@ -408,6 +408,56 @@ func providerMetadataJSONWithEndpoints(issuer string) string {
 	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}`
 }
 
+func TestHandleCallback_AllowsOAuthOnlyTokenResponseWithoutIDToken(t *testing.T) {
+	now := time.Now().UTC()
+	issuer := ""
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/token":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"access","token_type":"Bearer","expires_in":3600}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithScopes("accounts"),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{
+		CodeVerifier: "verifier",
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	got, err := r.HandleCallback(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+	if got.AccessToken != "access" {
+		t.Fatalf("AccessToken = %q, want access", got.AccessToken)
+	}
+}
+
 func providerMetadataJSONWithMTLSEndpoints(issuer string) string {
 	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","mtls_endpoint_aliases":{"token_endpoint":"` + issuer + `/mtls/token","userinfo_endpoint":"` + issuer + `/mtls/userinfo"},"response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}`
 }

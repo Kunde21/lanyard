@@ -137,6 +137,48 @@ func TestAuthorizationURLDoesNotRediscoverAfterNew(t *testing.T) {
 	}
 }
 
+func TestAuthorizationURL_IncludesAuthorizationDetailsWhenConfigured(t *testing.T) {
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithScopes("accounts"),
+		WithAuthorizationDetails([]map[string]any{
+			{"type": "account_information"},
+		}),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+	if got := parsed.Query().Get("authorization_details"); got == "" {
+		t.Fatal("authorization_details must be present")
+	}
+}
+
 func providerMetadataJSON(issuer string) string {
 	return fmt.Sprintf(`{
 		"issuer": %q,

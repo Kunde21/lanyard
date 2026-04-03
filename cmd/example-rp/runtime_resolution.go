@@ -32,19 +32,20 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type resolvedRPRequest struct {
-	issuer            string
-	clientID          string
-	clientSecret      string
-	redirectURI       string
-	scopes            []string
-	stateStore        rp.StateStore
-	userInfoTransport rp.UserInfoTokenTransport
-	authMethod        rp.AuthMethod
-	hasAuthMethod     bool
-	keyProvider       rp.ClientKeyProvider
-	requirePAR        bool
-	senderConstrain   string
-	fapiProfile       string
+	issuer               string
+	clientID             string
+	clientSecret         string
+	redirectURI          string
+	scopes               []string
+	stateStore           rp.StateStore
+	userInfoTransport    rp.UserInfoTokenTransport
+	authMethod           rp.AuthMethod
+	hasAuthMethod        bool
+	keyProvider          rp.ClientKeyProvider
+	requirePAR           bool
+	senderConstrain      string
+	fapiProfile          string
+	authorizationDetails []map[string]any
 }
 
 func newSharedStateStore() rp.StateStore {
@@ -119,6 +120,7 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig) 
 	resolved.requirePAR = runtimeRequiresPAR(runtimeCfg)
 	resolved.senderConstrain = runtimeCfg.SenderConstrain
 	resolved.fapiProfile = runtimeCfg.FAPIProfile
+	resolved.authorizationDetails = authorizationDetailsForRuntime(runtimeCfg)
 
 	keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
 	if err != nil {
@@ -160,6 +162,15 @@ func runtimeRequiresPAR(cfg rpRuntimeConfig) bool {
 	}
 
 	return false
+}
+
+func authorizationDetailsForRuntime(cfg rpRuntimeConfig) []map[string]any {
+	if !strings.EqualFold(strings.TrimSpace(cfg.AuthorizationRequestType), "rar") {
+		return nil
+	}
+	return []map[string]any{
+		{"type": "account_information"},
+	}
 }
 
 func callbackAliasFromPath(path string) string {
@@ -244,6 +255,9 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	}
 	if resolved.keyProvider != nil {
 		opts = append(opts, rp.WithClientKeyProvider(resolved.keyProvider))
+	}
+	if len(resolved.authorizationDetails) > 0 {
+		opts = append(opts, rp.WithAuthorizationDetails(resolved.authorizationDetails))
 	}
 
 	return rp.New(r.Context(), resolved.issuer, resolved.clientID, resolved.clientSecret, resolved.redirectURI, opts...)

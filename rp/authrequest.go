@@ -99,6 +99,9 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 	q.Set("nonce", nonce)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
+	if strings.TrimSpace(r.authorizationDetails) != "" {
+		q.Set("authorization_details", r.authorizationDetails)
+	}
 	authURL.RawQuery = q.Encode()
 
 	return authURL.String(), nil

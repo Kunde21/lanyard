@@ -1,6 +1,7 @@
 package rp
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -154,5 +155,20 @@ func WithDPoPNonceTTL(ttl time.Duration) Option {
 		if ttl > 0 {
 			r.dpopNonces = newDPoPNonceStore(ttl)
 		}
+	}
+}
+
+// WithAuthorizationDetails sets the Rich Authorization Request (RAR) details.
+// The details should be a slice of maps containing authorization detail types.
+func WithAuthorizationDetails(details []map[string]any) Option {
+	return func(r *RP) {
+		if len(details) == 0 {
+			return
+		}
+		b, err := json.Marshal(details)
+		if err != nil {
+			return
+		}
+		r.authorizationDetails = string(b)
 	}
 }
