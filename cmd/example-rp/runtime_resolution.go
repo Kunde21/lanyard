@@ -36,6 +36,7 @@ type resolvedRPRequest struct {
 	keyProvider       rp.ClientKeyProvider
 	requirePAR        bool
 	senderConstrain   string
+	fapiProfile       string
 }
 
 func newSharedStateStore() rp.StateStore {
@@ -109,6 +110,7 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig) 
 	}
 	resolved.requirePAR = runtimeRequiresPAR(runtimeCfg)
 	resolved.senderConstrain = runtimeCfg.SenderConstrain
+	resolved.fapiProfile = runtimeCfg.FAPIProfile
 
 	keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
 	if err != nil {

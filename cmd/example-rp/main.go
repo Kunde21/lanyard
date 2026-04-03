@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	stdlog "log"
 	"log/slog"
 	"net/http"
@@ -130,11 +131,28 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resolved, err := resolveRPRequest(r,
+		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
+		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
+		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
+		rp.UserInfoTokenTransportHeader,
+	)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to resolve RP request: %v", err), http.StatusInternalServerError)
+		return
+	}
+
 	result, err := flow.HandleCallback(r.Context(), w, r)
 	if err != nil {
 		slog.Info("callback processing failed", "err", err)
 		status := callbackStatus(err)
 		http.Error(w, "callback processing failed", status)
+		return
+	}
+
+	if err := maybeFetchConformanceResource(r.Context(), resolved, result.AccessToken); err != nil {
+		slog.Info("conformance resource fetch failed", "err", err)
+		http.Error(w, "callback processing failed", http.StatusBadRequest)
 		return
 	}
 
@@ -173,6 +191,61 @@ func callbackStatus(err error) int {
 		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError
+}
+
+func maybeFetchConformanceResource(ctx context.Context, resolved resolvedRPRequest, accessToken string) error {
+	if accessToken == "" || !isFAPIProfile(resolved) {
+		return nil
+	}
+
+	endpoint, err := conformanceAccountsEndpoint(resolved)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return fmt.Errorf("build conformance resource request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := newRPHTTPClient(resolved.keyProvider).Do(req)
+	if err != nil {
+		return fmt.Errorf("execute conformance resource request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
+		return fmt.Errorf("conformance resource endpoint returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	return nil
+}
+
+func isFAPIProfile(resolved resolvedRPRequest) bool {
+	profile := strings.ToLower(strings.TrimSpace(resolved.fapiProfile))
+	return strings.Contains(profile, "fapi")
+}
+
+func conformanceAccountsEndpoint(resolved resolvedRPRequest) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(resolved.issuer))
+	if err != nil {
+		return "", fmt.Errorf("parse issuer: %w", err)
+	}
+	alias, err := issuerAlias(resolved.issuer)
+	if err != nil {
+		return "", err
+	}
+
+	host := parsed.Host
+	pathPrefix := "/test/a/"
+	if strings.EqualFold(strings.TrimSpace(resolved.senderConstrain), "mtls") {
+		host = parsed.Hostname() + ":8444"
+		pathPrefix = "/test-mtls/a/"
+	}
+
+	return fmt.Sprintf("%s://%s%s%s/open-banking/v1.1/accounts", parsed.Scheme, host, pathPrefix, alias), nil
 }
 
 func issuerFromRequest(r *http.Request) string {

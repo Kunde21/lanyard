@@ -12,6 +12,8 @@ import (
 type CallbackResult struct {
 	// Subject is the OpenID Connect subject from the validated ID token.
 	Subject string
+	// AccessToken is the OAuth 2.0 access token returned by the token endpoint.
+	AccessToken string
 	// UserInfo contains claims returned from the provider's UserInfo endpoint.
 	UserInfo map[string]any
 }
@@ -90,5 +92,5 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, err
 	}
 
-	return &CallbackResult{Subject: claims.Subject, UserInfo: userinfo}, nil
+	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo}, nil
 }

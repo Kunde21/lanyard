@@ -162,6 +162,16 @@ func (c *suiteClient) StartTest(ctx context.Context, testID string) error {
 	return nil
 }
 
+func (c *suiteClient) VisitBrowserURL(ctx context.Context, testID, rawURL string) error {
+	path := "/api/runner/browser/" + url.PathEscape(testID) + "/visit"
+	query := url.Values{}
+	query.Set("url", rawURL)
+	if err := c.doJSON(ctx, http.MethodPost, path, query, nil, nil); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *suiteClient) CancelTest(ctx context.Context, testID string) error {
 	path := "/api/runner/" + url.PathEscape(testID)
 	if err := c.doJSON(ctx, http.MethodDelete, path, nil, nil, nil); err != nil {

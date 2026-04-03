@@ -320,18 +320,62 @@ func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer str
 		return fmt.Errorf("failed to build front-channel request: %w", err)
 	}
 
-	resp, err := jr.frontClient.Do(req)
+	resp, finalURL, err := jr.executeBrowserVisit(triggerCtx, testID, req)
 	if err != nil {
-		return fmt.Errorf("failed calling rp front-channel endpoint: %w", err)
+		return err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
 
-	jr.logf("    front-channel trigger: job=%s test_id=%s endpoint=%s issuer=%q status=%d", jr.job.JobID, testID, endpoint, issuer, resp.StatusCode)
+	jr.logf("    front-channel trigger: job=%s test_id=%s endpoint=%s issuer=%q final_url=%q status=%d", jr.job.JobID, testID, endpoint, issuer, finalURL, resp.StatusCode)
 	if err := frontChannelTriggerStatusError(resp.StatusCode, string(body)); err != nil {
 		return err
 	}
 	return nil
+}
+
+func (jr *jobRunner) executeBrowserVisit(ctx context.Context, testID string, initialReq *http.Request) (*http.Response, string, error) {
+	client := *jr.frontClient
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+
+	currentReq := initialReq
+	for redirects := 0; redirects < 10; redirects++ {
+		resp, err := client.Do(currentReq)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed calling rp front-channel endpoint: %w", err)
+		}
+
+		if err := jr.client.VisitBrowserURL(ctx, testID, currentReq.URL.String()); err != nil {
+			resp.Body.Close()
+			return nil, "", fmt.Errorf("failed marking browser visit %q: %w", currentReq.URL.String(), err)
+		}
+
+		if resp.StatusCode < 300 || resp.StatusCode >= 400 {
+			return resp, currentReq.URL.String(), nil
+		}
+
+		location := strings.TrimSpace(resp.Header.Get("Location"))
+		if location == "" {
+			return resp, currentReq.URL.String(), nil
+		}
+
+		nextURL, err := currentReq.URL.Parse(location)
+		if err != nil {
+			resp.Body.Close()
+			return nil, "", fmt.Errorf("failed resolving redirect location %q: %w", location, err)
+		}
+		resp.Body.Close()
+
+		nextReq, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL.String(), nil)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to build redirect request: %w", err)
+		}
+		currentReq = nextReq
+	}
+
+	return nil, "", fmt.Errorf("front-channel trigger exceeded redirect limit")
 }
 
 func frontChannelTriggerStatusError(statusCode int, body string) error {

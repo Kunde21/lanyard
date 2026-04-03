@@ -3,7 +3,11 @@ package conformanceharness
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/cookiejar"
+	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -340,6 +344,79 @@ func TestFrontChannelTriggerStatusError_IncludesBody(t *testing.T) {
 
 	if err := frontChannelTriggerStatusError(302, "redirect"); err != nil {
 		t.Fatalf("expected nil for redirect status, got %v", err)
+	}
+}
+
+func TestExecuteBrowserVisit_ReportsEachVisitedURL(t *testing.T) {
+	ctx := context.Background()
+
+	var browserServer *httptest.Server
+	browserServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/start":
+			http.Redirect(w, r, browserServer.URL+"/middle", http.StatusFound)
+		case "/middle":
+			http.Redirect(w, r, browserServer.URL+"/done", http.StatusFound)
+		case "/done":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer browserServer.Close()
+
+	visitedMu := sync.Mutex{}
+	visited := []string{}
+	suiteServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, "/api/runner/browser/test-id/visit") {
+			http.NotFound(w, r)
+			return
+		}
+		visitedMu.Lock()
+		visited = append(visited, r.URL.Query().Get("url"))
+		visitedMu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer suiteServer.Close()
+
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar.New() failed: %v", err)
+	}
+
+	jr := &jobRunner{
+		client:      newSuiteClient(suiteServer.URL),
+		frontClient: &http.Client{Jar: jar, Timeout: 5 * time.Second},
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, browserServer.URL+"/start", nil)
+	if err != nil {
+		t.Fatalf("http.NewRequestWithContext() failed: %v", err)
+	}
+
+	resp, finalURL, err := jr.executeBrowserVisit(ctx, "test-id", req)
+	if err != nil {
+		t.Fatalf("executeBrowserVisit() failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("final status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if finalURL != browserServer.URL+"/done" {
+		t.Fatalf("finalURL = %q, want %q", finalURL, browserServer.URL+"/done")
+	}
+
+	visitedMu.Lock()
+	defer visitedMu.Unlock()
+	want := []string{
+		browserServer.URL + "/start",
+		browserServer.URL + "/middle",
+		browserServer.URL + "/done",
+	}
+	if !reflect.DeepEqual(visited, want) {
+		t.Fatalf("visited URLs mismatch\n got: %v\nwant: %v", visited, want)
 	}
 }
 
