@@ -126,9 +126,7 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 	}
 
 	if !r.providerSet {
-		provider, err := DiscoverProvider(ctx, r.issuer,
-			WithDiscoveryOIDCClient(r.oidcClient),
-		)
+		provider, err := r.discoverProviderMetadata(ctx, r.issuer)
 		if err != nil {
 			return nil, fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
 		}
@@ -184,6 +182,34 @@ func (r *RP) validate() error {
 	}
 
 	return nil
+}
+
+func (r *RP) discoverProviderMetadata(ctx context.Context, issuer string) (oidc.ProviderMetadata, error) {
+	if r.usesOpenIDScope() {
+		return DiscoverProvider(ctx, issuer,
+			WithDiscoveryOIDCClient(r.oidcClient),
+		)
+	}
+
+	return oauthOnlyProviderMetadata(issuer), nil
+}
+
+func oauthOnlyProviderMetadata(issuer string) oidc.ProviderMetadata {
+	base := strings.TrimRight(strings.TrimSpace(issuer), "/")
+
+	return oidc.ProviderMetadata{
+		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+			Issuer:                 issuer,
+			AuthorizationEndpoint:  base + "/authorize",
+			TokenEndpoint:          base + "/token",
+			ResponseTypesSupported: []string{"code"},
+			MTLSEndpointAliases: oidc.MTLSEndpointAliases{
+				TokenEndpoint:    base + "/mtls/token",
+				UserinfoEndpoint: base + "/mtls/userinfo",
+			},
+		},
+		PushedAuthorizationRequestEndpoint: base + "/par",
+	}
 }
 
 func validateHTTPSAbsoluteURL(field, raw string) error {

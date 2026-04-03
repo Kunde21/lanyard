@@ -117,6 +117,46 @@ func TestNew_PerformsDiscoveryByDefault(t *testing.T) {
 	}
 }
 
+func TestNew_SkipsDiscoveryForOAuthOnlyScopes(t *testing.T) {
+	failOnRequest := &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("unexpected network request to %s", req.URL.String())
+		return nil, errors.New("unexpected network request")
+	})}
+
+	issuer := "https://issuer.test/path"
+	got, err := New(
+		context.Background(),
+		issuer,
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(failOnRequest),
+		WithScopes("accounts"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if diff := cmp.Diff(issuer+"/authorize", got.provider.AuthorizationEndpoint); diff != "" {
+		t.Fatalf("authorization endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(issuer+"/token", got.provider.TokenEndpoint); diff != "" {
+		t.Fatalf("token endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(issuer+"/par", got.provider.PushedAuthorizationRequestEndpoint); diff != "" {
+		t.Fatalf("PAR endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(issuer+"/mtls/token", got.provider.MTLSEndpointAliases.TokenEndpoint); diff != "" {
+		t.Fatalf("MTLS token endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if got.provider.JWKSURI != "" {
+		t.Fatalf("JWKSURI = %q, want empty", got.provider.JWKSURI)
+	}
+	if got.providerSet != true {
+		t.Fatal("provider should be set after discovery")
+	}
+}
+
 func TestNew_WithProviderMetadata_SkipsDiscoveryHTTP(t *testing.T) {
 	provider := oidc.ProviderMetadata{
 		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{

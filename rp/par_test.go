@@ -126,6 +126,44 @@ func TestAuthorizationURL_UsesMTLSAliasForPARWhenTLSClientAuth(t *testing.T) {
 	}
 }
 
+func TestAuthorizationURL_OAuthOnlySkipsMTLSAliasForDerivedPAR(t *testing.T) {
+	var gotPath string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:test:request-uri", "expires_in": 90})
+	}))
+	defer ts.Close()
+
+	r, err := New(
+		context.Background(),
+		ts.URL,
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithScopes("accounts"),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithClientKeyProvider(NewStaticClientKeyProvider(nil, "", "", &tls.Certificate{})),
+		WithSenderConstrain("mtls"),
+		WithRequirePAR(true),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	w := httptest.NewRecorder()
+	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	if gotPath != "/par" {
+		t.Fatalf("PAR path = %q, want /par", gotPath)
+	}
+}
+
 func TestPushAuthorizationRequest_RetriesWithDpopNonce(t *testing.T) {
 	key := testRSAKey(t)
 	requests := 0
