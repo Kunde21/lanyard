@@ -54,10 +54,14 @@ func composeUp(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := runCommand(ctx, "docker", "compose", "-f", composeFile, "up", "-d"); err != nil {
+	if err := runCommand(ctx, "docker", composeUpArgs(composeFile)...); err != nil {
 		return fmt.Errorf("docker compose up failed: %w", err)
 	}
 	return nil
+}
+
+func composeUpArgs(composeFile string) []string {
+	return []string{"compose", "-f", composeFile, "up", "-d", "--force-recreate", "rp"}
 }
 
 func composeDown(ctx context.Context) error {
@@ -65,10 +69,14 @@ func composeDown(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := runCommand(ctx, "docker", "compose", "-f", composeFile, "down", "-v"); err != nil {
+	if err := runCommand(ctx, "docker", composeDownArgs(composeFile)...); err != nil {
 		return fmt.Errorf("docker compose down failed: %w", err)
 	}
 	return nil
+}
+
+func composeDownArgs(composeFile string) []string {
+	return []string{"compose", "-f", composeFile, "down", "-v"}
 }
 
 func suiteImageExists(ctx context.Context, image string) bool {

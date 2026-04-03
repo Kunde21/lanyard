@@ -35,7 +35,7 @@ services:
     image: lanyard-conformance-rp:1.25
     restart: unless-stopped
     working_dir: /workspace
-    command: ["/usr/local/bin/example-rp"]
+    command: ["/workspace/example-rp"]
     environment:
       RP_INSECURE_TLS: ${RP_INSECURE_TLS:-false}
       RP_ISSUER: ${RP_ISSUER:-https://suite.localhost/test/a/lanyard-local/}
