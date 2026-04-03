@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
 )
@@ -202,4 +203,19 @@ func (s *stubRuntimeClient) Register(ctx context.Context, req rpRuntimeRequest) 
 
 func (s *stubRuntimeClient) Delete(ctx context.Context, alias string) error {
 	return s.deleteFn(ctx, alias)
+}
+
+func TestBuildRPRuntimeRequest_PlainOAuthOmitsOpenIDScope(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "fapi2-security-profile-final-client-test-plan"}
+	req := buildRPRuntimeRequest(job, map[string]string{
+		"client_auth_type":           "private_key_jwt",
+		"sender_constrain":           "dpop",
+		"authorization_request_type": "simple",
+		"fapi_client_type":           "plain_oauth",
+		"fapi_profile":               "plain_fapi",
+	}, "https://suite.localhost")
+
+	if slices.Contains(req.Scopes, "openid") {
+		t.Fatalf("Scopes = %v, must not contain openid for plain_oauth", req.Scopes)
+	}
 }

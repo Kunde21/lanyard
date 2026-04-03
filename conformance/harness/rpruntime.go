@@ -98,6 +98,16 @@ func buildRPRuntimeRequest(job RunJob, planVariant map[string]string, suiteURL s
 	return buildRPRuntimeRequestForAlias(job, planVariant, suiteURL, job.Alias)
 }
 
+func scopesForPlanVariant(planVariant map[string]string) []string {
+	if strings.EqualFold(strings.TrimSpace(planVariant["fapi_client_type"]), "plain_oauth") {
+		return []string{"accounts"}
+	}
+	if isFAPI2PlanVariant(planVariant) {
+		return []string{"openid"}
+	}
+	return []string{"openid", "profile", "email", "phone", "address"}
+}
+
 func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, suiteURL, alias string) rpRuntimeRequest {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -111,10 +121,7 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 	if strings.Contains(strings.ToLower(job.PlanName), "userinfo-bearer-body") {
 		transport = rp.UserInfoTokenTransportBody
 	}
-	scopes := []string{"openid", "profile", "email", "phone", "address"}
-	if isFAPI2PlanVariant(planVariant) {
-		scopes = []string{"openid"}
-	}
+	scopes := scopesForPlanVariant(planVariant)
 
 	return rpRuntimeRequest{
 		Alias:                    alias,

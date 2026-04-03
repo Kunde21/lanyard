@@ -495,3 +495,20 @@ func TestNewJobRunner_IsolatesMutableExecutionState(t *testing.T) {
 		t.Fatalf("runnerB artifactDir = %q, want %q", runnerB.artifactDir, wantB)
 	}
 }
+
+func TestBuildPlanConfig_RARAddsAuthorizationDetailsTypesSupported(t *testing.T) {
+	cfg := buildPlanConfig(map[string]string{
+		"client_auth_type":           "private_key_jwt",
+		"authorization_request_type": "rar",
+		"fapi_client_type":           "plain_oauth",
+		"fapi_profile":               "plain_fapi",
+	}, "alias-a", 5)
+
+	resource, ok := cfg["resource"].(map[string]any)
+	if !ok {
+		t.Fatalf("resource config missing: %#v", cfg["resource"])
+	}
+	if _, ok := resource["authorization_details_types_supported"]; !ok {
+		t.Fatalf("authorization_details_types_supported missing: %#v", resource)
+	}
+}

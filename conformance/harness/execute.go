@@ -644,6 +644,10 @@ func chooseVariantValue(key string, values []string) string {
 	return values[0]
 }
 
+func scopeStringForPlanVariant(planVariant map[string]string) string {
+	return strings.Join(scopesForPlanVariant(planVariant), " ")
+}
+
 func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSeconds int) map[string]any {
 	if !usesStaticClientRegistration(planVariant) && !isFAPI2PlanVariant(planVariant) {
 		return map[string]any{}
@@ -659,6 +663,7 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 	isFAPI2 := isFAPI2PlanVariant(planVariant)
 
 	requestType := requestTypeForPlanVariant(planVariant)
+	scope := scopeStringForPlanVariant(planVariant)
 
 	cfg := map[string]any{
 		"alias":       alias,
@@ -667,14 +672,14 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 			"client_id":     "local-dev-client",
 			"client_secret": "local-dev-secret-32-bytes-minimum!!",
 			"redirect_uri":  redirectURI,
-			"scope":         "openid",
+			"scope":         scope,
 			"request_type":  requestType,
 		},
 		"client2": map[string]any{
 			"client_id":     "local-dev-client-2",
 			"client_secret": "local-dev-secret-2-32-bytes-min!!",
 			"redirect_uri":  redirectURI,
-			"scope":         "openid",
+			"scope":         scope,
 			"request_type":  requestType,
 		},
 		"waitTimeoutSeconds": waitTimeoutSeconds,
@@ -689,6 +694,12 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 			cfg["client"].(map[string]any)["certificate"] = certPEM
 			cfg["client2"].(map[string]any)["certificate"] = certPEM
 			_ = keyPEM
+		}
+	}
+
+	if strings.EqualFold(strings.TrimSpace(planVariant["authorization_request_type"]), "rar") {
+		cfg["resource"] = map[string]any{
+			"authorization_details_types_supported": []string{"account_information"},
 		}
 	}
 

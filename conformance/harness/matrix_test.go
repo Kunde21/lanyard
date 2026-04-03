@@ -1,6 +1,7 @@
 package conformanceharness
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -76,5 +77,49 @@ func TestBuildPlanConfig_FAPI2IncludesStaticClientConfigWithoutRegistrationVaria
 	}
 	if got := cfg["waitTimeoutSeconds"]; got != 5 {
 		t.Fatalf("waitTimeoutSeconds = %#v, want 5", got)
+	}
+}
+
+func TestPlainFAPIMatrix_All16(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi2-sp-final-plain-fapi-all16", "fapi2-security-profile-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 16 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 16", len(variants))
+	}
+
+	got := make([]string, 0, len(variants))
+	for _, variant := range variants {
+		got = append(got, strings.Join([]string{
+			variant.Variant["client_auth_type"],
+			variant.Variant["sender_constrain"],
+			variant.Variant["authorization_request_type"],
+			variant.Variant["fapi_client_type"],
+			variant.Variant["fapi_profile"],
+		}, "|"))
+	}
+
+	want := []string{
+		"private_key_jwt|mtls|simple|oidc|plain_fapi",
+		"private_key_jwt|mtls|simple|plain_oauth|plain_fapi",
+		"private_key_jwt|mtls|rar|oidc|plain_fapi",
+		"private_key_jwt|mtls|rar|plain_oauth|plain_fapi",
+		"private_key_jwt|dpop|simple|oidc|plain_fapi",
+		"private_key_jwt|dpop|simple|plain_oauth|plain_fapi",
+		"private_key_jwt|dpop|rar|oidc|plain_fapi",
+		"private_key_jwt|dpop|rar|plain_oauth|plain_fapi",
+		"mtls|mtls|simple|oidc|plain_fapi",
+		"mtls|mtls|simple|plain_oauth|plain_fapi",
+		"mtls|mtls|rar|oidc|plain_fapi",
+		"mtls|mtls|rar|plain_oauth|plain_fapi",
+		"mtls|dpop|simple|oidc|plain_fapi",
+		"mtls|dpop|simple|plain_oauth|plain_fapi",
+		"mtls|dpop|rar|oidc|plain_fapi",
+		"mtls|dpop|rar|plain_oauth|plain_fapi",
+	}
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("plain fapi all16 mismatch (-want +got):\n%s", diff)
 	}
 }
