@@ -80,6 +80,13 @@ func WithClientCredentialsKeyProvider(provider ClientKeyProvider) ClientCredenti
 	}
 }
 
+// WithClientCredentialsSenderConstrain sets the sender-constraining mode for DPoP or mTLS.
+func WithClientCredentialsSenderConstrain(mode string) ClientCredentialsOption {
+	return func(c *ClientCredentials) {
+		c.senderConstrain = normalizeSenderConstrain(mode)
+	}
+}
+
 func withClientCredentialsNow(now func() time.Time) ClientCredentialsOption {
 	return func(c *ClientCredentials) {
 		if now == nil {

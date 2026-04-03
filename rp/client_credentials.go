@@ -41,6 +41,8 @@ type ClientCredentials struct {
 	allowMethodFallback bool
 	methodMu            sync.RWMutex
 
+	senderConstrain senderConstrainType
+
 	now        func() time.Time
 	randReader io.Reader
 }

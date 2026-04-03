@@ -1,13 +1,14 @@
 package rp
 
 import (
-	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,14 +38,15 @@ type dpopJWK struct {
 }
 
 type dpopPayload struct {
-	JTI string `json:"jti"`
-	HTM string `json:"htm"`
-	HTU string `json:"htu"`
-	IAT int64  `json:"iat"`
-	ATH string `json:"ath,omitempty"`
+	JTI   string `json:"jti"`
+	HTM   string `json:"htm"`
+	HTU   string `json:"htu"`
+	IAT   int64  `json:"iat"`
+	ATH   string `json:"ath,omitempty"`
+	Nonce string `json:"nonce,omitempty"`
 }
 
-func (r *RP) generateDPoPProof(method, url, accessToken string) (string, error) {
+func (r *RP) generateDPoPProof(method, rawURL, accessToken, nonce string) (string, error) {
 	if r.clientKeyProvider == nil {
 		return "", fmt.Errorf("client key provider is required for DPoP")
 	}
@@ -55,107 +57,84 @@ func (r *RP) generateDPoPProof(method, url, accessToken string) (string, error) 
 	}
 
 	alg := r.clientKeyProvider.SigningAlgorithm()
-	kid := r.clientKeyProvider.KeyID()
+	joseAlg := algToJose(alg)
+	if joseAlg == "" {
+		return "", fmt.Errorf("unsupported algorithm for DPoP: %s", alg)
+	}
 
-	var jwk dpopJWK
+	var jwk map[string]any
 	switch key := privateKey.(type) {
 	case *rsa.PrivateKey:
-		jwk = rsaToJWK(key)
+		jwk = rsaJWK(key)
 	case *ecdsa.PrivateKey:
-		jwk = ecdsaToJWK(key)
+		jwk = ecdsaJWK(key)
 	default:
 		return "", fmt.Errorf("unsupported key type for DPoP: %T", privateKey)
 	}
 
-	header := dpopHeader{
-		Typ: "dpop+jwt",
-		Alg: alg,
-		Kid: kid,
-		JWK: jwk,
-	}
-
-	jti := generateJTI(r.randReader)
-
-	iat := time.Now().Unix()
-	payload := dpopPayload{
-		JTI: jti,
-		HTM: method,
-		HTU: url,
-		IAT: iat,
-	}
-
-	if accessToken != "" {
-		hash := sha256.Sum256([]byte(accessToken))
-		payload.ATH = base64.RawURLEncoding.EncodeToString(hash[:])
-	}
-
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal DPoP header: %w", err)
-	}
-
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal DPoP payload: %w", err)
-	}
-
-	signingInput := base64.RawURLEncoding.EncodeToString(headerJSON) + "." + base64.RawURLEncoding.EncodeToString(payloadJSON)
-
-	signature, err := signDpop(signingInput, privateKey, alg)
-	if err != nil {
-		return "", fmt.Errorf("failed to sign DPoP proof: %w", err)
-	}
-
-	return signingInput + "." + signature, nil
-}
-
-func signDpop(input string, privateKey crypto.PrivateKey, alg string) (string, error) {
-	var joseAlg jose.SignatureAlgorithm
-	switch alg {
-	case "PS256":
-		joseAlg = jose.PS256
-	case "PS384":
-		joseAlg = jose.PS384
-	case "PS512":
-		joseAlg = jose.PS512
-	case "RS256":
-		joseAlg = jose.RS256
-	case "RS384":
-		joseAlg = jose.RS384
-	case "RS512":
-		joseAlg = jose.RS512
-	case "ES256":
-		joseAlg = jose.ES256
-	case "ES384":
-		joseAlg = jose.ES384
-	case "ES512":
-		joseAlg = jose.ES512
-	default:
-		return "", fmt.Errorf("unsupported algorithm: %s", alg)
-	}
-
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: joseAlg, Key: privateKey}, nil)
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: joseAlg, Key: privateKey}, &jose.SignerOptions{
+		ExtraHeaders: map[jose.HeaderKey]any{
+			"typ": "dpop+jwt",
+			"jwk": jwk,
+		},
+	})
 	if err != nil {
 		return "", fmt.Errorf("failed to create signer: %w", err)
 	}
 
-	sig, err := signer.Sign([]byte(input))
-	if err != nil {
-		return "", fmt.Errorf("failed to sign: %w", err)
+	payload := dpopPayload{
+		JTI:   generateJTI(r.randReader),
+		HTM:   method,
+		HTU:   normalizeDPoPHTU(rawURL),
+		IAT:   r.now().Unix(),
+		Nonce: nonce,
+	}
+	if accessToken != "" {
+		payload.ATH = dpopAccessTokenHash(accessToken)
 	}
 
+	body, _ := json.Marshal(payload)
+	sig, err := signer.Sign(body)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign DPoP proof: %w", err)
+	}
 	return sig.CompactSerialize()
 }
 
-func rsaToJWK(key *rsa.PrivateKey) dpopJWK {
-	return dpopJWK{
-		Kty: "RSA",
-		N:   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
-		E:   base64.RawURLEncoding.EncodeToString([]byte{1, 0, 1}),
+func algToJose(alg string) jose.SignatureAlgorithm {
+	switch alg {
+	case "PS256":
+		return jose.PS256
+	case "PS384":
+		return jose.PS384
+	case "PS512":
+		return jose.PS512
+	case "RS256":
+		return jose.RS256
+	case "RS384":
+		return jose.RS384
+	case "RS512":
+		return jose.RS512
+	case "ES256":
+		return jose.ES256
+	case "ES384":
+		return jose.ES384
+	case "ES512":
+		return jose.ES512
+	default:
+		return ""
 	}
 }
 
-func ecdsaToJWK(key *ecdsa.PrivateKey) dpopJWK {
+func rsaJWK(key *rsa.PrivateKey) map[string]any {
+	return map[string]any{
+		"kty": "RSA",
+		"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+		"e":   base64.RawURLEncoding.EncodeToString([]byte{1, 0, 1}),
+	}
+}
+
+func ecdsaJWK(key *ecdsa.PrivateKey) map[string]any {
 	curve := key.Curve.Params().Name
 	crv := "P-256"
 	if curve == "P-384" {
@@ -164,12 +143,39 @@ func ecdsaToJWK(key *ecdsa.PrivateKey) dpopJWK {
 		crv = "P-521"
 	}
 
-	return dpopJWK{
-		Kty: "EC",
-		Crv: crv,
-		X:   base64.RawURLEncoding.EncodeToString(key.X.Bytes()),
-		Y:   base64.RawURLEncoding.EncodeToString(key.Y.Bytes()),
+	return map[string]any{
+		"kty": "EC",
+		"crv": crv,
+		"x":   base64.RawURLEncoding.EncodeToString(key.X.Bytes()),
+		"y":   base64.RawURLEncoding.EncodeToString(key.Y.Bytes()),
 	}
+}
+
+func normalizeDPoPHTU(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	u.Fragment = ""
+	u.RawQuery = ""
+	return u.String()
+}
+
+func dpopAccessTokenHash(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return base64.RawURLEncoding.EncodeToString(hash[:])
+}
+
+func extractDPoPNonce(resp *http.Response) (string, bool) {
+	nonce := resp.Header.Get("DPoP-Nonce")
+	if nonce == "" {
+		return "", false
+	}
+	return nonce, true
+}
+
+func isUseDPoPNonce(resp *http.Response) bool {
+	return resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized
 }
 
 func isDPoPSupported(method AuthMethod) bool {

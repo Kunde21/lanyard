@@ -86,7 +86,7 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 	}
 
 	if useDPoP {
-		dpopProof, err := r.generateDPoPProof(http.MethodPost, tokenEndpoint, dpopAccessToken)
+		dpopProof, err := r.generateDPoPProof(http.MethodPost, tokenEndpoint, dpopAccessToken, "")
 		if err != nil {
 			return Token{}, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
 		}
