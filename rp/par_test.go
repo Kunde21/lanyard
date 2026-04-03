@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/Kunde21/lanyard/oidc"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestAuthorizationURL_UsesClientAssertionFormFieldsForPAR(t *testing.T) {
@@ -121,6 +122,71 @@ func TestAuthorizationURL_UsesMTLSAliasForPARWhenTLSClientAuth(t *testing.T) {
 
 	if gotPath != "/mtls/par" {
 		t.Fatalf("PAR path = %q, want /mtls/par", gotPath)
+	}
+}
+
+func TestPushAuthorizationRequest_RetriesWithDpopNonce(t *testing.T) {
+	key := testRSAKey(t)
+	requests := 0
+	var firstProof string
+	var secondProof string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		proof := r.Header.Get("DPoP")
+
+		if requests == 1 {
+			firstProof = proof
+			w.Header().Set("DPoP-Nonce", "nonce-2")
+			w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		secondProof = proof
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:test:request-uri", "expires_in": 90})
+	}))
+	defer ts.Close()
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(providerWithAuthorizationAndPAR(ts.URL, "private_key_jwt")),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain("dpop"),
+		WithRequirePAR(true),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	params := r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge")
+	parResp, err := r.pushAuthorizationRequest(context.Background(), params)
+	if err != nil {
+		t.Fatalf("pushAuthorizationRequest() failed: %v", err)
+	}
+	if parResp.RequestURI != "urn:test:request-uri" {
+		t.Fatalf("request_uri = %q, want urn:test:request-uri", parResp.RequestURI)
+	}
+
+	if diff := cmp.Diff(2, requests); diff != "" {
+		t.Fatalf("request count mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(true, firstProof != ""); diff != "" {
+		t.Fatalf("first DPoP proof missing (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(true, secondProof != ""); diff != "" {
+		t.Fatalf("second DPoP proof missing (-want +got):\n%s", diff)
+	}
+	if firstProof == secondProof {
+		t.Fatalf("expected second proof to differ from first proof (should include new nonce)")
 	}
 }
 

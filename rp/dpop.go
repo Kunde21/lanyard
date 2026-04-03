@@ -104,6 +104,15 @@ func (r *RP) generateDPoPProof(method, rawURL, accessToken, nonce string) (strin
 	return sig.CompactSerialize()
 }
 
+func (r *RP) attachDPoPProof(req *http.Request, accessToken, nonce string) error {
+	proof, err := r.generateDPoPProof(req.Method, req.URL.String(), accessToken, nonce)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("DPoP", proof)
+	return nil
+}
+
 func algToJose(alg string) jose.SignatureAlgorithm {
 	switch alg {
 	case "PS256":

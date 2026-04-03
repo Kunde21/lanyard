@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,6 +28,16 @@ func (r *RP) shouldUsePAR() bool {
 	return r.pushedAuthorizationRequestEndpoint(r.provider) != "" && r.provider.RequirePushedAuthorizationRequests != nil && *r.provider.RequirePushedAuthorizationRequests
 }
 
+func (r *RP) buildPARRequest(ctx context.Context, parEndpoint string, params url.Values) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, parEndpoint, strings.NewReader(params.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build PAR request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	return req, nil
+}
+
 func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge string) url.Values {
 	params := url.Values{}
 	params.Set("response_type", "code")
@@ -46,13 +57,6 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 		return nil, fmt.Errorf("%w: pushed authorization request endpoint not available", ErrInvalidConfiguration)
 	}
 
-	parReq, err := http.NewRequestWithContext(ctx, http.MethodPost, parEndpoint, strings.NewReader(params.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to build PAR request: %w", err)
-	}
-	parReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	parReq.Header.Set("Accept", "application/json")
-
 	if r.clientKeyProvider != nil && r.resolvedAuthMethod == AuthMethodPrivateKeyJWT {
 		assertion, err := r.buildClientAssertion(r.issuer)
 		if err != nil {
@@ -60,28 +64,58 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 		}
 		params.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		params.Set("client_assertion", assertion)
-		parReq.Body = io.NopCloser(strings.NewReader(params.Encode()))
-		parReq.ContentLength = int64(len(params.Encode()))
 	}
 
-	resp, err := r.httpClient.Do(parReq)
+	parReq, err := r.buildPARRequest(ctx, parEndpoint, params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute PAR request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read PAR response: %w", err)
+		return nil, err
 	}
 
-	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("PAR request failed with status %d: %s", resp.StatusCode, string(body))
+	useDPoP := r.shouldUseDPoP()
+	if useDPoP {
+		if err := r.attachDPoPProof(parReq, "", ""); err != nil {
+			return nil, fmt.Errorf("failed to generate DPoP proof: %w", err)
+		}
 	}
 
 	var parResp parResponse
-	if err := json.Unmarshal(body, &parResp); err != nil {
-		return nil, fmt.Errorf("failed to parse PAR response: %w", err)
+	resp, status, preview, err := doJSONStatus(parReq, r.httpClient, http.StatusCreated, func(body io.Reader) error {
+		return json.NewDecoder(body).Decode(&parResp)
+	})
+	if err != nil {
+		var decodeErr *jsonDecodeError
+		if errors.As(err, &decodeErr) {
+			return nil, fmt.Errorf("failed to parse PAR response: %w", decodeErr.Err)
+		}
+		return nil, fmt.Errorf("failed to execute PAR request: %w", err)
+	}
+
+	if useDPoP && isUseDPoPNonce(resp) {
+		nonce, ok := extractDPoPNonce(resp)
+		if ok {
+			retryReq, err := r.buildPARRequest(ctx, parEndpoint, params)
+			if err != nil {
+				return nil, err
+			}
+			if err := r.attachDPoPProof(retryReq, "", nonce); err != nil {
+				return nil, fmt.Errorf("failed to generate DPoP proof: %w", err)
+			}
+
+			resp, status, preview, err = doJSONStatus(retryReq, r.httpClient, http.StatusCreated, func(body io.Reader) error {
+				return json.NewDecoder(body).Decode(&parResp)
+			})
+			if err != nil {
+				var decodeErr *jsonDecodeError
+				if errors.As(err, &decodeErr) {
+					return nil, fmt.Errorf("failed to parse PAR response: %w", decodeErr.Err)
+				}
+				return nil, fmt.Errorf("failed to execute PAR request: %w", err)
+			}
+		}
+	}
+
+	if status != http.StatusCreated {
+		return nil, fmt.Errorf("PAR request failed with status %d: %s", status, preview)
 	}
 
 	if parResp.RequestURI == "" {

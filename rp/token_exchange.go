@@ -11,6 +11,23 @@ import (
 	"strings"
 )
 
+func (r *RP) buildTokenRequest(ctx context.Context, tokenEndpoint string, form url.Values, method AuthMethod) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	switch method {
+	case AuthMethodBasic:
+		req.SetBasicAuth(r.clientID, r.clientSecret)
+	case AuthMethodTLSClientAuth:
+		// mTLS is handled by httpClient Transport
+	}
+
+	return req, nil
+}
+
 func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier string) (Token, error) {
 	method, allowFallback := r.authMethodState()
 
@@ -72,29 +89,19 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 		// client_id not included in form when using Basic auth (only in Authorization header)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint, strings.NewReader(form.Encode()))
+	req, err := r.buildTokenRequest(ctx, tokenEndpoint, form, method)
 	if err != nil {
-		return Token{}, 0, "", fmt.Errorf("failed to build token request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	switch method {
-	case AuthMethodBasic:
-		req.SetBasicAuth(r.clientID, r.clientSecret)
-	case AuthMethodTLSClientAuth:
-		// mTLS is handled by httpClient Transport
+		return Token{}, 0, "", err
 	}
 
 	if useDPoP {
-		dpopProof, err := r.generateDPoPProof(http.MethodPost, tokenEndpoint, dpopAccessToken, "")
-		if err != nil {
+		if err := r.attachDPoPProof(req, dpopAccessToken, ""); err != nil {
 			return Token{}, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
 		}
-		req.Header.Set("DPoP", dpopProof)
 	}
 
 	var tokenResp Token
-	status, preview, err := doJSON(req, r.httpClient, func(body io.Reader) error {
+	resp, status, preview, err := doJSONStatus(req, r.httpClient, http.StatusOK, func(body io.Reader) error {
 		return json.NewDecoder(body).Decode(&tokenResp)
 	})
 	if err != nil {
@@ -103,6 +110,30 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 			return Token{}, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
 		}
 		return Token{}, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+	}
+
+	if useDPoP && isUseDPoPNonce(resp) {
+		nonce, ok := extractDPoPNonce(resp)
+		if ok {
+			retryReq, err := r.buildTokenRequest(ctx, tokenEndpoint, form, method)
+			if err != nil {
+				return Token{}, 0, "", err
+			}
+			if err := r.attachDPoPProof(retryReq, dpopAccessToken, nonce); err != nil {
+				return Token{}, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
+			}
+
+			resp, status, preview, err = doJSONStatus(retryReq, r.httpClient, http.StatusOK, func(body io.Reader) error {
+				return json.NewDecoder(body).Decode(&tokenResp)
+			})
+			if err != nil {
+				var decodeErr *jsonDecodeError
+				if errors.As(err, &decodeErr) {
+					return Token{}, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
+				}
+				return Token{}, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+			}
+		}
 	}
 
 	return tokenResp, status, preview, nil
