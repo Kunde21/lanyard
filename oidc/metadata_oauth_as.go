@@ -36,6 +36,9 @@ type AuthorizationServerMetadata struct {
 	IntrospectionEndpoint                              string              `json:"introspection_endpoint,omitempty"`
 	IntrospectionEndpointAuthMethodsSupported          []string            `json:"introspection_endpoint_auth_methods_supported,omitempty"`
 	IntrospectionEndpointAuthSigningAlgValuesSupported []string            `json:"introspection_endpoint_auth_signing_alg_values_supported,omitempty"`
+	DPoPSigningAlgValuesSupported                      []string            `json:"dpop_signing_alg_values_supported,omitempty"`
+	DPoPBoundAccessTokens                              *bool               `json:"dpop_bound_access_tokens,omitempty"`
+	TLSClientCertificateBoundAccessTokens              *bool               `json:"tls_client_certificate_bound_access_tokens,omitempty"`
 	MTLSEndpointAliases                                MTLSEndpointAliases `json:"mtls_endpoint_aliases,omitempty"`
 	CodeChallengeMethodsSupported                      []string            `json:"code_challenge_methods_supported,omitempty"`
 	Raw                                                json.RawMessage     `json:"-"`

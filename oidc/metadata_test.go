@@ -68,7 +68,7 @@ func TestAuthorizationServerMetadataClaims(t *testing.T) {
 	}
 }
 
-func TestProviderMetadata_DPopsigningAlgValuesSupported(t *testing.T) {
+func TestAuthorizationServerMetadata_DPoPFields(t *testing.T) {
 	metadataJSON := `{
 		"issuer": "https://issuer.test",
 		"authorization_endpoint": "https://issuer.test/authorize",
@@ -76,7 +76,45 @@ func TestProviderMetadata_DPopsigningAlgValuesSupported(t *testing.T) {
 		"response_types_supported": ["code"],
 		"subject_types_supported": ["public"],
 		"id_token_signing_alg_values_supported": ["RS256"],
-		"dpop_signing_alg_values_supported": ["PS256", "ES256"]
+		"dpop_signing_alg_values_supported": ["PS256", "ES256"],
+		"dpop_bound_access_tokens": true,
+		"tls_client_certificate_bound_access_tokens": false
+	}`
+
+	var metadata AuthorizationServerMetadata
+	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	want := []string{"PS256", "ES256"}
+	if diff := cmp.Diff(want, metadata.DPoPSigningAlgValuesSupported); diff != "" {
+		t.Fatalf("DPoPSigningAlgValuesSupported mismatch (-want +got):\n%s", diff)
+	}
+	if metadata.DPoPBoundAccessTokens == nil {
+		t.Fatalf("expected DPoPBoundAccessTokens to be set")
+	}
+	if diff := cmp.Diff(true, *metadata.DPoPBoundAccessTokens); diff != "" {
+		t.Fatalf("DPoPBoundAccessTokens mismatch (-want +got):\n%s", diff)
+	}
+	if metadata.TLSClientCertificateBoundAccessTokens == nil {
+		t.Fatalf("expected TLSClientCertificateBoundAccessTokens to be set")
+	}
+	if diff := cmp.Diff(false, *metadata.TLSClientCertificateBoundAccessTokens); diff != "" {
+		t.Fatalf("TLSClientCertificateBoundAccessTokens mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestProviderMetadata_DPoPFields(t *testing.T) {
+	metadataJSON := `{
+		"issuer": "https://issuer.test",
+		"authorization_endpoint": "https://issuer.test/authorize",
+		"jwks_uri": "https://issuer.test/jwks",
+		"response_types_supported": ["code"],
+		"subject_types_supported": ["public"],
+		"id_token_signing_alg_values_supported": ["RS256"],
+		"dpop_signing_alg_values_supported": ["PS256", "ES256"],
+		"dpop_bound_access_tokens": true,
+		"tls_client_certificate_bound_access_tokens": false
 	}`
 
 	var metadata ProviderMetadata
@@ -87,5 +125,17 @@ func TestProviderMetadata_DPopsigningAlgValuesSupported(t *testing.T) {
 	want := []string{"PS256", "ES256"}
 	if diff := cmp.Diff(want, metadata.DPoPSigningAlgValuesSupported); diff != "" {
 		t.Fatalf("DPoPSigningAlgValuesSupported mismatch (-want +got):\n%s", diff)
+	}
+	if metadata.DPoPBoundAccessTokens == nil {
+		t.Fatalf("expected DPoPBoundAccessTokens to be set")
+	}
+	if diff := cmp.Diff(true, *metadata.DPoPBoundAccessTokens); diff != "" {
+		t.Fatalf("DPoPBoundAccessTokens mismatch (-want +got):\n%s", diff)
+	}
+	if metadata.TLSClientCertificateBoundAccessTokens == nil {
+		t.Fatalf("expected TLSClientCertificateBoundAccessTokens to be set")
+	}
+	if diff := cmp.Diff(false, *metadata.TLSClientCertificateBoundAccessTokens); diff != "" {
+		t.Fatalf("TLSClientCertificateBoundAccessTokens mismatch (-want +got):\n%s", diff)
 	}
 }
