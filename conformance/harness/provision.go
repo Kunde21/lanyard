@@ -61,7 +61,7 @@ func composeUp(ctx context.Context) error {
 }
 
 func composeUpArgs(composeFile string) []string {
-	return []string{"compose", "-f", composeFile, "up", "-d", "--force-recreate", "rp"}
+	return []string{"compose", "-f", composeFile, "up", "-d", "--force-recreate"}
 }
 
 func composeDown(ctx context.Context) error {

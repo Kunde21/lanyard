@@ -8,10 +8,10 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestComposeUpArgs_ForceRecreateRPService(t *testing.T) {
+func TestComposeUpArgs_ForceRecreateAllServices(t *testing.T) {
 	composeFile := "/tmp/docker-compose.yml"
 	got := composeUpArgs(composeFile)
-	want := []string{"compose", "-f", composeFile, "up", "-d", "--force-recreate", "rp"}
+	want := []string{"compose", "-f", composeFile, "up", "-d", "--force-recreate"}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatalf("composeUpArgs() mismatch (-want +got):\n%s", diff)
 	}
