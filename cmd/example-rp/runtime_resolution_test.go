@@ -51,6 +51,32 @@ func TestNewRPHTTPClient_LogsRequestAndResponseDumps(t *testing.T) {
 	}
 }
 
+func TestProviderMetadataForResolvedRequest_UsesMTLSAliasesForConformanceOAuthOnly(t *testing.T) {
+	resolved := resolvedRPRequest{
+		issuer:          "https://suite.localhost/test/a/plain-fapi-10/",
+		scopes:          []string{"accounts"},
+		senderConstrain: "mtls",
+	}
+
+	got, ok := providerMetadataForResolvedRequest(resolved)
+	if !ok {
+		t.Fatal("providerMetadataForResolvedRequest() = not configured, want configured")
+	}
+
+	if diff := cmp.Diff("https://suite.localhost/test/a/plain-fapi-10/authorize", got.AuthorizationEndpoint); diff != "" {
+		t.Fatalf("authorization endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("https://suite.localhost/test/a/plain-fapi-10/par", got.PushedAuthorizationRequestEndpoint); diff != "" {
+		t.Fatalf("PAR endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("https://suite.localhost:8444/test-mtls/a/plain-fapi-10/par", got.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint); diff != "" {
+		t.Fatalf("MTLS PAR endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("https://suite.localhost:8444/test-mtls/a/plain-fapi-10/token", got.MTLSEndpointAliases.TokenEndpoint); diff != "" {
+		t.Fatalf("MTLS token endpoint mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestNewRPHTTPClient_SendsClientCertificateWhenRequested(t *testing.T) {
 	t.Setenv("RP_INSECURE_TLS", "true")
 

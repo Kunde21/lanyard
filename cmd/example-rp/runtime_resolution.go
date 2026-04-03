@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -260,9 +261,63 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	if resolved.keyProvider != nil {
 		opts = append(opts, rp.WithClientKeyProvider(resolved.keyProvider))
 	}
+	if provider, ok := providerMetadataForResolvedRequest(resolved); ok {
+		opts = append(opts, rp.WithProviderMetadata(provider))
+	}
 	if len(resolved.authorizationDetails) > 0 {
 		opts = append(opts, rp.WithAuthorizationDetails(resolved.authorizationDetails))
 	}
 
 	return rp.New(r.Context(), resolved.issuer, resolved.clientID, resolved.clientSecret, resolved.redirectURI, opts...)
+}
+
+func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (oidc.ProviderMetadata, bool) {
+	if scopesContainOpenID(resolved.scopes) {
+		return oidc.ProviderMetadata{}, false
+	}
+	if _, err := issuerAlias(resolved.issuer); err != nil {
+		return oidc.ProviderMetadata{}, false
+	}
+
+	base := strings.TrimRight(strings.TrimSpace(resolved.issuer), "/")
+	mtlsBase, err := conformanceMTLSBaseURL(resolved.issuer)
+	if err != nil {
+		return oidc.ProviderMetadata{}, false
+	}
+
+	return oidc.ProviderMetadata{
+		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+			Issuer:                 resolved.issuer,
+			AuthorizationEndpoint:  base + "/authorize",
+			TokenEndpoint:          base + "/token",
+			ResponseTypesSupported: []string{"code"},
+			MTLSEndpointAliases: oidc.MTLSEndpointAliases{
+				TokenEndpoint:                      mtlsBase + "/token",
+				UserinfoEndpoint:                   mtlsBase + "/userinfo",
+				PushedAuthorizationRequestEndpoint: mtlsBase + "/par",
+			},
+		},
+		PushedAuthorizationRequestEndpoint: base + "/par",
+	}, true
+}
+
+func scopesContainOpenID(scopes []string) bool {
+	for _, scope := range scopes {
+		if strings.EqualFold(strings.TrimSpace(scope), "openid") {
+			return true
+		}
+	}
+	return false
+}
+
+func conformanceMTLSBaseURL(issuer string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(issuer))
+	if err != nil {
+		return "", err
+	}
+	parsed.Host = parsed.Hostname() + ":8444"
+	trimmedPath := strings.TrimRight(parsed.Path, "/")
+	parsed.Path = strings.Replace(trimmedPath, "/test/a/", "/test-mtls/a/", 1)
+	parsed.RawPath = ""
+	return parsed.String(), nil
 }
