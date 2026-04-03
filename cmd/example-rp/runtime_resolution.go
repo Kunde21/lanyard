@@ -4,7 +4,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"net/http/httputil"
 	"os"
 	"strings"
 	"time"
@@ -22,6 +24,12 @@ var (
 )
 
 var defaultScopes = []string{"openid", "profile", "email", "phone", "address"}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 type resolvedRPRequest struct {
 	issuer            string
@@ -182,7 +190,30 @@ func newRPHTTPClient(keyProvider rp.ClientKeyProvider) *http.Client {
 		tlsConfig.Certificates = []tls.Certificate{*keyProvider.TLSCertificate()}
 	}
 
-	transport := &http.Transport{TLSClientConfig: tlsConfig}
+	baseTransport := &http.Transport{TLSClientConfig: tlsConfig}
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		requestDump, err := httputil.DumpRequest(req, true)
+		if err != nil {
+			slog.Info("rp http request dump failed", "method", req.Method, "url", req.URL.String(), "err", err)
+		} else {
+			slog.Info("rp http request dump", "dump", string(requestDump))
+		}
+
+		resp, err := baseTransport.RoundTrip(req)
+		if err != nil {
+			slog.Info("rp http round trip failed", "method", req.Method, "url", req.URL.String(), "err", err)
+			return nil, err
+		}
+
+		responseDump, err := httputil.DumpResponse(resp, true)
+		if err != nil {
+			slog.Info("rp http response dump failed", "method", req.Method, "url", req.URL.String(), "status", resp.StatusCode, "err", err)
+		} else {
+			slog.Info("rp http response dump", "dump", string(responseDump))
+		}
+
+		return resp, nil
+	})
 	return &http.Client{Timeout: 15 * time.Second, Transport: transport}
 }
 
