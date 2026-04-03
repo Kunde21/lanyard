@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Kunde21/lanyard/oidc"
 	jose "github.com/go-jose/go-jose/v4"
 )
 
@@ -414,14 +415,11 @@ func TestHandleCallback_AllowsOAuthOnlyTokenResponseWithoutIDToken(t *testing.T)
 
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/.well-known/openid-configuration":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
 		case "/token":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"access_token":"access","token_type":"Bearer","expires_in":3600}`))
 		default:
-			w.WriteHeader(http.StatusNotFound)
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
 		}
 	}))
 	defer ts.Close()
@@ -434,6 +432,63 @@ func TestHandleCallback_AllowsOAuthOnlyTokenResponseWithoutIDToken(t *testing.T)
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
+		WithScopes("accounts"),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{
+		CodeVerifier: "verifier",
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	got, err := r.HandleCallback(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+	if got.AccessToken != "access" {
+		t.Fatalf("AccessToken = %q, want access", got.AccessToken)
+	}
+}
+
+func TestHandleCallback_UsesConfiguredProviderMetadataForOAuthOnly(t *testing.T) {
+	now := time.Now().UTC()
+	issuer := ""
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/custom-token":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"access","token_type":"Bearer","expires_in":3600}`))
+		default:
+			t.Fatalf("unexpected request path: %s", r.URL.Path)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	provider := oidc.ProviderMetadata{
+		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+			Issuer:                 issuer,
+			AuthorizationEndpoint:  issuer + "/authorize",
+			TokenEndpoint:          issuer + "/custom-token",
+			ResponseTypesSupported: []string{"code"},
+		},
+	}
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
 		WithScopes("accounts"),
 		withNow(func() time.Time { return now }),
 	)

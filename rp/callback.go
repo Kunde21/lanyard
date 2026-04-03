@@ -60,9 +60,13 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	issuer := expectedIssuer
 	r.issuer = issuer
 
-	provider, err := r.oidcClient.DiscoverProvider(ctx, issuer)
-	if err != nil {
-		return nil, fmt.Errorf("%w: discovery failed: %v", ErrTokenExchangeFailed, err)
+	provider := r.provider
+	if !r.providerSet || provider.Issuer == "" {
+		var err error
+		provider, err = r.discoverProviderMetadata(ctx, issuer)
+		if err != nil {
+			return nil, fmt.Errorf("%w: discovery failed: %v", ErrTokenExchangeFailed, err)
+		}
 	}
 	if len(provider.TokenEndpointAuthMethodsSupported) > 0 {
 		if err := r.applySupportedAuthMethods(provider.TokenEndpointAuthMethodsSupported); err != nil {
