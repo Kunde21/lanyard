@@ -174,6 +174,39 @@ func (c *ClientCredentials) validateResolvedAuthMethod(method AuthMethod) error 
 	}
 }
 
+func (c *ClientCredentials) shouldUseDPoP() bool {
+	if c.senderConstrain != SenderConstrainNone {
+		return c.senderConstrain == SenderConstrainDPoP && c.clientKeyProvider != nil && isDPoPSupported(c.resolvedAuthMethod)
+	}
+	return c.clientKeyProvider != nil && isDPoPSupported(c.resolvedAuthMethod)
+}
+
+func (c *ClientCredentials) attachDPoPProof(req *http.Request, nonce string) error {
+	proof, err := buildDPoPProof(c.clientKeyProvider, c.randReader, c.now, req.Method, req.URL.String(), "", nonce)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("DPoP", proof)
+	return nil
+}
+
+func (c *ClientCredentials) buildTokenRequest(ctx context.Context, method AuthMethod, form url.Values) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.provider.TokenEndpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, fmt.Errorf("failed to build token request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	switch method {
+	case AuthMethodBasic:
+		req.SetBasicAuth(c.clientID, c.clientSecret)
+	case AuthMethodTLSClientAuth:
+		// mTLS is handled by httpClient Transport
+	}
+
+	return req, nil
+}
+
 func (c *ClientCredentials) authMethodState() (AuthMethod, bool) {
 	c.methodMu.RLock()
 	method := c.resolvedAuthMethod
@@ -250,21 +283,20 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 		// client_id not included in form when using Basic auth
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.provider.TokenEndpoint, strings.NewReader(form.Encode()))
+	req, err := c.buildTokenRequest(ctx, method, form)
 	if err != nil {
-		return nil, 0, "", fmt.Errorf("failed to build token request: %w", err)
+		return nil, 0, "", err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	switch method {
-	case AuthMethodBasic:
-		req.SetBasicAuth(c.clientID, c.clientSecret)
-	case AuthMethodTLSClientAuth:
-		// mTLS is handled by httpClient Transport
+	useDPoP := c.shouldUseDPoP()
+	if useDPoP {
+		if err := c.attachDPoPProof(req, ""); err != nil {
+			return nil, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
+		}
 	}
 
 	var token Token
-	status, preview, err := doJSON(req, c.httpClient, func(body io.Reader) error {
+	resp, status, preview, err := doJSONStatus(req, c.httpClient, http.StatusOK, func(body io.Reader) error {
 		return json.NewDecoder(body).Decode(&token)
 	})
 	if err != nil {
@@ -273,6 +305,30 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 			return nil, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
 		}
 		return nil, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+	}
+
+	if useDPoP && isUseDPoPNonce(resp) {
+		nonce, ok := extractDPoPNonce(resp)
+		if ok {
+			retryReq, err := c.buildTokenRequest(ctx, method, form)
+			if err != nil {
+				return nil, 0, "", err
+			}
+			if err := c.attachDPoPProof(retryReq, nonce); err != nil {
+				return nil, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
+			}
+
+			resp, status, preview, err = doJSONStatus(retryReq, c.httpClient, http.StatusOK, func(body io.Reader) error {
+				return json.NewDecoder(body).Decode(&token)
+			})
+			if err != nil {
+				var decodeErr *jsonDecodeError
+				if errors.As(err, &decodeErr) {
+					return nil, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
+				}
+				return nil, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+			}
+		}
 	}
 
 	if status != http.StatusOK {

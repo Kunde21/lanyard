@@ -2,11 +2,13 @@ package rp
 
 import (
 	"crypto/ecdsa"
+	crand "crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -47,16 +49,26 @@ type dpopPayload struct {
 }
 
 func (r *RP) generateDPoPProof(method, rawURL, accessToken, nonce string) (string, error) {
-	if r.clientKeyProvider == nil {
+	return buildDPoPProof(r.clientKeyProvider, r.randReader, r.now, method, rawURL, accessToken, nonce)
+}
+
+func buildDPoPProof(keyProvider ClientKeyProvider, randReader io.Reader, now func() time.Time, method, rawURL, accessToken, nonce string) (string, error) {
+	if keyProvider == nil {
 		return "", fmt.Errorf("client key provider is required for DPoP")
 	}
+	if randReader == nil {
+		randReader = crand.Reader
+	}
+	if now == nil {
+		now = func() time.Time { return time.Now().UTC() }
+	}
 
-	privateKey := r.clientKeyProvider.PrivateKey()
+	privateKey := keyProvider.PrivateKey()
 	if privateKey == nil {
 		return "", fmt.Errorf("private key is required for DPoP")
 	}
 
-	alg := r.clientKeyProvider.SigningAlgorithm()
+	alg := keyProvider.SigningAlgorithm()
 	joseAlg := algToJose(alg)
 	if joseAlg == "" {
 		return "", fmt.Errorf("unsupported algorithm for DPoP: %s", alg)
@@ -83,10 +95,10 @@ func (r *RP) generateDPoPProof(method, rawURL, accessToken, nonce string) (strin
 	}
 
 	payload := dpopPayload{
-		JTI:   generateJTI(r.randReader),
+		JTI:   generateJTI(randReader),
 		HTM:   method,
 		HTU:   normalizeDPoPHTU(rawURL),
-		IAT:   r.now().Unix(),
+		IAT:   now().Unix(),
 		Nonce: nonce,
 	}
 	if accessToken != "" {

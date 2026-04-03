@@ -563,10 +563,23 @@ func TestClientCredentials_Token_DPoP(t *testing.T) {
 		t.Fatalf("failed to generate RSA key: %v", err)
 	}
 
-	var gotDPoP string
+	requests := 0
+	var firstDPoP string
+	var secondDPoP string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotDPoP = r.Header.Get("DPoP")
+		requests++
+		proof := r.Header.Get("DPoP")
+
+		if requests == 1 {
+			firstDPoP = proof
+			w.Header().Set("DPoP-Nonce", "nonce-2")
+			w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		secondDPoP = proof
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -599,7 +612,107 @@ func TestClientCredentials_Token_DPoP(t *testing.T) {
 		t.Errorf("expected dpop-token, got: %s", token.AccessToken)
 	}
 
+	if diff := cmp.Diff(2, requests); diff != "" {
+		t.Fatalf("request count mismatch (-want +got):\n%s", diff)
+	}
+	if firstDPoP == "" || secondDPoP == "" {
+		t.Fatal("expected DPoP header to be set on both requests")
+	}
+	if firstDPoP == secondDPoP {
+		t.Fatal("expected nonce retry to generate a different DPoP proof")
+	}
+	if diff := cmp.Diff("DPoP", token.TokenType); diff != "" {
+		t.Fatalf("token type mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestClientCredentials_Token_DPoP_TLSClientAuth(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+
+	var gotDPoP string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotDPoP = r.Header.Get("DPoP")
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "mtls-dpop-token",
+			"token_type":   "DPoP",
+			"expires_in":   3600,
+		})
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	provider := clientCredentialsProvider(server.URL, AuthMethodTLSClientAuth)
+
+	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
+		WithClientCredentialsProviderMetadata(provider),
+		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", &tls.Certificate{})),
+		WithClientCredentialsAuthMethod(AuthMethodTLSClientAuth),
+		WithClientCredentialsSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	token, err := client.Token(ctx)
+	if err != nil {
+		t.Fatalf("Token() error: %v", err)
+	}
+
+	if token.AccessToken != "mtls-dpop-token" {
+		t.Errorf("expected mtls-dpop-token, got: %s", token.AccessToken)
+	}
 	if gotDPoP == "" {
 		t.Fatal("expected DPoP header to be set")
+	}
+}
+
+func TestClientCredentials_Token_MTLSSenderConstrainDisablesDPoP(t *testing.T) {
+	var gotDPoP string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotDPoP = r.Header.Get("DPoP")
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "no-dpop-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	provider := clientCredentialsProvider(server.URL, AuthMethodPrivateKeyJWT)
+	keyProvider, err := createTestKeyProvider()
+	if err != nil {
+		t.Fatalf("failed to create test key provider: %v", err)
+	}
+
+	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
+		WithClientCredentialsProviderMetadata(provider),
+		WithClientCredentialsKeyProvider(keyProvider),
+		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientCredentialsSenderConstrain("mtls"),
+	)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	token, err := client.Token(ctx)
+	if err != nil {
+		t.Fatalf("Token() error: %v", err)
+	}
+
+	if token.AccessToken != "no-dpop-token" {
+		t.Errorf("expected no-dpop-token, got: %s", token.AccessToken)
+	}
+	if gotDPoP != "" {
+		t.Fatalf("expected no DPoP header when mtls sender constraint is set, got %q", gotDPoP)
 	}
 }
