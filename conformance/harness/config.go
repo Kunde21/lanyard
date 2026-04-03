@@ -19,6 +19,8 @@ type harnessConfig struct {
 	ProvisionTimeout     time.Duration
 	PlanTimeout          time.Duration
 	TestTimeout          time.Duration
+	SuiteWaitTimeout     time.Duration
+	WaitTimeoutSeconds   int
 	SkipProvision        bool
 	Cleanup              bool
 	ExportZip            bool

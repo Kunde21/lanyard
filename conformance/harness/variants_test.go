@@ -2,6 +2,7 @@ package conformanceharness
 
 import (
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -75,6 +76,7 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	originalIncludePlanRegex := *flagIncludePlanRegex
 	originalExcludePlanRegex := *flagExcludePlanRegex
 	originalModuleRegex := *flagModuleRegex
+	originalTestTimeout := *flagTestTimeout
 	originalSkipProvision := *flagSkipProvision
 	originalForceVariants := append(repeatableStringFlag(nil), flagForceVariants...)
 
@@ -85,6 +87,7 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 		*flagIncludePlanRegex = originalIncludePlanRegex
 		*flagExcludePlanRegex = originalExcludePlanRegex
 		*flagModuleRegex = originalModuleRegex
+		*flagTestTimeout = originalTestTimeout
 		*flagSkipProvision = originalSkipProvision
 		flagForceVariants = originalForceVariants
 	}()
@@ -95,6 +98,8 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	*flagIncludePlanRegex = ""
 	*flagExcludePlanRegex = ""
 	*flagModuleRegex = ""
+	*flagTestTimeout = 30 * time.Second
+	*flagSuiteWaitTimeout = 5500 * time.Millisecond
 	*flagSkipProvision = true
 	flagForceVariants = repeatableStringFlag{
 		"client_auth_type=client_secret_post",
@@ -115,5 +120,8 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	}
 	if diff := cmp.Diff(true, cfg.SkipProvision); diff != "" {
 		t.Fatalf("skip provision mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(6, cfg.WaitTimeoutSeconds); diff != "" {
+		t.Fatalf("wait timeout seconds mismatch (-want +got):\n%s", diff)
 	}
 }

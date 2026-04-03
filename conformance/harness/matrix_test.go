@@ -59,7 +59,7 @@ func TestBuildPlanConfig_FAPI2IncludesStaticClientConfigWithoutRegistrationVaria
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type": "private_key_jwt",
 		"fapi_profile":     "plain_fapi",
-	}, "alias-a")
+	}, "alias-a", 5)
 	if got := cfg["alias"]; got != "alias-a" {
 		t.Fatalf("alias = %#v, want %q", got, "alias-a")
 	}
@@ -73,5 +73,8 @@ func TestBuildPlanConfig_FAPI2IncludesStaticClientConfigWithoutRegistrationVaria
 	client, ok := cfg["client"].(map[string]any)
 	if !ok || client["redirect_uri"] != "https://rp.localhost/callback/alias-a" {
 		t.Fatalf("client config mismatch: %#v", cfg["client"])
+	}
+	if got := cfg["waitTimeoutSeconds"]; got != 5 {
+		t.Fatalf("waitTimeoutSeconds = %#v, want 5", got)
 	}
 }

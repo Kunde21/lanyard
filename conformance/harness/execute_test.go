@@ -347,6 +347,52 @@ func TestFrontChannelTriggerStatusError_IncludesBody(t *testing.T) {
 	}
 }
 
+func TestFrontChannelTriggerStatusErrorForModule_NegativeTests(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		moduleName string
+		wantErr    bool
+	}{
+		{
+			name:       "negative test with 400 returns nil",
+			statusCode: 400,
+			moduleName: "fapi2-security-profile-final-client-test-ensure-authorization-response-with-invalid-state-fails",
+			wantErr:    false,
+		},
+		{
+			name:       "negative test with 200 returns nil",
+			statusCode: 200,
+			moduleName: "fapi2-security-profile-final-client-test-ensure-authorization-response-with-invalid-state-fails",
+			wantErr:    false,
+		},
+		{
+			name:       "positive test with 400 returns error",
+			statusCode: 400,
+			moduleName: "fapi2-security-profile-final-client-test-happy-path",
+			wantErr:    true,
+		},
+		{
+			name:       "positive test with 200 returns nil",
+			statusCode: 200,
+			moduleName: "fapi2-security-profile-final-client-test-happy-path",
+			wantErr:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := frontChannelTriggerStatusErrorForModule(tt.statusCode, "test body", tt.moduleName)
+			if tt.wantErr && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("expected nil, got error: %v", err)
+			}
+		})
+	}
+}
+
 func TestExecuteBrowserVisit_ReportsEachVisitedURL(t *testing.T) {
 	ctx := context.Background()
 

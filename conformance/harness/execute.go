@@ -143,7 +143,7 @@ func (jr *jobRunner) execute(ctx context.Context) planResult {
 	defer runtimeCleanup()
 
 	planVariant := mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants)
-	planConfig := buildPlanConfig(planVariant, jr.job.Alias)
+	planConfig := buildPlanConfig(planVariant, jr.job.Alias, jr.cfg.WaitTimeoutSeconds)
 	created, err := jr.client.CreatePlan(planCtx, jr.job.PlanName, planVariant, planConfig)
 	if err != nil {
 		failPlan(&planRes, fmt.Sprintf("create plan failed: %v", err))
@@ -273,17 +273,17 @@ func effectiveSuiteAlias(infoAlias, jobAlias string) string {
 }
 
 func (jr *jobRunner) triggerFrontChannelStep(ctx context.Context, testID string) error {
-	return jr.doTrigger(ctx, testID, "/login", "", nil)
+	return jr.doTrigger(ctx, testID, "/login", "", nil, "")
 }
 
 func (jr *jobRunner) frontChannelTriggerForModule(moduleName, issuer string, variant map[string]any) func(context.Context, string) error {
 	return func(ctx context.Context, testID string) error {
 		endpoint := moduleTriggerEndpoint(moduleName)
-		return jr.doTrigger(ctx, testID, endpoint, issuer, variant)
+		return jr.doTrigger(ctx, testID, endpoint, issuer, variant, moduleName)
 	}
 }
 
-func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer string, variant map[string]any) error {
+func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer string, variant map[string]any, moduleName string) error {
 	triggerCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
@@ -328,7 +328,7 @@ func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer str
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
 
 	jr.logf("    front-channel trigger: job=%s test_id=%s endpoint=%s issuer=%q final_url=%q status=%d", jr.job.JobID, testID, endpoint, issuer, finalURL, resp.StatusCode)
-	if err := frontChannelTriggerStatusError(resp.StatusCode, string(body)); err != nil {
+	if err := frontChannelTriggerStatusErrorForModule(resp.StatusCode, string(body), moduleName); err != nil {
 		return err
 	}
 	return nil
@@ -387,6 +387,25 @@ func frontChannelTriggerStatusError(statusCode int, body string) error {
 		return fmt.Errorf("front-channel trigger failed: status=%d", statusCode)
 	}
 	return fmt.Errorf("front-channel trigger failed: status=%d body=%q", statusCode, body)
+}
+
+func frontChannelTriggerStatusErrorForModule(statusCode int, body string, moduleName string) error {
+	if isNegativeTestModule(moduleName) {
+		if statusCode >= 400 {
+			return nil
+		}
+	}
+	return frontChannelTriggerStatusError(statusCode, body)
+}
+
+func isNegativeTestModule(moduleName string) bool {
+	negativeModules := map[string]bool{
+		"fapi2-security-profile-final-client-test-invalid-authorization-response-iss":                             true,
+		"fapi2-security-profile-final-client-test-remove-authorization-response-iss":                              true,
+		"fapi2-security-profile-final-client-test-ensure-authorization-response-with-invalid-state-fails":         true,
+		"fapi2-security-profile-final-client-test-ensure-authorization-response-with-invalid-missing-state-fails": true,
+	}
+	return negativeModules[moduleName]
 }
 
 func moduleTriggerEndpoint(moduleName string) string {
@@ -625,9 +644,12 @@ func chooseVariantValue(key string, values []string) string {
 	return values[0]
 }
 
-func buildPlanConfig(planVariant map[string]string, alias string) map[string]any {
+func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSeconds int) map[string]any {
 	if !usesStaticClientRegistration(planVariant) && !isFAPI2PlanVariant(planVariant) {
 		return map[string]any{}
+	}
+	if waitTimeoutSeconds <= 0 {
+		waitTimeoutSeconds = 5
 	}
 	if strings.TrimSpace(alias) == "" {
 		alias = "lanyard-local"
@@ -655,7 +677,7 @@ func buildPlanConfig(planVariant map[string]string, alias string) map[string]any
 			"scope":         "openid",
 			"request_type":  requestType,
 		},
-		"waitTimeoutSeconds": 300,
+		"waitTimeoutSeconds": waitTimeoutSeconds,
 	}
 
 	if isFAPI2 {

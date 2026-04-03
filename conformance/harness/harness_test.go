@@ -26,7 +26,8 @@ var (
 
 	flagProvisionTimeout  = flag.Duration("provision-timeout", 5*time.Minute, "Max time to provision local conformance stack")
 	flagPlanTimeout       = flag.Duration("plan-timeout", 1*time.Hour, "Max time for a single plan execution")
-	flagTestTimeout       = flag.Duration("test-timeout", 10*time.Minute, "Max time for a single test instance")
+	flagTestTimeout       = flag.Duration("test-timeout", 60*time.Second, "Max time for harness to wait for a test to complete before calling stop API")
+	flagSuiteWaitTimeout  = flag.Duration("suite-wait-timeout", 5*time.Second, "Suite waitTimeoutSeconds sent to test configuration")
 	flagWaitingMaxRetries = flag.Int("waiting-max-retries", 0, "Max front-channel trigger retries while test status is WAITING")
 	flagWaitingInterval   = flag.Duration("waiting-retry-interval", 10*time.Second, "Interval between WAITING front-channel trigger retries")
 	flagSkipProvision     = flag.Bool("skip-provision", false, "Skip docker compose provisioning and use an already-running stack")
@@ -123,6 +124,8 @@ func parseHarnessConfig() (harnessConfig, error) {
 		ProvisionTimeout:     *flagProvisionTimeout,
 		PlanTimeout:          *flagPlanTimeout,
 		TestTimeout:          *flagTestTimeout,
+		SuiteWaitTimeout:     *flagSuiteWaitTimeout,
+		WaitTimeoutSeconds:   durationToWholeSeconds(*flagSuiteWaitTimeout),
 		SkipProvision:        *flagSkipProvision,
 		Cleanup:              *flagCleanup,
 		ExportZip:            *flagExportZip,
@@ -153,6 +156,12 @@ func parseHarnessConfig() (harnessConfig, error) {
 	}
 	if cfg.ProvisionTimeout <= 0 || cfg.PlanTimeout <= 0 || cfg.TestTimeout <= 0 {
 		return harnessConfig{}, fmt.Errorf("timeouts must be positive durations")
+	}
+	if cfg.SuiteWaitTimeout <= 0 {
+		return harnessConfig{}, fmt.Errorf("-suite-wait-timeout must be a positive duration")
+	}
+	if cfg.WaitTimeoutSeconds <= 0 {
+		return harnessConfig{}, fmt.Errorf("-suite-wait-timeout must resolve to at least 1 second for suite waitTimeoutSeconds")
 	}
 	if cfg.MaxParallelRuns <= 0 {
 		return harnessConfig{}, fmt.Errorf("-max-parallel-runs must be >= 1")
@@ -188,6 +197,14 @@ func parseHarnessConfig() (harnessConfig, error) {
 	cfg.ForcedVariants = forcedVariants
 
 	return cfg, nil
+}
+
+func durationToWholeSeconds(d time.Duration) int {
+	seconds := int(d / time.Second)
+	if d%time.Second != 0 {
+		seconds++
+	}
+	return seconds
 }
 
 func compileRegex(raw string) (*regexp.Regexp, error) {
