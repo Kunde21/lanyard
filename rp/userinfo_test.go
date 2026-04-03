@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestFetchUserInfo(t *testing.T) {
@@ -213,5 +215,75 @@ func TestFetchUserInfo_DPoPAuthorization(t *testing.T) {
 
 	if gotDPoP == "" {
 		t.Fatalf("expected DPoP header to be set")
+	}
+}
+
+func TestFetchUserInfo_RetriesWithDpopNonce(t *testing.T) {
+	key := testRSAKey(t)
+	requests := 0
+	var firstAuth string
+	var secondAuth string
+	var firstProof string
+	var secondProof string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		auth := r.Header.Get("Authorization")
+		proof := r.Header.Get("DPoP")
+
+		if requests == 1 {
+			firstAuth = auth
+			firstProof = proof
+			w.Header().Set("DPoP-Nonce", "nonce-2")
+			w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		secondAuth = auth
+		secondProof = proof
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"sub":"sub-123","name":"Alice"}`)
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods("private_key_jwt")
+	provider.UserinfoEndpoint = ts.URL
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("fetchUserInfo() failed: %v", err)
+	}
+
+	if diff := cmp.Diff(2, requests); diff != "" {
+		t.Fatalf("request count mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("DPoP access-token", firstAuth); diff != "" {
+		t.Fatalf("first Authorization header mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("DPoP access-token", secondAuth); diff != "" {
+		t.Fatalf("second Authorization header mismatch (-want +got):\n%s", diff)
+	}
+	if firstProof == "" || secondProof == "" {
+		t.Fatalf("expected DPoP proofs on both requests")
+	}
+	if firstProof == secondProof {
+		t.Fatalf("expected second proof to differ from first proof (should include new nonce)")
 	}
 }

@@ -150,7 +150,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := maybeFetchConformanceResource(r.Context(), resolved, result.AccessToken); err != nil {
+	if err := maybeFetchConformanceResource(r.Context(), flow, resolved, result.AccessToken); err != nil {
 		slog.Info("conformance resource fetch failed", "err", err)
 		http.Error(w, "callback processing failed", http.StatusBadRequest)
 		return
@@ -193,7 +193,11 @@ func callbackStatus(err error) int {
 	return http.StatusInternalServerError
 }
 
-func maybeFetchConformanceResource(ctx context.Context, resolved resolvedRPRequest, accessToken string) error {
+type dpopProofAttacher interface {
+	AttachDPoPProof(req *http.Request, accessToken, nonce string) error
+}
+
+func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolved resolvedRPRequest, accessToken string) error {
 	if accessToken == "" || !isFAPIProfile(resolved) {
 		return nil
 	}
@@ -203,24 +207,73 @@ func maybeFetchConformanceResource(ctx context.Context, resolved resolvedRPReque
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("build conformance resource request: %w", err)
+	dpopEnabled := strings.EqualFold(strings.TrimSpace(resolved.senderConstrain), "dpop")
+	var attacher dpopProofAttacher
+	if dpopEnabled {
+		var ok bool
+		attacher, ok = flow.(dpopProofAttacher)
+		if !ok {
+			return fmt.Errorf("dpop sender constraint requires proof attacher")
+		}
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := newRPHTTPClient(resolved.keyProvider).Do(req)
-	if err != nil {
-		return fmt.Errorf("execute conformance resource request: %w", err)
+	client := newRPHTTPClient(resolved.keyProvider)
+	doRequest := func(nonce string) (*http.Response, string, error) {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		if err != nil {
+			return nil, "", fmt.Errorf("build conformance resource request: %w", err)
+		}
+
+		if dpopEnabled {
+			req.Header.Set("Authorization", "DPoP "+accessToken)
+			if err := attacher.AttachDPoPProof(req, accessToken, nonce); err != nil {
+				return nil, "", fmt.Errorf("attach DPoP proof: %w", err)
+			}
+		} else {
+			req.Header.Set("Authorization", "Bearer "+accessToken)
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, "", fmt.Errorf("execute conformance resource request: %w", err)
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
+		if err != nil {
+			return nil, "", fmt.Errorf("read conformance resource response: %w", err)
+		}
+
+		return resp, strings.TrimSpace(string(body)), nil
 	}
-	defer resp.Body.Close()
+
+	resp, preview, err := doRequest("")
+	if err != nil {
+		return err
+	}
+
+	if dpopEnabled && isUseDPoPNonceChallenge(resp) {
+		nonce := strings.TrimSpace(resp.Header.Get("DPoP-Nonce"))
+		if nonce != "" {
+			resp, preview, err = doRequest(nonce)
+			if err != nil {
+				return err
+			}
+		}
+	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
-		return fmt.Errorf("conformance resource endpoint returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("conformance resource endpoint returned status %d: %s", resp.StatusCode, preview)
 	}
 
 	return nil
+}
+
+func isUseDPoPNonceChallenge(resp *http.Response) bool {
+	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnauthorized {
+		return false
+	}
+	return strings.Contains(resp.Header.Get("WWW-Authenticate"), `error="use_dpop_nonce"`)
 }
 
 func isFAPIProfile(resolved resolvedRPRequest) bool {

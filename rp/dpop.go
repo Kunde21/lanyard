@@ -113,6 +113,11 @@ func (r *RP) attachDPoPProof(req *http.Request, accessToken, nonce string) error
 	return nil
 }
 
+// AttachDPoPProof adds a DPoP proof to req.
+func (r *RP) AttachDPoPProof(req *http.Request, accessToken, nonce string) error {
+	return r.attachDPoPProof(req, accessToken, nonce)
+}
+
 func algToJose(alg string) jose.SignatureAlgorithm {
 	switch alg {
 	case "PS256":

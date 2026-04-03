@@ -19,8 +19,16 @@ func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedS
 		return nil, fmt.Errorf("%w: %v", ErrUserInfoValidationFailed, err)
 	}
 
+	useDPoP := transport == UserInfoTokenTransportHeader && r.shouldUseDPoP()
+	if useDPoP {
+		req.Header.Set("Authorization", "DPoP "+accessToken)
+		if err := r.attachDPoPProof(req, accessToken, ""); err != nil {
+			return nil, fmt.Errorf("%w: failed to generate DPoP proof: %v", ErrUserInfoValidationFailed, err)
+		}
+	}
+
 	var payload map[string]any
-	status, preview, err := doJSON(req, r.httpClient, func(body io.Reader) error {
+	resp, status, preview, err := doJSONStatus(req, r.httpClient, http.StatusOK, func(body io.Reader) error {
 		return json.NewDecoder(body).Decode(&payload)
 	})
 	if err != nil {
@@ -29,6 +37,34 @@ func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedS
 			return nil, fmt.Errorf("%w: failed to decode userinfo JSON: %v", ErrUserInfoValidationFailed, decodeErr.Err)
 		}
 		return nil, fmt.Errorf("%w: failed to execute userinfo request: %v", ErrUserInfoValidationFailed, err)
+	}
+
+	if useDPoP && isUseDPoPNonce(resp) {
+		nonce, ok := extractDPoPNonce(resp)
+		if ok {
+			retryReq, err := buildUserInfoRequest(ctx, endpoint, accessToken, transport)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %v", ErrUserInfoValidationFailed, err)
+			}
+			retryReq.Header.Set("Authorization", "DPoP "+accessToken)
+			if err := r.attachDPoPProof(retryReq, accessToken, nonce); err != nil {
+				return nil, fmt.Errorf("%w: failed to generate DPoP proof: %v", ErrUserInfoValidationFailed, err)
+			}
+
+			resp, status, preview, err = doJSONStatus(retryReq, r.httpClient, http.StatusOK, func(body io.Reader) error {
+				return json.NewDecoder(body).Decode(&payload)
+			})
+			if err != nil {
+				var decodeErr *jsonDecodeError
+				if errors.As(err, &decodeErr) {
+					return nil, fmt.Errorf("%w: failed to decode userinfo JSON: %v", ErrUserInfoValidationFailed, decodeErr.Err)
+				}
+				return nil, fmt.Errorf("%w: failed to execute userinfo request: %v", ErrUserInfoValidationFailed, err)
+			}
+			if status != http.StatusOK {
+				return nil, fmt.Errorf("%w: userinfo endpoint returned status %d: %s", ErrUserInfoValidationFailed, status, preview)
+			}
+		}
 	}
 
 	if status != http.StatusOK {

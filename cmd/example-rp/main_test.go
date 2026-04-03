@@ -2,13 +2,17 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/Kunde21/lanyard/oidc"
 	"github.com/Kunde21/lanyard/rp"
+	"github.com/google/go-cmp/cmp"
 )
 
 type stubFlow struct {
@@ -124,6 +128,91 @@ func TestCallbackErrorMappingAndNoSecrets(t *testing.T) {
 				t.Fatalf("response body should not expose sensitive details")
 			}
 		})
+	}
+}
+
+func TestMaybeFetchConformanceResource_RetriesWithDpopNonce(t *testing.T) {
+	t.Setenv("RP_INSECURE_TLS", "true")
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	keyProvider := rp.NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)
+
+	requests := 0
+	var firstAuth string
+	var secondAuth string
+	var firstProof string
+	var secondProof string
+	var gotPath string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		gotPath = r.URL.Path
+		auth := r.Header.Get("Authorization")
+		proof := r.Header.Get("DPoP")
+
+		if requests == 1 {
+			firstAuth = auth
+			firstProof = proof
+			w.Header().Set("DPoP-Nonce", "nonce-2")
+			w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		secondAuth = auth
+		secondProof = proof
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{}`)
+	}))
+	defer ts.Close()
+
+	flow, err := rp.New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"",
+		"https://rp.test/callback",
+		rp.WithProviderMetadata(oidc.ProviderMetadata{AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{AuthorizationEndpoint: "https://issuer.test/authorize"}}),
+		rp.WithAuthMethod(rp.AuthMethodPrivateKeyJWT),
+		rp.WithClientKeyProvider(keyProvider),
+		rp.WithSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("rp.New() failed: %v", err)
+	}
+
+	resolved := resolvedRPRequest{
+		issuer:          ts.URL + "/test/a/alias-a/",
+		keyProvider:     keyProvider,
+		senderConstrain: "dpop",
+		fapiProfile:     "plain_fapi",
+	}
+
+	if err := maybeFetchConformanceResource(context.Background(), flow, resolved, "access-token"); err != nil {
+		t.Fatalf("maybeFetchConformanceResource() failed: %v", err)
+	}
+
+	if diff := cmp.Diff(2, requests); diff != "" {
+		t.Fatalf("request count mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("DPoP access-token", firstAuth); diff != "" {
+		t.Fatalf("first Authorization header mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("DPoP access-token", secondAuth); diff != "" {
+		t.Fatalf("second Authorization header mismatch (-want +got):\n%s", diff)
+	}
+	if firstProof == "" || secondProof == "" {
+		t.Fatalf("expected DPoP proofs on both requests")
+	}
+	if firstProof == secondProof {
+		t.Fatalf("expected second proof to differ from first proof (should include new nonce)")
+	}
+	if diff := cmp.Diff("/test/a/alias-a/open-banking/v1.1/accounts", gotPath); diff != "" {
+		t.Fatalf("conformance resource path mismatch (-want +got):\n%s", diff)
 	}
 }
 
