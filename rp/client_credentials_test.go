@@ -16,6 +16,7 @@ import (
 
 	"github.com/Kunde21/lanyard/oidc"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestClientCredentials_TokenSourceInterface(t *testing.T) {
@@ -130,8 +131,11 @@ func TestClientCredentials_Token_BasicAuth(t *testing.T) {
 		TokenType:   "Bearer",
 		ExpiresIn:   3600,
 	}
-	if diff := cmp.Diff(want, token); diff != "" {
+	if diff := cmp.Diff(want, token, cmpopts.IgnoreUnexported(Token{})); diff != "" {
 		t.Errorf("Token() mismatch (-want +got):\n%s", diff)
+	}
+	if err := token.DecodeRaw(&map[string]any{}); err != nil {
+		t.Fatalf("DecodeRaw() failed: %v", err)
 	}
 	if token.IDToken != "" {
 		t.Errorf("Token().IDToken = %q, want empty", token.IDToken)
@@ -191,7 +195,7 @@ func TestClientCredentials_Token_PostAuth(t *testing.T) {
 		TokenType:   "Bearer",
 		ExpiresIn:   3600,
 	}
-	if diff := cmp.Diff(want, token); diff != "" {
+	if diff := cmp.Diff(want, token, cmpopts.IgnoreUnexported(Token{})); diff != "" {
 		t.Errorf("Token() mismatch (-want +got):\n%s", diff)
 	}
 	if token.IDToken != "" {

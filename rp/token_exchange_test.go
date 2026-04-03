@@ -79,6 +79,47 @@ func TestExchangeTokenRequestShape(t *testing.T) {
 	if got.AccessToken == "" || got.IDToken == "" {
 		t.Fatalf("token response missing expected fields")
 	}
+	if err := got.DecodeRaw(&map[string]any{}); err != nil {
+		t.Fatalf("DecodeRaw() failed: %v", err)
+	}
+	if _, err := got.Extra("transaction_id"); err == nil {
+		t.Fatalf("Extra(transaction_id) expected error when field is absent")
+	}
+}
+
+func TestExchangeToken_PreservesRawPayload(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"idtoken","authorization_details":[{"type":"account_information"}],"transaction_id":"txn-1"}`)
+	}))
+	defer ts.Close()
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(providerForAuthMethods("client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	token, err := r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	if err != nil {
+		t.Fatalf("exchangeToken() failed: %v", err)
+	}
+
+	txn, err := token.Extra("transaction_id")
+	if err != nil {
+		t.Fatalf("Extra() failed: %v", err)
+	}
+	if diff := cmp.Diff("txn-1", txn); diff != "" {
+		t.Fatalf("transaction_id mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestExchangeTokenNon200PreviewBounded(t *testing.T) {

@@ -2,7 +2,6 @@ package rp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -103,7 +102,11 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 
 	var tokenResp Token
 	resp, status, preview, err := doJSONStatus(req, r.httpClient, http.StatusOK, func(body io.Reader) error {
-		return json.NewDecoder(body).Decode(&tokenResp)
+		payload, err := io.ReadAll(body)
+		if err != nil {
+			return fmt.Errorf("failed to read token response: %w", err)
+		}
+		return parseTokenResponse(payload, &tokenResp)
 	})
 	if err != nil {
 		var decodeErr *jsonDecodeError
@@ -129,7 +132,11 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 			}
 
 			resp, status, preview, err = doJSONStatus(retryReq, r.httpClient, http.StatusOK, func(body io.Reader) error {
-				return json.NewDecoder(body).Decode(&tokenResp)
+				payload, err := io.ReadAll(body)
+				if err != nil {
+					return fmt.Errorf("failed to read token response: %w", err)
+				}
+				return parseTokenResponse(payload, &tokenResp)
 			})
 			if err != nil {
 				var decodeErr *jsonDecodeError

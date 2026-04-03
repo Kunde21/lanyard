@@ -326,7 +326,11 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 
 	var token Token
 	resp, status, preview, err := doJSONStatus(req, c.httpClient, http.StatusOK, func(body io.Reader) error {
-		return json.NewDecoder(body).Decode(&token)
+		payload, err := io.ReadAll(body)
+		if err != nil {
+			return fmt.Errorf("failed to read token response: %w", err)
+		}
+		return parseTokenResponse(payload, &token)
 	})
 	if err != nil {
 		var decodeErr *jsonDecodeError
@@ -352,7 +356,11 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 			}
 
 			resp, status, preview, err = doJSONStatus(retryReq, c.httpClient, http.StatusOK, func(body io.Reader) error {
-				return json.NewDecoder(body).Decode(&token)
+				payload, err := io.ReadAll(body)
+				if err != nil {
+					return fmt.Errorf("failed to read token response: %w", err)
+				}
+				return parseTokenResponse(payload, &token)
 			})
 			if err != nil {
 				var decodeErr *jsonDecodeError

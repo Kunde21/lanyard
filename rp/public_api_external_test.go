@@ -26,6 +26,8 @@ func TestPublicAPIOptionNames(t *testing.T) {
 		RefreshToken: "rt",
 		Scope:        "openid profile",
 	}
+	_ = tok.DecodeRaw(&struct{}{})
+	_, _ = tok.Extra("authorization_details")
 	if tok.IDToken == "" {
 		t.Fatalf("Token should expose IDToken for authorization code responses")
 	}
