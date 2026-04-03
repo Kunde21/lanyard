@@ -108,6 +108,7 @@ func TestAuthorizationURL_UsesMTLSAliasForPARWhenTLSClientAuth(t *testing.T) {
 		WithProviderMetadata(provider),
 		WithAuthMethod(AuthMethodTLSClientAuth),
 		WithClientKeyProvider(NewStaticClientKeyProvider(nil, "", "", &tls.Certificate{})),
+		WithSenderConstrain("mtls"),
 		WithRequirePAR(true),
 	)
 	if err != nil {
