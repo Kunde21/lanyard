@@ -168,3 +168,50 @@ func TestFetchUserInfoErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestFetchUserInfo_DPoPAuthorization(t *testing.T) {
+	key := testRSAKey(t)
+	var gotAuth string
+	var gotDPoP string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		gotDPoP = r.Header.Get("DPoP")
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"sub":"sub-123","name":"Alice"}`)
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods("private_key_jwt")
+	provider.UserinfoEndpoint = ts.URL
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("fetchUserInfo() failed: %v", err)
+	}
+
+	if !strings.HasPrefix(gotAuth, "DPoP ") {
+		t.Fatalf("expected Authorization header to start with 'DPoP ', got %q", gotAuth)
+	}
+
+	if gotDPoP == "" {
+		t.Fatalf("expected DPoP header to be set")
+	}
+}

@@ -67,3 +67,25 @@ func TestAuthorizationServerMetadataClaims(t *testing.T) {
 		t.Fatalf("TokenEndpoint mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestProviderMetadata_DPopsigningAlgValuesSupported(t *testing.T) {
+	metadataJSON := `{
+		"issuer": "https://issuer.test",
+		"authorization_endpoint": "https://issuer.test/authorize",
+		"jwks_uri": "https://issuer.test/jwks",
+		"response_types_supported": ["code"],
+		"subject_types_supported": ["public"],
+		"id_token_signing_alg_values_supported": ["RS256"],
+		"dpop_signing_alg_values_supported": ["PS256", "ES256"]
+	}`
+
+	var metadata ProviderMetadata
+	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	want := []string{"PS256", "ES256"}
+	if diff := cmp.Diff(want, metadata.DPoPSigningAlgValuesSupported); diff != "" {
+		t.Fatalf("DPoPSigningAlgValuesSupported mismatch (-want +got):\n%s", diff)
+	}
+}

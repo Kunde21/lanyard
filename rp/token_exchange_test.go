@@ -2,6 +2,8 @@ package rp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -275,4 +277,73 @@ func TestExchangeTokenFallbackFromPostToBasicAndCaches(t *testing.T) {
 	if diff := cmp.Diff("Basic "+base64.StdEncoding.EncodeToString([]byte("client:secret")), requests[2].authorization); diff != "" {
 		t.Fatalf("third authorization header mismatch (-want +got):\n%s", diff)
 	}
+}
+
+func TestExchangeToken_RetriesWithDpopNonce(t *testing.T) {
+	key := testRSAKey(t)
+	requests := 0
+	var firstProof string
+	var secondProof string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		proof := r.Header.Get("DPoP")
+
+		if requests == 1 {
+			firstProof = proof
+			w.Header().Set("DPoP-Nonce", "nonce-2")
+			w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		secondProof = proof
+		if proof == "" {
+			t.Fatalf("expected DPoP header on second request")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Token{AccessToken: "access", TokenType: "DPoP", IDToken: "idtoken"})
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods("private_key_jwt")
+	provider.TokenEndpoint = ts.URL
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	if err != nil {
+		t.Fatalf("exchangeToken() failed: %v", err)
+	}
+
+	if requests != 2 {
+		t.Fatalf("expected 2 requests, got %d", requests)
+	}
+
+	if firstProof == secondProof {
+		t.Fatalf("expected second proof to differ from first proof (should include new nonce)")
+	}
+}
+
+func testRSAKey(t *testing.T) *rsa.PrivateKey {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+	return key
 }

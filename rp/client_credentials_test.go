@@ -556,3 +556,50 @@ func createTestKeyProvider() (ClientKeyProvider, error) {
 	}
 	return NewStaticClientKeyProvider(key, "test-key", "RS256", nil), nil
 }
+
+func TestClientCredentials_Token_DPoP(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+
+	var gotDPoP string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotDPoP = r.Header.Get("DPoP")
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "dpop-token",
+			"token_type":   "DPoP",
+			"expires_in":   3600,
+		})
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	provider := clientCredentialsProvider(server.URL, AuthMethodPrivateKeyJWT)
+
+	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
+		WithClientCredentialsProviderMetadata(provider),
+		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientCredentialsSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	token, err := client.Token(ctx)
+	if err != nil {
+		t.Fatalf("Token() error: %v", err)
+	}
+
+	if token.AccessToken != "dpop-token" {
+		t.Errorf("expected dpop-token, got: %s", token.AccessToken)
+	}
+
+	if gotDPoP == "" {
+		t.Fatal("expected DPoP header to be set")
+	}
+}
