@@ -339,6 +339,49 @@ func TestExchangeToken_RetriesWithDpopNonce(t *testing.T) {
 	}
 }
 
+func TestExchangeToken_StoresNonceFromSuccessfulResponse(t *testing.T) {
+	key := testRSAKey(t)
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("DPoP-Nonce", "fresh-nonce")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Token{AccessToken: "token", TokenType: "DPoP", IDToken: "idtoken"})
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods("private_key_jwt")
+	provider.TokenEndpoint = ts.URL
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	if err != nil {
+		t.Fatalf("exchangeToken() failed: %v", err)
+	}
+
+	cachedNonce, ok := r.DPoPNonceForEndpoint(ts.URL)
+	if !ok {
+		t.Fatal("expected nonce to be cached from successful response")
+	}
+	if diff := cmp.Diff("fresh-nonce", cachedNonce); diff != "" {
+		t.Fatalf("cached nonce mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func testRSAKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)

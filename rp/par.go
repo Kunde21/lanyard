@@ -73,7 +73,8 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 
 	useDPoP := r.shouldUseDPoP()
 	if useDPoP {
-		if err := r.attachDPoPProof(parReq, "", ""); err != nil {
+		cachedNonce := r.cachedDPoPNonce(parEndpoint)
+		if err := r.attachDPoPProof(parReq, "", cachedNonce); err != nil {
 			return nil, fmt.Errorf("failed to generate DPoP proof: %w", err)
 		}
 	}
@@ -88,6 +89,10 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 			return nil, fmt.Errorf("failed to parse PAR response: %w", decodeErr.Err)
 		}
 		return nil, fmt.Errorf("failed to execute PAR request: %w", err)
+	}
+
+	if useDPoP && resp != nil {
+		r.extractAndStoreDPoPNonce(resp, parEndpoint)
 	}
 
 	if useDPoP && isUseDPoPNonce(resp) {
@@ -110,6 +115,9 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 					return nil, fmt.Errorf("failed to parse PAR response: %w", decodeErr.Err)
 				}
 				return nil, fmt.Errorf("failed to execute PAR request: %w", err)
+			}
+			if err == nil && resp != nil {
+				r.extractAndStoreDPoPNonce(resp, parEndpoint)
 			}
 		}
 	}

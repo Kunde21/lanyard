@@ -45,6 +45,8 @@ type ClientCredentials struct {
 
 	now        func() time.Time
 	randReader io.Reader
+
+	dpopNonces *dpopNonceStore
 }
 
 // NewClientCredentials creates a new Client Credentials client.
@@ -65,6 +67,10 @@ func NewClientCredentials(ctx context.Context, issuer, clientID, clientSecret st
 
 	for _, opt := range opts {
 		opt(c)
+	}
+
+	if c.dpopNonces == nil {
+		c.dpopNonces = newDPoPNonceStore(5 * time.Minute)
 	}
 
 	if err := c.validate(); err != nil {
@@ -190,6 +196,28 @@ func (c *ClientCredentials) attachDPoPProof(req *http.Request, nonce string) err
 	return nil
 }
 
+func (c *ClientCredentials) cachedDPoPNonce(rawURL string) string {
+	if c.dpopNonces == nil {
+		return ""
+	}
+	nonce, _ := c.dpopNonces.get(normalizeDPoPHTU(rawURL))
+	return nonce
+}
+
+func (c *ClientCredentials) storeDPoPNonce(rawURL, nonce string) {
+	if c.dpopNonces == nil || nonce == "" {
+		return
+	}
+	c.dpopNonces.put(normalizeDPoPHTU(rawURL), nonce)
+}
+
+func (c *ClientCredentials) extractAndStoreDPoPNonce(resp *http.Response, rawURL string) {
+	nonce, ok := extractDPoPNonce(resp)
+	if ok {
+		c.storeDPoPNonce(rawURL, nonce)
+	}
+}
+
 func (c *ClientCredentials) buildTokenRequest(ctx context.Context, method AuthMethod, form url.Values) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.provider.TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -290,7 +318,8 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 
 	useDPoP := c.shouldUseDPoP()
 	if useDPoP {
-		if err := c.attachDPoPProof(req, ""); err != nil {
+		cachedNonce := c.cachedDPoPNonce(c.provider.TokenEndpoint)
+		if err := c.attachDPoPProof(req, cachedNonce); err != nil {
 			return nil, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
 		}
 	}
@@ -305,6 +334,10 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 			return nil, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
 		}
 		return nil, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+	}
+
+	if useDPoP && resp != nil {
+		c.extractAndStoreDPoPNonce(resp, c.provider.TokenEndpoint)
 	}
 
 	if useDPoP && isUseDPoPNonce(resp) {
@@ -327,6 +360,9 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 					return nil, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
 				}
 				return nil, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+			}
+			if err == nil && resp != nil {
+				c.extractAndStoreDPoPNonce(resp, c.provider.TokenEndpoint)
 			}
 		}
 	}

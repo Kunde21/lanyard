@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -715,4 +716,92 @@ func TestClientCredentials_Token_MTLSSenderConstrainDisablesDPoP(t *testing.T) {
 	if gotDPoP != "" {
 		t.Fatalf("expected no DPoP header when mtls sender constraint is set, got %q", gotDPoP)
 	}
+}
+
+func TestClientCredentials_Token_StoresNonceFromSuccessfulResponse(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate RSA key: %v", err)
+	}
+
+	requests := 0
+	var secondProofNonce string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		proof := r.Header.Get("DPoP")
+
+		if requests == 1 {
+			_ = proof
+			w.Header().Set("DPoP-Nonce", "cc-fresh-nonce")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]any{
+				"access_token": "cc-token",
+				"token_type":   "DPoP",
+				"expires_in":   3600,
+			})
+			return
+		}
+
+		secondProofNonce = extractNonceFromDPoPProof(t, proof)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "cc-token-2",
+			"token_type":   "DPoP",
+			"expires_in":   3600,
+		})
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	provider := clientCredentialsProvider(server.URL, AuthMethodPrivateKeyJWT)
+
+	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
+		WithClientCredentialsProviderMetadata(provider),
+		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientCredentialsSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials(): %v", err)
+	}
+
+	token, err := client.Token(ctx)
+	if err != nil {
+		t.Fatalf("Token(): %v", err)
+	}
+	if diff := cmp.Diff("cc-token", token.AccessToken); diff != "" {
+		t.Fatalf("token mismatch (-want +got):\n%s", diff)
+	}
+
+	token2, err := client.Token(ctx)
+	if err != nil {
+		t.Fatalf("second Token(): %v", err)
+	}
+	if diff := cmp.Diff("cc-token-2", token2.AccessToken); diff != "" {
+		t.Fatalf("second token mismatch (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff("cc-fresh-nonce", secondProofNonce); diff != "" {
+		t.Fatalf("second request nonce mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func extractNonceFromDPoPProof(t *testing.T, proof string) string {
+	t.Helper()
+	parts := strings.Split(proof, ".")
+	if len(parts) != 3 {
+		t.Fatalf("invalid DPoP proof format")
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("failed to decode DPoP payload: %v", err)
+	}
+	var payload struct {
+		Nonce string `json:"nonce"`
+	}
+	if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+		t.Fatalf("failed to parse DPoP payload: %v", err)
+	}
+	return payload.Nonce
 }

@@ -201,6 +201,11 @@ type dpopEnabler interface {
 	ShouldUseDPoP() bool
 }
 
+type dpopNonceAccessor interface {
+	DPoPNonceForEndpoint(endpoint string) (string, bool)
+	StoreDPoPNonce(endpoint, nonce string)
+}
+
 func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolved resolvedRPRequest, accessToken string) error {
 	if accessToken == "" || !isFAPIProfile(resolved) {
 		return nil
@@ -216,12 +221,14 @@ func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolv
 		dpopEnabled = enabler.ShouldUseDPoP()
 	}
 	var attacher dpopProofAttacher
+	var nonceAccessor dpopNonceAccessor
 	if dpopEnabled {
 		var ok bool
 		attacher, ok = flow.(dpopProofAttacher)
 		if !ok {
 			return fmt.Errorf("dpop sender constraint requires proof attacher")
 		}
+		nonceAccessor, _ = flow.(dpopNonceAccessor)
 	}
 
 	client := newRPHTTPClient(resolved.keyProvider)
@@ -254,9 +261,23 @@ func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolv
 		return resp, strings.TrimSpace(string(body)), nil
 	}
 
-	resp, preview, err := doRequest("")
+	initialNonce := ""
+	if nonceAccessor != nil {
+		if cached, ok := nonceAccessor.DPoPNonceForEndpoint(endpoint); ok {
+			initialNonce = cached
+		}
+	}
+
+	resp, preview, err := doRequest(initialNonce)
 	if err != nil {
 		return err
+	}
+
+	if nonceAccessor != nil && resp != nil {
+		respNonce := strings.TrimSpace(resp.Header.Get("DPoP-Nonce"))
+		if respNonce != "" {
+			nonceAccessor.StoreDPoPNonce(endpoint, respNonce)
+		}
 	}
 
 	if dpopEnabled && isUseDPoPNonceChallenge(resp) {
@@ -265,6 +286,12 @@ func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolv
 			resp, preview, err = doRequest(nonce)
 			if err != nil {
 				return err
+			}
+			if nonceAccessor != nil && resp != nil {
+				respNonce := strings.TrimSpace(resp.Header.Get("DPoP-Nonce"))
+				if respNonce != "" {
+					nonceAccessor.StoreDPoPNonce(endpoint, respNonce)
+				}
 			}
 		}
 	}

@@ -104,3 +104,11 @@ func withClientCredentialsRandReader(reader io.Reader) ClientCredentialsOption {
 		c.randReader = reader
 	}
 }
+
+func WithClientCredentialsDPoPNonceTTL(ttl time.Duration) ClientCredentialsOption {
+	return func(c *ClientCredentials) {
+		if ttl > 0 {
+			c.dpopNonces = newDPoPNonceStore(ttl)
+		}
+	}
+}

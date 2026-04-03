@@ -95,7 +95,8 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 	}
 
 	if useDPoP {
-		if err := r.attachDPoPProof(req, dpopAccessToken, ""); err != nil {
+		cachedNonce := r.cachedDPoPNonce(tokenEndpoint)
+		if err := r.attachDPoPProof(req, dpopAccessToken, cachedNonce); err != nil {
 			return Token{}, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
 		}
 	}
@@ -110,6 +111,10 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 			return Token{}, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
 		}
 		return Token{}, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+	}
+
+	if useDPoP && resp != nil {
+		r.extractAndStoreDPoPNonce(resp, tokenEndpoint)
 	}
 
 	if useDPoP && isUseDPoPNonce(resp) {
@@ -132,6 +137,9 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 					return Token{}, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
 				}
 				return Token{}, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+			}
+			if err == nil && resp != nil {
+				r.extractAndStoreDPoPNonce(resp, tokenEndpoint)
 			}
 		}
 	}

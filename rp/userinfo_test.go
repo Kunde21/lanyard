@@ -287,3 +287,46 @@ func TestFetchUserInfo_RetriesWithDpopNonce(t *testing.T) {
 		t.Fatalf("expected second proof to differ from first proof (should include new nonce)")
 	}
 }
+
+func TestFetchUserInfo_StoresNonceFromSuccessfulResponse(t *testing.T) {
+	key := testRSAKey(t)
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("DPoP-Nonce", "ui-fresh-nonce")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"sub":"sub-123"}`)
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods("private_key_jwt")
+	provider.UserinfoEndpoint = ts.URL
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain("dpop"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("fetchUserInfo() failed: %v", err)
+	}
+
+	cachedNonce, ok := r.DPoPNonceForEndpoint(ts.URL)
+	if !ok {
+		t.Fatal("expected cached nonce after userinfo")
+	}
+	if diff := cmp.Diff("ui-fresh-nonce", cachedNonce); diff != "" {
+		t.Fatalf("cached nonce mismatch (-want +got):\n%s", diff)
+	}
+}
