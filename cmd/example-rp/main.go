@@ -16,7 +16,7 @@ import (
 )
 
 type flowHandler interface {
-	AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request) (string, error)
+	AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request, opts ...rp.AuthorizationURLOption) (string, error)
 	HandleCallback(ctx context.Context, w http.ResponseWriter, req *http.Request) (*rp.CallbackResult, error)
 }
 

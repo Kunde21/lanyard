@@ -12,11 +12,20 @@ import (
 )
 
 // AuthorizationURL builds an authorization request URL and stores callback state.
-func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request) (string, error) {
+func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request, opts ...AuthorizationURLOption) (string, error) {
 	metadata := r.provider
 	authorizationEndpoint := r.authorizationEndpoint(metadata)
 	if authorizationEndpoint == "" {
 		return "", fmt.Errorf("%w: authorization endpoint missing", ErrInvalidConfiguration)
+	}
+
+	cfg := authorizationURLConfig{
+		authorizationDetails: r.authorizationDetails,
+	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&cfg)
+		}
 	}
 
 	if err := r.resolveAuthMethod(); err != nil {
@@ -40,7 +49,7 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 		return "", err
 	}
 
-	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge)
+	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails)
 
 	if r.shouldUsePAR() {
 		parResp, err := r.pushAuthorizationRequest(ctx, params)
@@ -99,8 +108,8 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 	q.Set("nonce", nonce)
 	q.Set("code_challenge", challenge)
 	q.Set("code_challenge_method", "S256")
-	if strings.TrimSpace(r.authorizationDetails) != "" {
-		q.Set("authorization_details", r.authorizationDetails)
+	if strings.TrimSpace(cfg.authorizationDetails) != "" {
+		q.Set("authorization_details", cfg.authorizationDetails)
 	}
 	authURL.RawQuery = q.Encode()
 

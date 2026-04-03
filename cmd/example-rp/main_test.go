@@ -22,7 +22,7 @@ type stubFlow struct {
 	callbackResp *rp.CallbackResult
 }
 
-func (s stubFlow) AuthorizationURL(_ context.Context, _ http.ResponseWriter, _ *http.Request) (string, error) {
+func (s stubFlow) AuthorizationURL(_ context.Context, _ http.ResponseWriter, _ *http.Request, _ ...rp.AuthorizationURLOption) (string, error) {
 	return s.authURL, s.authErr
 }
 

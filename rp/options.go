@@ -13,6 +13,13 @@ import (
 // Option configures an RP instance.
 type Option func(*RP)
 
+// AuthorizationURLOption configures a single authorization URL generation.
+type AuthorizationURLOption func(*authorizationURLConfig)
+
+type authorizationURLConfig struct {
+	authorizationDetails string
+}
+
 // WithOIDCClient sets the OIDC discovery and JWKS client.
 func WithOIDCClient(client *oidc.Client) Option {
 	return func(r *RP) {
@@ -162,13 +169,36 @@ func WithDPoPNonceTTL(ttl time.Duration) Option {
 // The details should be a slice of maps containing authorization detail types.
 func WithAuthorizationDetails(details []map[string]any) Option {
 	return func(r *RP) {
-		if len(details) == 0 {
+		authorizationDetails, ok := marshalAuthorizationDetails(details)
+		if !ok {
 			return
 		}
-		b, err := json.Marshal(details)
-		if err != nil {
-			return
-		}
-		r.authorizationDetails = string(b)
+		r.authorizationDetails = authorizationDetails
 	}
+}
+
+// SetAuthorizationDetails sets Rich Authorization Request (RAR) details for a
+// single authorization URL generation.
+func SetAuthorizationDetails(details []map[string]any) AuthorizationURLOption {
+	return func(cfg *authorizationURLConfig) {
+		if cfg == nil {
+			return
+		}
+		authorizationDetails, ok := marshalAuthorizationDetails(details)
+		if !ok {
+			return
+		}
+		cfg.authorizationDetails = authorizationDetails
+	}
+}
+
+func marshalAuthorizationDetails(details []map[string]any) (string, bool) {
+	if len(details) == 0 {
+		return "", false
+	}
+	b, err := json.Marshal(details)
+	if err != nil {
+		return "", false
+	}
+	return string(b), true
 }
