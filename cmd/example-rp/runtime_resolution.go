@@ -198,7 +198,11 @@ func newRPHTTPClient(keyProvider rp.ClientKeyProvider) *http.Client {
 		tlsConfig.InsecureSkipVerify = true
 	}
 	if keyProvider != nil && keyProvider.TLSCertificate() != nil {
-		tlsConfig.Certificates = []tls.Certificate{*keyProvider.TLSCertificate()}
+		clientCert := *keyProvider.TLSCertificate()
+		tlsConfig.Certificates = []tls.Certificate{clientCert}
+		tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return &clientCert, nil
+		}
 	}
 
 	baseTransport := &http.Transport{TLSClientConfig: tlsConfig}
