@@ -93,7 +93,10 @@ func (r *RP) generateDPoPProof(method, rawURL, accessToken, nonce string) (strin
 		payload.ATH = dpopAccessTokenHash(accessToken)
 	}
 
-	body, _ := json.Marshal(payload)
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal DPoP payload: %w", err)
+	}
 	sig, err := signer.Sign(body)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign DPoP proof: %w", err)
@@ -175,7 +178,10 @@ func extractDPoPNonce(resp *http.Response) (string, bool) {
 }
 
 func isUseDPoPNonce(resp *http.Response) bool {
-	return resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnauthorized
+	if resp.StatusCode != http.StatusBadRequest && resp.StatusCode != http.StatusUnauthorized {
+		return false
+	}
+	return strings.Contains(resp.Header.Get("WWW-Authenticate"), `error="use_dpop_nonce"`)
 }
 
 func isDPoPSupported(method AuthMethod) bool {
