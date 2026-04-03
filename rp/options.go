@@ -147,3 +147,12 @@ func withRandReader(reader io.Reader) Option {
 		}
 	}
 }
+
+// WithDPoPNonceTTL sets the TTL for cached DPoP nonces.
+func WithDPoPNonceTTL(ttl time.Duration) Option {
+	return func(r *RP) {
+		if ttl > 0 {
+			r.dpopNonces = newDPoPNonceStore(ttl)
+		}
+	}
+}

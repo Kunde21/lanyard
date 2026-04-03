@@ -214,6 +214,41 @@ func isDPoPSupported(method AuthMethod) bool {
 	return method == AuthMethodPrivateKeyJWT || method == AuthMethodTLSClientAuth
 }
 
+func (r *RP) cachedDPoPNonce(rawURL string) string {
+	if r.dpopNonces == nil {
+		return ""
+	}
+	nonce, _ := r.dpopNonces.get(normalizeDPoPHTU(rawURL))
+	return nonce
+}
+
+func (r *RP) storeDPoPNonce(rawURL, nonce string) {
+	if r.dpopNonces == nil || nonce == "" {
+		return
+	}
+	r.dpopNonces.put(normalizeDPoPHTU(rawURL), nonce)
+}
+
+func (r *RP) extractAndStoreDPoPNonce(resp *http.Response, rawURL string) {
+	nonce, ok := extractDPoPNonce(resp)
+	if ok {
+		r.storeDPoPNonce(rawURL, nonce)
+	}
+}
+
+// DPoPNonceForEndpoint returns the cached DPoP nonce for the given endpoint, if any.
+func (r *RP) DPoPNonceForEndpoint(endpoint string) (string, bool) {
+	if r.dpopNonces == nil {
+		return "", false
+	}
+	return r.dpopNonces.get(normalizeDPoPHTU(endpoint))
+}
+
+// StoreDPoPNonce stores a DPoP nonce for the given endpoint.
+func (r *RP) StoreDPoPNonce(endpoint, nonce string) {
+	r.storeDPoPNonce(endpoint, nonce)
+}
+
 type senderConstrainType string
 
 const (

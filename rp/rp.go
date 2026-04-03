@@ -80,6 +80,7 @@ type RP struct {
 	now        func() time.Time
 	randReader io.Reader
 	clockSkew  time.Duration
+	dpopNonces *dpopNonceStore
 }
 
 // New creates a browser-flow relying party that is ready to generate an
@@ -105,6 +106,10 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 
 	for _, opt := range opts {
 		opt(r)
+	}
+
+	if r.dpopNonces == nil {
+		r.dpopNonces = newDPoPNonceStore(5 * time.Minute)
 	}
 
 	if err := r.validate(); err != nil {
