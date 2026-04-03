@@ -197,6 +197,10 @@ type dpopProofAttacher interface {
 	AttachDPoPProof(req *http.Request, accessToken, nonce string) error
 }
 
+type dpopEnabler interface {
+	ShouldUseDPoP() bool
+}
+
 func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolved resolvedRPRequest, accessToken string) error {
 	if accessToken == "" || !isFAPIProfile(resolved) {
 		return nil
@@ -208,6 +212,9 @@ func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolv
 	}
 
 	dpopEnabled := strings.EqualFold(strings.TrimSpace(resolved.senderConstrain), "dpop")
+	if enabler, ok := flow.(dpopEnabler); ok {
+		dpopEnabled = enabler.ShouldUseDPoP()
+	}
 	var attacher dpopProofAttacher
 	if dpopEnabled {
 		var ok bool

@@ -228,6 +228,11 @@ func (r *RP) shouldUseDPoP() bool {
 	return r.clientKeyProvider != nil && isDPoPSupported(r.resolvedAuthMethod)
 }
 
+// ShouldUseDPoP reports whether the RP is configured to use DPoP.
+func (r *RP) ShouldUseDPoP() bool {
+	return r.shouldUseDPoP()
+}
+
 func validateDPoPProof(proof, method, url, expectedAth string) error {
 	parts := strings.Split(proof, ".")
 	if len(parts) != 3 {
