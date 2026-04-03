@@ -315,7 +315,7 @@ func TestHandleCallback_UsesMTLSAliasForUserInfoWhenSenderConstrainMTLS(t *testi
 		t.Fatalf("SaveCorrelation() failed: %v", err)
 	}
 
-	rec, req := callbackRequest("code", "state")
+	rec, req := callbackRequestWithIss("code", "state", issuer)
 	if _, err := r.HandleCallback(context.Background(), rec, req); err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
@@ -325,13 +325,75 @@ func TestHandleCallback_UsesMTLSAliasForUserInfoWhenSenderConstrainMTLS(t *testi
 	}
 }
 
+func TestHandleCallback_RejectsInvalidAuthorizationResponseIssuer(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+	issuer := ""
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now, Issuer: issuer}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	// Test: authorization response with invalid iss parameter should be rejected
+	query := url.Values{}
+	query.Set("code", "code")
+	query.Set("state", "state")
+	query.Set("iss", "https://wrong-issuer.test")
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?"+query.Encode(), nil)
+	rec := httptest.NewRecorder()
+
+	_, err = r.HandleCallback(context.Background(), rec, req)
+	if !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("HandleCallback() with invalid iss should return ErrInvalidState, got %v", err)
+	}
+}
+
 func callbackRequest(code, state string) (*httptest.ResponseRecorder, *http.Request) {
+	return callbackRequestWithIss(code, state, "")
+}
+
+func callbackRequestWithIss(code, state, iss string) (*httptest.ResponseRecorder, *http.Request) {
 	query := url.Values{}
 	if code != "" {
 		query.Set("code", code)
 	}
 	if state != "" {
 		query.Set("state", state)
+	}
+	if iss != "" {
+		query.Set("iss", iss)
 	}
 
 	requestURL := "https://rp.test/callback"

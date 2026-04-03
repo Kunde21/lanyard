@@ -208,6 +208,9 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	if strings.TrimSpace(resolved.senderConstrain) != "" {
 		opts = append(opts, rp.WithSenderConstrain(resolved.senderConstrain))
 	}
+	if strings.TrimSpace(resolved.fapiProfile) != "" {
+		opts = append(opts, rp.WithFAPIProfile(resolved.fapiProfile))
+	}
 	if resolved.keyProvider != nil {
 		opts = append(opts, rp.WithClientKeyProvider(resolved.keyProvider))
 	}

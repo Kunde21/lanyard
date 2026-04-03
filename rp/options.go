@@ -116,6 +116,22 @@ func WithSenderConstrain(mode string) Option {
 	}
 }
 
+// WithFAPIProfile sets the FAPI profile for strict validation.
+// Supported values are "plain_fapi", "fapi2", "fapi1", etc.
+func WithFAPIProfile(profile string) Option {
+	return func(r *RP) {
+		r.fapiProfile = normalizeFAPIProfile(profile)
+	}
+}
+
+// WithAllowUnsecuredIDTokens allows acceptance of ID tokens with alg=none.
+// For FAPI profiles, this option is ignored - unsecured tokens are always rejected.
+func WithAllowUnsecuredIDTokens(allow bool) Option {
+	return func(r *RP) {
+		r.allowUnsecuredIDTokens = allow
+	}
+}
+
 func withNow(now func() time.Time) Option {
 	return func(r *RP) {
 		if now != nil {

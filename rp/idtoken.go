@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/Kunde21/lanyard/jwks"
@@ -52,7 +54,7 @@ var supportedIDTokenAlgs = []jose.SignatureAlgorithm{
 	jose.SignatureAlgorithm("none"),
 }
 
-func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwksURL string) (idTokenClaims, error) {
+func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
 	parsed, err := jwt.ParseSigned(rawIDToken, supportedIDTokenAlgs)
 	if err != nil {
 		return idTokenClaims{}, fmt.Errorf("%w: parse id_token: %v", ErrIDTokenValidationFailed, err)
@@ -62,6 +64,12 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 	}
 
 	if parsed.Headers[0].Algorithm == "none" {
+		if r.fapiProfile.isFAPI() {
+			return idTokenClaims{}, fmt.Errorf("%w: id_token must not use 'none' algorithm for FAPI", ErrIDTokenValidationFailed)
+		}
+		if !r.allowUnsecuredIDTokens {
+			return idTokenClaims{}, fmt.Errorf("%w: id_token must not use 'none' algorithm", ErrIDTokenValidationFailed)
+		}
 		var claims idTokenClaims
 		if err := parsed.UnsafeClaimsWithoutVerification(&claims); err != nil {
 			return idTokenClaims{}, fmt.Errorf("%w: parse unsecured id_token claims: %v", ErrIDTokenValidationFailed, err)
@@ -70,6 +78,15 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 			return idTokenClaims{}, err
 		}
 		return claims, nil
+	}
+
+	if len(providerAllowedAlgs) > 0 {
+		alg := string(parsed.Headers[0].Algorithm)
+		if !slices.ContainsFunc(providerAllowedAlgs, func(a string) bool {
+			return strings.EqualFold(a, alg)
+		}) {
+			return idTokenClaims{}, fmt.Errorf("%w: id_token algorithm %q not in provider's advertised algorithms %v", ErrIDTokenValidationFailed, alg, providerAllowedAlgs)
+		}
 	}
 
 	keySet, err := r.oidcClient.RemoteKeySet(ctx, r.issuer)

@@ -27,6 +27,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	query := req.URL.Query()
 	code := strings.TrimSpace(query.Get("code"))
 	state := strings.TrimSpace(query.Get("state"))
+	authzResponseIss := strings.TrimSpace(query.Get("iss"))
 
 	if state == "" {
 		return nil, fmt.Errorf("%w: missing state", ErrInvalidState)
@@ -43,10 +44,20 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, fmt.Errorf("%w: unknown or expired state", ErrInvalidState)
 	}
 
-	issuer := data.Issuer
-	if issuer == "" {
-		issuer = r.issuer
+	expectedIssuer := data.Issuer
+	if expectedIssuer == "" {
+		expectedIssuer = r.issuer
 	}
+
+	if r.isFAPIProfile() && authzResponseIss == "" {
+		return nil, fmt.Errorf("%w: authorization response iss is required for FAPI", ErrInvalidState)
+	}
+
+	if authzResponseIss != "" && authzResponseIss != expectedIssuer {
+		return nil, fmt.Errorf("%w: authorization response iss mismatch", ErrInvalidState)
+	}
+
+	issuer := expectedIssuer
 	r.issuer = issuer
 
 	provider, err := r.oidcClient.DiscoverProvider(ctx, issuer)
@@ -75,7 +86,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, fmt.Errorf("%w: token response missing access_token", ErrUserInfoValidationFailed)
 	}
 
-	claims, err := r.validateIDToken(ctx, tokenResp.IDToken, data.Nonce, provider.JWKSURI)
+	claims, err := r.validateIDToken(ctx, tokenResp.IDToken, data.Nonce, provider.JWKSURI, provider.IDTokenSigningAlgValuesSupported)
 	if err != nil {
 		return nil, err
 	}
@@ -93,4 +104,8 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	}
 
 	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo}, nil
+}
+
+func (r *RP) isFAPIProfile() bool {
+	return r.fapiProfile.isFAPI()
 }

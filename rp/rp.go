@@ -20,6 +20,33 @@ import (
 const defaultClockSkew = 5 * time.Minute
 
 // RP is an OpenID Connect relying party for the Authorization Code flow.
+type fapiProfileType int
+
+const (
+	fapiProfileNone fapiProfileType = iota
+	fapiProfilePlainFAPI
+	fapiProfileFAPI2
+	fapiProfileFAPI1
+)
+
+func normalizeFAPIProfile(raw string) fapiProfileType {
+	lower := strings.ToLower(strings.TrimSpace(raw))
+	if strings.HasPrefix(lower, "plain_fapi") {
+		return fapiProfilePlainFAPI
+	}
+	if strings.Contains(lower, "fapi2") {
+		return fapiProfileFAPI2
+	}
+	if strings.Contains(lower, "fapi1") {
+		return fapiProfileFAPI1
+	}
+	return fapiProfileNone
+}
+
+func (f fapiProfileType) isFAPI() bool {
+	return f != fapiProfileNone
+}
+
 type RP struct {
 	issuer       string
 	clientID     string
@@ -41,8 +68,10 @@ type RP struct {
 
 	clientKeyProvider ClientKeyProvider
 
-	requirePAR      bool
-	senderConstrain senderConstrainType
+	requirePAR             bool
+	senderConstrain        senderConstrainType
+	fapiProfile            fapiProfileType
+	allowUnsecuredIDTokens bool
 
 	resolvedAuthMethod  AuthMethod
 	allowMethodFallback bool
@@ -110,6 +139,10 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 
 	if r.stateStore == nil {
 		r.stateStore = memory.New(10 * time.Minute)
+	}
+
+	if !r.fapiProfile.isFAPI() && !r.allowUnsecuredIDTokens {
+		r.allowUnsecuredIDTokens = true
 	}
 
 	return r, nil

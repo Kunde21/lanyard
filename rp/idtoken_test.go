@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,18 +63,52 @@ func TestValidateIDToken(t *testing.T) {
 	}
 
 	goodToken := signIDToken(t, key, "kid-1", baseClaims)
-	if _, err := r.validateIDToken(context.Background(), goodToken, "nonce-123", issuer+"/jwks"); err != nil {
+	if _, err := r.validateIDToken(context.Background(), goodToken, "nonce-123", issuer+"/jwks", nil); err != nil {
 		t.Fatalf("validateIDToken() failed: %v", err)
 	}
 
 	missingKIDToken := signIDToken(t, key, "", baseClaims)
-	if _, err := r.validateIDToken(context.Background(), missingKIDToken, "nonce-123", issuer+"/jwks"); err != nil {
+	if _, err := r.validateIDToken(context.Background(), missingKIDToken, "nonce-123", issuer+"/jwks", nil); err != nil {
 		t.Fatalf("validateIDToken() with single signing key and missing kid failed: %v", err)
 	}
 
 	unsignedToken := signUnsecuredIDToken(t, baseClaims)
-	if _, err := r.validateIDToken(context.Background(), unsignedToken, "nonce-123", issuer+"/jwks"); err != nil {
-		t.Fatalf("validateIDToken() with alg=none failed: %v", err)
+
+	rNoUnsecured := &RP{
+		issuer:                 issuer,
+		clientID:               "client-id",
+		httpClient:             ts.Client(),
+		oidcClient:             r.oidcClient,
+		now:                    func() time.Time { return now },
+		allowUnsecuredIDTokens: false,
+	}
+	if _, err := rNoUnsecured.validateIDToken(context.Background(), unsignedToken, "nonce-123", issuer+"/jwks", nil); err == nil {
+		t.Fatalf("validateIDToken() with alg=none and allowUnsecuredIDTokens=false expected error")
+	}
+
+	rAllow := &RP{
+		issuer:                 issuer,
+		clientID:               "client-id",
+		httpClient:             ts.Client(),
+		oidcClient:             r.oidcClient,
+		now:                    func() time.Time { return now },
+		allowUnsecuredIDTokens: true,
+	}
+	if _, err := rAllow.validateIDToken(context.Background(), unsignedToken, "nonce-123", issuer+"/jwks", nil); err != nil {
+		t.Fatalf("validateIDToken() with alg=none and allowUnsecuredIDTokens=true failed: %v", err)
+	}
+
+	rFAPI := &RP{
+		issuer:                 issuer,
+		clientID:               "client-id",
+		httpClient:             ts.Client(),
+		oidcClient:             r.oidcClient,
+		now:                    func() time.Time { return now },
+		fapiProfile:            fapiProfilePlainFAPI,
+		allowUnsecuredIDTokens: true,
+	}
+	if _, err := rFAPI.validateIDToken(context.Background(), unsignedToken, "nonce-123", issuer+"/jwks", nil); err == nil {
+		t.Fatalf("validateIDToken() with alg=none and FAPI profile expected error")
 	}
 
 	tests := []struct {
@@ -97,11 +132,45 @@ func TestValidateIDToken(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			token := signIDToken(t, key, tt.kid, tt.claims)
-			_, err := r.validateIDToken(context.Background(), token, tt.nonce, issuer+"/jwks")
+			_, err := r.validateIDToken(context.Background(), token, tt.nonce, issuer+"/jwks", nil)
 			if err == nil {
 				t.Fatalf("validateIDToken() expected error")
 			}
 		})
+	}
+}
+
+func TestValidateIDTokenRejectsAlgorithmNotInProviderList(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	now := time.Now().UTC()
+	claims := map[string]any{
+		"iss":   "https://issuer.test",
+		"sub":   "subject-123",
+		"aud":   []string{"client-id"},
+		"exp":   now.Add(5 * time.Minute).Unix(),
+		"iat":   now.Add(-1 * time.Minute).Unix(),
+		"nonce": "nonce-123",
+	}
+
+	token := signIDTokenWithAlg(t, key, "kid-1", claims, jose.RS256)
+
+	r := &RP{
+		issuer:     "https://issuer.test",
+		clientID:   "client-id",
+		httpClient: http.DefaultClient,
+		now:        func() time.Time { return now },
+	}
+
+	_, err = r.validateIDToken(context.Background(), token, "nonce-123", "", []string{"ES256"})
+	if err == nil {
+		t.Fatalf("validateIDToken() expected error when algorithm not in provider list")
+	}
+	if !strings.Contains(err.Error(), "not in provider's advertised algorithms") {
+		t.Fatalf("validateIDToken() error = %v, want algorithm mismatch error", err)
 	}
 }
 
@@ -158,15 +227,20 @@ func TestValidateIDTokenMissingKIDWithMultipleSigningKeysTriesAllKeys(t *testing
 	}
 
 	token := signIDToken(t, key1, "", claims)
-	if _, err := r.validateIDToken(context.Background(), token, "nonce-123", issuer+"/jwks"); err != nil {
+	if _, err := r.validateIDToken(context.Background(), token, "nonce-123", issuer+"/jwks", nil); err != nil {
 		t.Fatalf("validateIDToken() failed: %v", err)
 	}
 }
 
 func signIDToken(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]any) string {
 	t.Helper()
+	return signIDTokenWithAlg(t, key, kid, claims, jose.RS256)
+}
 
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: jose.JSONWebKey{KeyID: kid, Key: key}}, nil)
+func signIDTokenWithAlg(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]any, alg jose.SignatureAlgorithm) string {
+	t.Helper()
+
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: alg, Key: jose.JSONWebKey{KeyID: kid, Key: key}}, nil)
 	if err != nil {
 		t.Fatalf("NewSigner() failed: %v", err)
 	}
