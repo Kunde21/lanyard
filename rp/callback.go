@@ -24,10 +24,10 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, fmt.Errorf("%w: missing callback request", ErrInvalidState)
 	}
 
-	query := req.URL.Query()
-	code := strings.TrimSpace(query.Get("code"))
-	state := strings.TrimSpace(query.Get("state"))
-	authzResponseIss := strings.TrimSpace(query.Get("iss"))
+	params := extractCallbackParams(req)
+	code := params.Code
+	state := params.State
+	authzResponseIss := params.Iss
 
 	if state == "" {
 		return nil, fmt.Errorf("%w: missing state", ErrInvalidState)

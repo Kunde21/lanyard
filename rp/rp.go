@@ -83,6 +83,7 @@ type RP struct {
 	dpopNonces *dpopNonceStore
 
 	authorizationDetails string
+	responseMode         string
 }
 
 // New creates a browser-flow relying party that is ready to generate an

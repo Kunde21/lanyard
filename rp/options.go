@@ -224,3 +224,13 @@ func marshalAuthorizationDetails(details []map[string]any) (string, bool) {
 	}
 	return string(b), true
 }
+
+// WithResponseMode sets the OAuth 2.0 response_mode for authorization requests.
+// Common values are "query" (default) and "form_post".
+func WithResponseMode(mode string) Option {
+	return func(r *RP) {
+		if r != nil {
+			r.responseMode = strings.TrimSpace(mode)
+		}
+	}
+}

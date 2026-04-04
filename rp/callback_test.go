@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -515,4 +516,146 @@ func TestHandleCallback_UsesConfiguredProviderMetadataForOAuthOnly(t *testing.T)
 
 func providerMetadataJSONWithMTLSEndpoints(issuer string) string {
 	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","mtls_endpoint_aliases":{"token_endpoint":"` + issuer + `/mtls/token","userinfo_endpoint":"` + issuer + `/mtls/userinfo"},"response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}`
+}
+
+func formPostCallbackRequest(code, state string) (*httptest.ResponseRecorder, *http.Request) {
+	return formPostCallbackRequestWithIss(code, state, "")
+}
+
+func formPostCallbackRequestWithIss(code, state, iss string) (*httptest.ResponseRecorder, *http.Request) {
+	form := url.Values{}
+	if code != "" {
+		form.Set("code", code)
+	}
+	if state != "" {
+		form.Set("state", state)
+	}
+	if iss != "" {
+		form.Set("iss", iss)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	return httptest.NewRecorder(), req
+}
+
+func TestExtractCallbackParams_GETWithQuery(t *testing.T) {
+	query := url.Values{}
+	query.Set("code", "auth-code-1")
+	query.Set("state", "state-1")
+	query.Set("iss", "https://issuer.test")
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?"+query.Encode(), nil)
+
+	params := extractCallbackParams(req)
+	if params.Code != "auth-code-1" {
+		t.Fatalf("Code = %q, want %q", params.Code, "auth-code-1")
+	}
+	if params.State != "state-1" {
+		t.Fatalf("State = %q, want %q", params.State, "state-1")
+	}
+	if params.Iss != "https://issuer.test" {
+		t.Fatalf("Iss = %q, want %q", params.Iss, "https://issuer.test")
+	}
+}
+
+func TestExtractCallbackParams_POSTWithFormBody(t *testing.T) {
+	form := url.Values{}
+	form.Set("code", "auth-code-2")
+	form.Set("state", "state-2")
+	form.Set("iss", "https://issuer.test")
+	req := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	params := extractCallbackParams(req)
+	if params.Code != "auth-code-2" {
+		t.Fatalf("Code = %q, want %q", params.Code, "auth-code-2")
+	}
+	if params.State != "state-2" {
+		t.Fatalf("State = %q, want %q", params.State, "state-2")
+	}
+	if params.Iss != "https://issuer.test" {
+		t.Fatalf("Iss = %q, want %q", params.Iss, "https://issuer.test")
+	}
+}
+
+func TestExtractCallbackParams_POSTWithError(t *testing.T) {
+	form := url.Values{}
+	form.Set("error", "access_denied")
+	form.Set("error_description", "user declined")
+	req := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	params := extractCallbackParams(req)
+	if params.Error != "access_denied" {
+		t.Fatalf("Error = %q, want %q", params.Error, "access_denied")
+	}
+	if params.ErrorDescription != "user declined" {
+		t.Fatalf("ErrorDescription = %q, want %q", params.ErrorDescription, "user declined")
+	}
+}
+
+func TestExtractCallbackParams_EmptyPOSTBody(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	params := extractCallbackParams(req)
+	if params.Code != "" {
+		t.Fatalf("Code = %q, want empty", params.Code)
+	}
+	if params.State != "" {
+		t.Fatalf("State = %q, want empty", params.State)
+	}
+}
+
+func TestExtractCallbackParams_POSTWithoutFormContentType(t *testing.T) {
+	form := url.Values{}
+	form.Set("code", "auth-code-3")
+	form.Set("state", "state-3")
+	req := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/json")
+
+	params := extractCallbackParams(req)
+	if params.Code != "" {
+		t.Fatalf("Code = %q, want empty (non-form content type should use query)", params.Code)
+	}
+}
+
+func TestExtractCallbackParams_POSTWithQueryFallback(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "https://rp.test/callback?code=q-code&state=q-state", nil)
+	req.Header.Set("Content-Type", "text/plain")
+
+	params := extractCallbackParams(req)
+	if params.Code != "q-code" {
+		t.Fatalf("Code = %q, want %q", params.Code, "q-code")
+	}
+	if params.State != "q-state" {
+		t.Fatalf("State = %q, want %q", params.State, "q-state")
+	}
+}
+
+func TestHandleCallback_FormPostValidation(t *testing.T) {
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithProviderMetadata(providerForAuthMethods()),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	rec, req := formPostCallbackRequest("code", "")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("missing state should return ErrInvalidState, got %v", err)
+	}
+	rec, req = formPostCallbackRequest("", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrMissingCode) {
+		t.Fatalf("missing code should return ErrMissingCode, got %v", err)
+	}
+	rec, req = formPostCallbackRequest("code", "state")
+	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("unknown state should return ErrInvalidState, got %v", err)
+	}
 }

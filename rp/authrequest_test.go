@@ -274,3 +274,80 @@ func providerMetadataJSON(issuer string) string {
 		"id_token_signing_alg_values_supported": ["RS256"]
 	}`, issuer, issuer+"/authorize", issuer+"/jwks")
 }
+
+func TestAuthorizationURL_WithResponseMode(t *testing.T) {
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithResponseMode("form_post"),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+	if got := parsed.Query().Get("response_mode"); got != "form_post" {
+		t.Fatalf("response_mode mismatch: got %q, want %q", got, "form_post")
+	}
+}
+
+func TestAuthorizationURL_NoResponseModeByDefault(t *testing.T) {
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+	if got := parsed.Query().Get("response_mode"); got != "" {
+		t.Fatalf("response_mode should be empty by default, got %q", got)
+	}
+}
