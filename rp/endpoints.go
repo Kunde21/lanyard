@@ -1,26 +1,26 @@
 package rp
 
-import "github.com/Kunde21/lanyard/oidc"
+import "github.com/Kunde21/lanyard/metadata"
 
-func (r *RP) authorizationEndpoint(provider oidc.ProviderMetadata) string {
+func (r *RP) authorizationEndpoint(provider metadata.Provider) string {
 	return provider.AuthorizationEndpoint
 }
 
-func (r *RP) pushedAuthorizationRequestEndpoint(provider oidc.ProviderMetadata) string {
+func (r *RP) pushedAuthorizationRequestEndpoint(provider metadata.Provider) string {
 	if r.usesMTLSForPAR() && provider.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint != "" {
 		return provider.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint
 	}
 	return provider.PushedAuthorizationRequestEndpoint
 }
 
-func (r *RP) tokenEndpoint(provider oidc.ProviderMetadata) string {
+func (r *RP) tokenEndpoint(provider metadata.Provider) string {
 	if r.usesMTLSForTokenEndpoint() && provider.MTLSEndpointAliases.TokenEndpoint != "" {
 		return provider.MTLSEndpointAliases.TokenEndpoint
 	}
 	return provider.TokenEndpoint
 }
 
-func (r *RP) userInfoEndpoint(provider oidc.ProviderMetadata) string {
+func (r *RP) userInfoEndpoint(provider metadata.Provider) string {
 	if r.senderConstrain == SenderConstrainMTLS && provider.MTLSEndpointAliases.UserinfoEndpoint != "" {
 		return provider.MTLSEndpointAliases.UserinfoEndpoint
 	}

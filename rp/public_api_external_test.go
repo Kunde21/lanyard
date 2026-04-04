@@ -4,13 +4,13 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp"
 )
 
 func TestPublicAPIOptionNames(t *testing.T) {
-	_ = rp.WithProviderMetadata(oidc.ProviderMetadata{})
-	_ = rp.WithClientCredentialsProviderMetadata(oidc.ProviderMetadata{})
+	_ = rp.WithProviderMetadata(metadata.Provider{})
+	_ = rp.WithClientCredentialsProviderMetadata(metadata.Provider{})
 	_ = rp.WithDiscoveryHTTPClient(nil)
 	_ = rp.WithDiscoveryLogger(nil)
 	_ = rp.WithDiscoveryOIDCClient(nil)
@@ -40,6 +40,6 @@ func TestPublicAPIOptionNames(t *testing.T) {
 		"https://issuer.example.com",
 		"client-id",
 		"secret",
-		rp.WithClientCredentialsProviderMetadata(oidc.ProviderMetadata{}),
+		rp.WithClientCredentialsProviderMetadata(metadata.Provider{}),
 	)
 }

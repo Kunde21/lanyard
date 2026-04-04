@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/go-jose/go-jose/v4"
 	"github.com/google/go-cmp/cmp"
 )
@@ -201,8 +201,8 @@ func newJARMTestServer(t *testing.T, key *rsa.PrivateKey, kid string, claims map
 
 func newJARMTestRP(t *testing.T, jwksServer *httptest.Server, clientID string, now time.Time) *RP {
 	t.Helper()
-	provider := oidc.ProviderMetadata{
-		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+	provider := metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                            "https://issuer.test",
 			AuthorizationEndpoint:             "https://issuer.test/authorize",
 			TokenEndpoint:                     "https://issuer.test/token",

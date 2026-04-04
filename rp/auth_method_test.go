@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -90,9 +90,9 @@ func TestNew_WithSecretBasedAuthMethodRequiresClientSecret(t *testing.T) {
 	}
 }
 
-func providerForAuthMethods(methods ...string) oidc.ProviderMetadata {
-	return oidc.ProviderMetadata{
-		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+func providerForAuthMethods(methods ...string) metadata.Provider {
+	return metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                            "https://issuer.test",
 			AuthorizationEndpoint:             "https://issuer.test/authorize",
 			TokenEndpoint:                     "https://issuer.test/token",

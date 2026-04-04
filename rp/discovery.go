@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 )
 
 // ProviderDiscoveryOption configures [DiscoverProvider].
@@ -23,7 +23,7 @@ func (f providerDiscoveryOptionFunc) applyProviderDiscovery(cfg *providerDiscove
 type providerDiscoveryConfig struct {
 	httpClient        *http.Client
 	logger            *slog.Logger
-	oidcClient        *oidc.Client
+	metadataClient    *metadata.Client
 	webFingerResource string
 	preloadJWKS       bool
 }
@@ -34,7 +34,7 @@ type providerDiscoveryConfig struct {
 // By default it discovers metadata from the supplied issuer. Callers can use
 // [WithDiscoveryWebFingerResource] to resolve the issuer through WebFinger
 // instead, and [WithDiscoveryPreloadJWKS] to eagerly validate JWKS reachability.
-func DiscoverProvider(ctx context.Context, issuer string, opts ...ProviderDiscoveryOption) (oidc.ProviderMetadata, error) {
+func DiscoverProvider(ctx context.Context, issuer string, opts ...ProviderDiscoveryOption) (metadata.Provider, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -46,20 +46,20 @@ func DiscoverProvider(ctx context.Context, issuer string, opts ...ProviderDiscov
 		}
 	}
 
-	client := cfg.oidcClient
+	client := cfg.metadataClient
 	if client == nil {
-		oidcOpts := make([]oidc.Option, 0, 2)
+		opts := make([]metadata.Option, 0, 2)
 		if cfg.httpClient != nil {
-			oidcOpts = append(oidcOpts, oidc.WithHTTPClient(cfg.httpClient))
+			opts = append(opts, metadata.WithHTTPClient(cfg.httpClient))
 		}
 		if cfg.logger != nil {
-			oidcOpts = append(oidcOpts, oidc.WithLogger(cfg.logger))
+			opts = append(opts, metadata.WithLogger(cfg.logger))
 		}
-		client = oidc.NewClient(oidcOpts...)
+		client = metadata.NewClient(opts...)
 	}
 
 	var (
-		provider oidc.ProviderMetadata
+		provider metadata.Provider
 		err      error
 	)
 	if cfg.webFingerResource != "" {
@@ -68,16 +68,16 @@ func DiscoverProvider(ctx context.Context, issuer string, opts ...ProviderDiscov
 		provider, err = client.DiscoverProvider(ctx, issuer)
 	}
 	if err != nil {
-		return oidc.ProviderMetadata{}, err
+		return metadata.Provider{}, err
 	}
 
 	if cfg.preloadJWKS && provider.JWKSURI != "" {
 		keySet, err := client.RemoteKeySetFromJWKSURI(provider.JWKSURI)
 		if err != nil {
-			return oidc.ProviderMetadata{}, fmt.Errorf("failed to prepare jwks key set: %w", err)
+			return metadata.Provider{}, fmt.Errorf("failed to prepare jwks key set: %w", err)
 		}
 		if _, err := keySet.Keys(ctx); err != nil {
-			return oidc.ProviderMetadata{}, fmt.Errorf("failed to preload jwks keys: %w", err)
+			return metadata.Provider{}, fmt.Errorf("failed to preload jwks keys: %w", err)
 		}
 	}
 
@@ -108,10 +108,10 @@ func WithDiscoveryLogger(logger *slog.Logger) ProviderDiscoveryOption {
 //
 // When provided, this client takes precedence over discovery-specific HTTP and
 // logger options.
-func WithDiscoveryOIDCClient(client *oidc.Client) ProviderDiscoveryOption {
+func WithDiscoveryOIDCClient(client *metadata.Client) ProviderDiscoveryOption {
 	return providerDiscoveryOptionFunc(func(cfg *providerDiscoveryConfig) {
 		if client != nil {
-			cfg.oidcClient = client
+			cfg.metadataClient = client
 		}
 	})
 }

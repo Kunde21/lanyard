@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/go-jose/go-jose/v4"
 )
 
@@ -30,9 +30,9 @@ type ClientCredentials struct {
 
 	httpClient *http.Client
 	logger     *slog.Logger
-	oidcClient *oidc.Client
+	oidcClient *metadata.Client
 
-	provider    oidc.ProviderMetadata
+	provider    metadata.Provider
 	providerSet bool
 
 	clientKeyProvider ClientKeyProvider
@@ -78,9 +78,9 @@ func NewClientCredentials(ctx context.Context, issuer, clientID, clientSecret st
 	}
 
 	if c.oidcClient == nil {
-		c.oidcClient = oidc.NewClient(
-			oidc.WithHTTPClient(c.httpClient),
-			oidc.WithLogger(c.logger),
+		c.oidcClient = metadata.NewClient(
+			metadata.WithHTTPClient(c.httpClient),
+			metadata.WithLogger(c.logger),
 		)
 	}
 

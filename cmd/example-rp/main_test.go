@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp"
 	"github.com/google/go-cmp/cmp"
 )
@@ -185,7 +185,7 @@ func TestMaybeFetchConformanceResource_RetriesWithDpopNonce(t *testing.T) {
 		"client",
 		"",
 		"https://rp.test/callback",
-		rp.WithProviderMetadata(oidc.ProviderMetadata{AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{AuthorizationEndpoint: "https://issuer.test/authorize"}}),
+		rp.WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{AuthorizationEndpoint: "https://issuer.test/authorize"}}),
 		rp.WithAuthMethod(rp.AuthMethodPrivateKeyJWT),
 		rp.WithClientKeyProvider(keyProvider),
 		rp.WithSenderConstrain("dpop"),
@@ -270,7 +270,7 @@ func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
 		"client",
 		"",
 		"https://rp.test/callback",
-		rp.WithProviderMetadata(oidc.ProviderMetadata{AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{AuthorizationEndpoint: "https://issuer.test/authorize"}}),
+		rp.WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{AuthorizationEndpoint: "https://issuer.test/authorize"}}),
 		rp.WithAuthMethod(rp.AuthMethodPrivateKeyJWT),
 		rp.WithClientKeyProvider(keyProvider),
 		rp.WithSenderConstrain(""),

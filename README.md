@@ -133,7 +133,7 @@ func setupRP(ctx context.Context) (*rp.RP, error) {
 		rp.WithStateStore(stateStore),
 		rp.WithScopes("openid", "profile", "email"),
 	)
-	// If you already have metadata, add rp.WithProviderMetadata(provider)
+	// If you already have provider info, add rp.WithProviderMetadata(provider)
 	// and the constructor will skip discovery.
 }
 
@@ -161,18 +161,18 @@ func handleCallback(rpClient *rp.RP) http.HandlerFunc {
 }
 ```
 
-### Browser RP with Preloaded Metadata
+### Browser RP with Preloaded Provider
 
 ```go
 import (
 	"context"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp"
 )
 
 func newRP(ctx context.Context) (*rp.RP, error) {
-	provider := oidc.ProviderMetadata{
+	provider := metadata.Provider{
 		Issuer:                "https://issuer.example.com",
 		AuthorizationEndpoint: "https://issuer.example.com/authorize",
 		TokenEndpoint:         "https://issuer.example.com/token",
@@ -220,13 +220,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp"
 )
 
 func main() {
 	ctx := context.Background()
-	provider := oidc.ProviderMetadata{
+	provider := metadata.Provider{
 		Issuer:        "https://auth.example.com",
 		TokenEndpoint: "https://auth.example.com/token",
 	}
@@ -266,7 +266,7 @@ func main() {
 
 *   `cmd/example-rp/` - Example Relying Party implementation.
 *   `conformance/` - Conformance test harness and setup.
-*   `oidc/` - Core OIDC discovery, metadata, and validation logic.
+*   `metadata/` - Core OIDC discovery, metadata, and validation logic.
 *   `rp/` - Relying Party implementation (Authorization Code flow, tokens, user info).
 *   `rp/store/memory/` - In-memory RP state store.
 *   `rp/store/cookie/` - Cookie-backed RP state store using `gorilla/sessions`.
@@ -284,7 +284,7 @@ See `AGENTS.md` for development guidelines, build commands, and code style.
 go test ./...
 
 # Run specific package tests
-go test ./pkg/oidc
+go test ./metadata
 ```
 
 ### Code Style

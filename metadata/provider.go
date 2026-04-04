@@ -1,10 +1,10 @@
-package oidc
+package metadata
 
 import "encoding/json"
 
-// ProviderMetadata contains OpenID Provider Metadata from discovery.
-type ProviderMetadata struct {
-	AuthorizationServerMetadata
+// Provider contains OpenID Provider information from discovery.
+type Provider struct {
+	AuthorizationServer
 
 	UserinfoEndpoint                          string   `json:"userinfo_endpoint,omitempty"`
 	CheckSessionIframe                        string   `json:"check_session_iframe,omitempty"`
@@ -46,18 +46,18 @@ type ProviderMetadata struct {
 	Raw json.RawMessage `json:"-"`
 }
 
-// UnmarshalJSON unmarshals metadata while retaining raw JSON.
-func (m *ProviderMetadata) UnmarshalJSON(data []byte) error {
-	type alias ProviderMetadata
+// UnmarshalJSON unmarshals provider data while retaining raw JSON.
+func (p *Provider) UnmarshalJSON(data []byte) error {
+	type alias Provider
 
 	var decoded alias
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
 
-	*m = ProviderMetadata(decoded)
-	m.Raw = append([]byte(nil), data...)
-	m.AuthorizationServerMetadata.Raw = append([]byte(nil), data...)
+	*p = Provider(decoded)
+	p.Raw = append([]byte(nil), data...)
+	p.AuthorizationServer.Raw = append([]byte(nil), data...)
 
 	return nil
 }

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	jose "github.com/go-jose/go-jose/v4"
 )
 
@@ -473,8 +473,8 @@ func TestHandleCallback_UsesConfiguredProviderMetadataForOAuthOnly(t *testing.T)
 	defer ts.Close()
 	issuer = ts.URL
 
-	provider := oidc.ProviderMetadata{
-		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+	provider := metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                 issuer,
 			AuthorizationEndpoint:  issuer + "/authorize",
 			TokenEndpoint:          issuer + "/custom-token",

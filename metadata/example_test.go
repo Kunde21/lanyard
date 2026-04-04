@@ -1,4 +1,4 @@
-package oidc_test
+package metadata_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 )
 
 func ExampleClient_DiscoverProvider() {
@@ -29,7 +29,7 @@ func ExampleClient_DiscoverProvider() {
 	defer server.Close()
 	issuer = server.URL
 
-	client := oidc.NewClient(oidc.WithHTTPClient(server.Client()))
+	client := metadata.NewClient(metadata.WithHTTPClient(server.Client()))
 	metadata, err := client.DiscoverProvider(context.Background(), issuer)
 	if err != nil {
 		fmt.Println(err)

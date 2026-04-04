@@ -33,7 +33,7 @@ go mod download
 go build ./...
 
 # Run specific package tests
-go test ./pkg/oidc
+go test ./metadata
 ```
 
 ## Dependencies

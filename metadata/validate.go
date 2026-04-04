@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import (
 	"errors"
@@ -97,67 +97,67 @@ func validateHTTPSURL(issuer, fieldName, raw string, required bool) error {
 	return nil
 }
 
-func (c *Client) validateProviderMetadata(expectedIssuer string, metadata ProviderMetadata) error {
-	if metadata.Issuer == "" {
+func (c *Client) validateProvider(expectedIssuer string, provider Provider) error {
+	if provider.Issuer == "" {
 		return &ValidationError{Issuer: expectedIssuer, Field: "issuer", Expected: "non-empty", Actual: ""}
 	}
-	if !issuerMatches(expectedIssuer, metadata.Issuer, c.issuerTrailingSlashTolerance) {
+	if !issuerMatches(expectedIssuer, provider.Issuer, c.issuerTrailingSlashTolerance) {
 		return &ValidationError{
 			Issuer:   expectedIssuer,
 			Field:    "issuer",
 			Expected: expectedIssuer,
-			Actual:   metadata.Issuer,
+			Actual:   provider.Issuer,
 			Err:      ErrInvalidIssuer,
 		}
 	}
-	if metadata.AuthorizationEndpoint == "" {
+	if provider.AuthorizationEndpoint == "" {
 		return &ValidationError{Issuer: expectedIssuer, Field: "authorization_endpoint", Expected: "non-empty", Actual: ""}
 	}
-	if metadata.JWKSURI == "" {
+	if provider.JWKSURI == "" {
 		return &ValidationError{Issuer: expectedIssuer, Field: "jwks_uri", Expected: "non-empty", Actual: ""}
 	}
-	if len(metadata.ResponseTypesSupported) == 0 {
+	if len(provider.ResponseTypesSupported) == 0 {
 		return &ValidationError{Issuer: expectedIssuer, Field: "response_types_supported", Expected: "non-empty", Actual: "[]"}
 	}
-	if len(metadata.SubjectTypesSupported) == 0 {
+	if len(provider.SubjectTypesSupported) == 0 {
 		return &ValidationError{Issuer: expectedIssuer, Field: "subject_types_supported", Expected: "non-empty", Actual: "[]"}
 	}
-	if len(metadata.IDTokenSigningAlgValuesSupported) == 0 {
+	if len(provider.IDTokenSigningAlgValuesSupported) == 0 {
 		return &ValidationError{Issuer: expectedIssuer, Field: "id_token_signing_alg_values_supported", Expected: "non-empty", Actual: "[]"}
 	}
-	if err := validateHTTPSURL(expectedIssuer, "authorization_endpoint", metadata.AuthorizationEndpoint, true); err != nil {
+	if err := validateHTTPSURL(expectedIssuer, "authorization_endpoint", provider.AuthorizationEndpoint, true); err != nil {
 		return err
 	}
-	if err := validateHTTPSURL(expectedIssuer, "jwks_uri", metadata.JWKSURI, true); err != nil {
+	if err := validateHTTPSURL(expectedIssuer, "jwks_uri", provider.JWKSURI, true); err != nil {
 		return err
 	}
-	if err := validateHTTPSURL(expectedIssuer, "token_endpoint", metadata.TokenEndpoint, false); err != nil {
+	if err := validateHTTPSURL(expectedIssuer, "token_endpoint", provider.TokenEndpoint, false); err != nil {
 		return err
 	}
-	if err := validateHTTPSURL(expectedIssuer, "userinfo_endpoint", metadata.UserinfoEndpoint, false); err != nil {
+	if err := validateHTTPSURL(expectedIssuer, "userinfo_endpoint", provider.UserinfoEndpoint, false); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (c *Client) validateAuthorizationServerMetadata(expectedIssuer string, metadata AuthorizationServerMetadata) error {
-	if metadata.Issuer == "" {
+func (c *Client) validateAuthorizationServer(expectedIssuer string, server AuthorizationServer) error {
+	if server.Issuer == "" {
 		return &ValidationError{Issuer: expectedIssuer, Field: "issuer", Expected: "non-empty", Actual: ""}
 	}
-	if !issuerMatches(expectedIssuer, metadata.Issuer, c.issuerTrailingSlashTolerance) {
-		return &ValidationError{Issuer: expectedIssuer, Field: "issuer", Expected: expectedIssuer, Actual: metadata.Issuer, Err: ErrInvalidIssuer}
+	if !issuerMatches(expectedIssuer, server.Issuer, c.issuerTrailingSlashTolerance) {
+		return &ValidationError{Issuer: expectedIssuer, Field: "issuer", Expected: expectedIssuer, Actual: server.Issuer, Err: ErrInvalidIssuer}
 	}
-	if len(metadata.ResponseTypesSupported) == 0 {
+	if len(server.ResponseTypesSupported) == 0 {
 		return &ValidationError{Issuer: expectedIssuer, Field: "response_types_supported", Expected: "non-empty", Actual: "[]"}
 	}
-	if err := validateHTTPSURL(expectedIssuer, "authorization_endpoint", metadata.AuthorizationEndpoint, false); err != nil {
+	if err := validateHTTPSURL(expectedIssuer, "authorization_endpoint", server.AuthorizationEndpoint, false); err != nil {
 		return err
 	}
-	if err := validateHTTPSURL(expectedIssuer, "jwks_uri", metadata.JWKSURI, false); err != nil {
+	if err := validateHTTPSURL(expectedIssuer, "jwks_uri", server.JWKSURI, false); err != nil {
 		return err
 	}
-	if err := validateHTTPSURL(expectedIssuer, "token_endpoint", metadata.TokenEndpoint, false); err != nil {
+	if err := validateHTTPSURL(expectedIssuer, "token_endpoint", server.TokenEndpoint, false); err != nil {
 		return err
 	}
 

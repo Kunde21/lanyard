@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -523,14 +523,14 @@ type mockKeyProvider struct {
 	kid string
 }
 
-func clientCredentialsProvider(tokenEndpoint string, authMethods ...AuthMethod) oidc.ProviderMetadata {
+func clientCredentialsProvider(tokenEndpoint string, authMethods ...AuthMethod) metadata.Provider {
 	supportedAuthMethods := make([]string, len(authMethods))
 	for i, method := range authMethods {
 		supportedAuthMethods[i] = string(method)
 	}
 
-	return oidc.ProviderMetadata{
-		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+	return metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                            "https://auth.example.com",
 			TokenEndpoint:                     tokenEndpoint,
 			TokenEndpointAuthMethodsSupported: supportedAuthMethods,

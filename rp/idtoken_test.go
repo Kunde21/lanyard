@@ -78,7 +78,7 @@ func TestValidateIDToken(t *testing.T) {
 		issuer:                 issuer,
 		clientID:               "client-id",
 		httpClient:             ts.Client(),
-		oidcClient:             r.oidcClient,
+		metadataClient:         r.metadataClient,
 		now:                    func() time.Time { return now },
 		allowUnsecuredIDTokens: false,
 	}
@@ -90,7 +90,7 @@ func TestValidateIDToken(t *testing.T) {
 		issuer:                 issuer,
 		clientID:               "client-id",
 		httpClient:             ts.Client(),
-		oidcClient:             r.oidcClient,
+		metadataClient:         r.metadataClient,
 		now:                    func() time.Time { return now },
 		allowUnsecuredIDTokens: true,
 	}
@@ -102,7 +102,7 @@ func TestValidateIDToken(t *testing.T) {
 		issuer:                 issuer,
 		clientID:               "client-id",
 		httpClient:             ts.Client(),
-		oidcClient:             r.oidcClient,
+		metadataClient:         r.metadataClient,
 		now:                    func() time.Time { return now },
 		fapiProfile:            fapiProfilePlainFAPI,
 		allowUnsecuredIDTokens: true,

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp/store/memory"
 	"github.com/google/go-cmp/cmp"
 )
@@ -45,7 +45,7 @@ func TestNew_Validation(t *testing.T) {
 func TestNew_DefaultsAndOptions(t *testing.T) {
 	customHTTPClient := &http.Client{}
 	customLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	customOIDCClient := oidc.NewClient()
+	customOIDCClient := metadata.NewClient()
 	customStateStore := memory.New(5 * time.Minute)
 
 	got, err := New(
@@ -74,7 +74,7 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 	if got.logger != customLogger {
 		t.Fatalf("logger mismatch")
 	}
-	if got.oidcClient != customOIDCClient {
+	if got.metadataClient != customOIDCClient {
 		t.Fatalf("oidcClient mismatch")
 	}
 	if got.stateStore != customStateStore {
@@ -158,8 +158,8 @@ func TestNew_SkipsDiscoveryForOAuthOnlyScopes(t *testing.T) {
 }
 
 func TestNew_WithProviderMetadata_SkipsDiscoveryHTTP(t *testing.T) {
-	provider := oidc.ProviderMetadata{
-		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+	provider := metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                "https://issuer.test",
 			AuthorizationEndpoint: "https://issuer.test/authorize",
 			TokenEndpoint:         "https://issuer.test/token",
@@ -197,7 +197,7 @@ func TestNew_WithProviderMetadataMissingAuthorizationEndpoint_ReturnsError(t *te
 		"client",
 		"secret",
 		"https://rp.test/callback",
-		WithProviderMetadata(oidc.ProviderMetadata{}),
+		WithProviderMetadata(metadata.Provider{}),
 	)
 	if err == nil {
 		t.Fatalf("New() expected error")

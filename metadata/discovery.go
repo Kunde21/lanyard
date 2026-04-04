@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import (
 	"context"
@@ -7,14 +7,14 @@ import (
 )
 
 const (
-	providerCachePrefix = "oidc:provider-metadata:v1:"
-	oauthASCachePrefix  = "oidc:authz-server-metadata:v1:"
+	providerCachePrefix = "oidc:provider:v1:"
+	oauthASCachePrefix  = "oidc:authz-server:v1:"
 )
 
-// DiscoverProvider fetches, validates, and caches OIDC provider metadata.
-func (c *Client) DiscoverProvider(ctx context.Context, issuer string) (ProviderMetadata, error) {
+// DiscoverProvider fetches, validates, and caches OIDC provider information.
+func (c *Client) DiscoverProvider(ctx context.Context, issuer string) (Provider, error) {
 	if _, err := validateIssuerURL(issuer); err != nil {
-		return ProviderMetadata{}, err
+		return Provider{}, err
 	}
 
 	cacheKey := providerCachePrefix + issuer
@@ -22,7 +22,7 @@ func (c *Client) DiscoverProvider(ctx context.Context, issuer string) (ProviderM
 		if c.conformanceFreshDiscovery {
 			refreshed, err := c.refreshProvider(ctx, issuer, cacheKey, entry)
 			if err != nil {
-				return ProviderMetadata{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+				return Provider{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
 			}
 			return refreshed.provider, nil
 		}
@@ -38,16 +38,16 @@ func (c *Client) DiscoverProvider(ctx context.Context, issuer string) (ProviderM
 
 	entry, err := c.refreshProvider(ctx, issuer, cacheKey, nil)
 	if err != nil {
-		return ProviderMetadata{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+		return Provider{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
 	}
 
 	return entry.provider, nil
 }
 
-// DiscoverAuthorizationServer fetches, validates, and caches OAuth AS metadata.
-func (c *Client) DiscoverAuthorizationServer(ctx context.Context, issuer string) (AuthorizationServerMetadata, error) {
+// DiscoverAuthorizationServer fetches, validates, and caches OAuth AS information.
+func (c *Client) DiscoverAuthorizationServer(ctx context.Context, issuer string) (AuthorizationServer, error) {
 	if _, err := validateIssuerURL(issuer); err != nil {
-		return AuthorizationServerMetadata{}, err
+		return AuthorizationServer{}, err
 	}
 
 	cacheKey := oauthASCachePrefix + issuer
@@ -55,7 +55,7 @@ func (c *Client) DiscoverAuthorizationServer(ctx context.Context, issuer string)
 		if c.conformanceFreshDiscovery {
 			refreshed, err := c.refreshAuthorizationServer(ctx, issuer, cacheKey, entry)
 			if err != nil {
-				return AuthorizationServerMetadata{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+				return AuthorizationServer{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
 			}
 			return refreshed.authorizer, nil
 		}
@@ -71,7 +71,7 @@ func (c *Client) DiscoverAuthorizationServer(ctx context.Context, issuer string)
 
 	entry, err := c.refreshAuthorizationServer(ctx, issuer, cacheKey, nil)
 	if err != nil {
-		return AuthorizationServerMetadata{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+		return AuthorizationServer{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
 	}
 
 	return entry.authorizer, nil
@@ -81,27 +81,27 @@ func (c *Client) refreshProvider(ctx context.Context, issuer, cacheKey string, e
 	return c.refreshDiscovery(ctx, issuer, cacheKey, existing, discoveryRefreshOptions{
 		wellKnown: OIDCWellKnownURL,
 		fetch: func(ctx context.Context, discoveryURL, etag string) (discoveryFetchResult, error) {
-			result, err := c.fetchProviderMetadata(ctx, discoveryURL, etag)
+			result, err := c.fetchProvider(ctx, discoveryURL, etag)
 			if err != nil {
 				return discoveryFetchResult{}, err
 			}
 			return discoveryFetchResult{
-				metadata:    result.metadata,
+				metadata:    result.provider,
 				notModified: result.notModified,
 				etag:        result.etag,
 				freshUntil:  result.freshUntil,
 				fetchedAt:   result.fetchedAt,
 			}, nil
 		},
-		validate: func(expectedIssuer string, metadata interface{}) error {
-			md, ok := metadata.(ProviderMetadata)
+		validate: func(expectedIssuer string, md interface{}) error {
+			p, ok := md.(Provider)
 			if !ok {
-				return fmt.Errorf("expected provider metadata, got %T", metadata)
+				return fmt.Errorf("expected provider, got %T", md)
 			}
-			return c.validateProviderMetadata(expectedIssuer, md)
+			return c.validateProvider(expectedIssuer, p)
 		},
-		newEntry: func(metadata interface{}, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
-			return newProviderCacheEntry(metadata.(ProviderMetadata), etag, freshUntil, fetchedAt)
+		newEntry: func(md interface{}, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
+			return newProviderCacheEntry(md.(Provider), etag, freshUntil, fetchedAt)
 		},
 		metadataFromExisting: func(entry *CacheEntry) interface{} {
 			return entry.provider
@@ -115,27 +115,27 @@ func (c *Client) refreshAuthorizationServer(ctx context.Context, issuer, cacheKe
 	return c.refreshDiscovery(ctx, issuer, cacheKey, existing, discoveryRefreshOptions{
 		wellKnown: OAuthASWellKnownURL,
 		fetch: func(ctx context.Context, discoveryURL, etag string) (discoveryFetchResult, error) {
-			result, err := c.fetchAuthorizationServerMetadata(ctx, discoveryURL, etag)
+			result, err := c.fetchAuthorizationServer(ctx, discoveryURL, etag)
 			if err != nil {
 				return discoveryFetchResult{}, err
 			}
 			return discoveryFetchResult{
-				metadata:    result.metadata,
+				metadata:    result.server,
 				notModified: result.notModified,
 				etag:        result.etag,
 				freshUntil:  result.freshUntil,
 				fetchedAt:   result.fetchedAt,
 			}, nil
 		},
-		validate: func(expectedIssuer string, metadata interface{}) error {
-			md, ok := metadata.(AuthorizationServerMetadata)
+		validate: func(expectedIssuer string, md interface{}) error {
+			s, ok := md.(AuthorizationServer)
 			if !ok {
-				return fmt.Errorf("expected authorization server metadata, got %T", metadata)
+				return fmt.Errorf("expected authorization server, got %T", md)
 			}
-			return c.validateAuthorizationServerMetadata(expectedIssuer, md)
+			return c.validateAuthorizationServer(expectedIssuer, s)
 		},
-		newEntry: func(metadata interface{}, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
-			return newAuthorizationServerCacheEntry(metadata.(AuthorizationServerMetadata), etag, freshUntil, fetchedAt)
+		newEntry: func(md interface{}, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
+			return newAuthorizationServerCacheEntry(md.(AuthorizationServer), etag, freshUntil, fetchedAt)
 		},
 		metadataFromExisting: func(entry *CacheEntry) interface{} {
 			return entry.authorizer

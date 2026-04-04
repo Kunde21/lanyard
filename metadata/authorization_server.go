@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import "encoding/json"
 
@@ -12,9 +12,9 @@ type MTLSEndpointAliases struct {
 	PushedAuthorizationRequestEndpoint string `json:"pushed_authorization_request_endpoint,omitempty"`
 }
 
-// AuthorizationServerMetadata contains OAuth 2.0 Authorization Server Metadata
+// AuthorizationServer contains OAuth 2.0 Authorization Server Metadata
 // (RFC 8414).
-type AuthorizationServerMetadata struct {
+type AuthorizationServer struct {
 	Issuer                                             string              `json:"issuer"`
 	AuthorizationEndpoint                              string              `json:"authorization_endpoint,omitempty"`
 	TokenEndpoint                                      string              `json:"token_endpoint,omitempty"`

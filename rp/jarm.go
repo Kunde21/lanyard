@@ -60,7 +60,7 @@ func (r *RP) parseJARMResponse(ctx context.Context, rawJARM string) (jarmClaims,
 		return jarmClaims{}, fmt.Errorf("%w: provider metadata missing jwks_uri for JARM verification", ErrInvalidState)
 	}
 
-	keySet, err := r.oidcClient.RemoteKeySetFromJWKSURI(jwksURI)
+	keySet, err := r.metadataClient.RemoteKeySetFromJWKSURI(jwksURI)
 	if err != nil {
 		return jarmClaims{}, fmt.Errorf("%w: failed to load JWKS for JARM verification: %v", ErrInvalidState, err)
 	}

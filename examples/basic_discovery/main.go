@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 )
 
 func main() {
@@ -14,7 +14,7 @@ func main() {
 		issuer = os.Args[1]
 	}
 
-	client := oidc.NewClient()
+	client := metadata.NewClient()
 	metadata, err := client.DiscoverProvider(context.Background(), issuer)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "discover provider: %v\n", err)

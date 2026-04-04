@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import (
 	"context"
@@ -7,14 +7,14 @@ import (
 	"github.com/Kunde21/lanyard/jwks"
 )
 
-// RemoteKeySet builds a remote key set from discovered provider metadata.
+// RemoteKeySet builds a remote key set from discovered provider information.
 func (c *Client) RemoteKeySet(ctx context.Context, issuer string) (*jwks.RemoteKeySet, error) {
 	provider, err := c.DiscoverProvider(ctx, issuer)
 	if err != nil {
 		return nil, err
 	}
 	if provider.JWKSURI == "" {
-		return nil, fmt.Errorf("%w: provider metadata missing jwks_uri", ErrDiscoveryFailed)
+		return nil, fmt.Errorf("%w: provider missing jwks_uri", ErrDiscoveryFailed)
 	}
 
 	return c.RemoteKeySetFromJWKSURI(provider.JWKSURI)

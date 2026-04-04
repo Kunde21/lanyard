@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -371,7 +371,7 @@ func TestPushAuthorizationRequest_SetAuthParamAddsCustomPARField(t *testing.T) {
 	}
 }
 
-func providerWithAuthorizationAndPAR(parEndpoint string, methods ...string) oidc.ProviderMetadata {
+func providerWithAuthorizationAndPAR(parEndpoint string, methods ...string) metadata.Provider {
 	provider := providerForAuthMethods(methods...)
 	provider.AuthorizationEndpoint = "https://issuer.test/authorize"
 	provider.PushedAuthorizationRequestEndpoint = parEndpoint

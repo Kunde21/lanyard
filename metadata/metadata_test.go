@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import (
 	"encoding/json"
@@ -8,24 +8,24 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestProviderMetadataClaimsUnknownFields(t *testing.T) {
+func TestProviderClaimsUnknownFields(t *testing.T) {
 	data, err := os.ReadFile("testdata/provider_metadata_fapi.json")
 	if err != nil {
 		t.Fatalf("ReadFile() failed: %v", err)
 	}
 
-	var metadata ProviderMetadata
-	if err := json.Unmarshal(data, &metadata); err != nil {
+	var provider Provider
+	if err := json.Unmarshal(data, &provider); err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 
-	if metadata.PushedAuthorizationRequestEndpoint == "" {
+	if provider.PushedAuthorizationRequestEndpoint == "" {
 		t.Fatalf("expected pushed_authorization_request_endpoint to be parsed")
 	}
-	if diff := cmp.Diff("https://mtls.fapi.example.com/token", metadata.MTLSEndpointAliases.TokenEndpoint); diff != "" {
+	if diff := cmp.Diff("https://mtls.fapi.example.com/token", provider.MTLSEndpointAliases.TokenEndpoint); diff != "" {
 		t.Fatalf("MTLSEndpointAliases.TokenEndpoint mismatch (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff("https://mtls.fapi.example.com/par", metadata.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint); diff != "" {
+	if diff := cmp.Diff("https://mtls.fapi.example.com/par", provider.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint); diff != "" {
 		t.Fatalf("MTLSEndpointAliases.PushedAuthorizationRequestEndpoint mismatch (-want +got):\n%s", diff)
 	}
 
@@ -33,7 +33,7 @@ func TestProviderMetadataClaimsUnknownFields(t *testing.T) {
 		GrantManagementEndpoint  string   `json:"grant_management_endpoint"`
 		TrustFrameworksSupported []string `json:"trust_frameworks_supported"`
 	}
-	if err := metadata.Claims(&custom); err != nil {
+	if err := provider.Claims(&custom); err != nil {
 		t.Fatalf("Claims() failed: %v", err)
 	}
 
@@ -45,21 +45,21 @@ func TestProviderMetadataClaimsUnknownFields(t *testing.T) {
 	}
 }
 
-func TestAuthorizationServerMetadataClaims(t *testing.T) {
+func TestAuthorizationServerClaims(t *testing.T) {
 	data, err := os.ReadFile("testdata/provider_metadata_minimal.json")
 	if err != nil {
 		t.Fatalf("ReadFile() failed: %v", err)
 	}
 
-	var metadata AuthorizationServerMetadata
-	if err := json.Unmarshal(data, &metadata); err != nil {
+	var server AuthorizationServer
+	if err := json.Unmarshal(data, &server); err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 
 	var custom struct {
 		TokenEndpoint string `json:"token_endpoint"`
 	}
-	if err := metadata.Claims(&custom); err != nil {
+	if err := server.Claims(&custom); err != nil {
 		t.Fatalf("Claims() failed: %v", err)
 	}
 
@@ -68,8 +68,8 @@ func TestAuthorizationServerMetadataClaims(t *testing.T) {
 	}
 }
 
-func TestAuthorizationServerMetadata_DPoPFields(t *testing.T) {
-	metadataJSON := `{
+func TestAuthorizationServer_DPoPFields(t *testing.T) {
+	serverJSON := `{
 		"issuer": "https://issuer.test",
 		"authorization_endpoint": "https://issuer.test/authorize",
 		"jwks_uri": "https://issuer.test/jwks",
@@ -81,31 +81,31 @@ func TestAuthorizationServerMetadata_DPoPFields(t *testing.T) {
 		"tls_client_certificate_bound_access_tokens": false
 	}`
 
-	var metadata AuthorizationServerMetadata
-	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+	var server AuthorizationServer
+	if err := json.Unmarshal([]byte(serverJSON), &server); err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 
 	want := []string{"PS256", "ES256"}
-	if diff := cmp.Diff(want, metadata.DPoPSigningAlgValuesSupported); diff != "" {
+	if diff := cmp.Diff(want, server.DPoPSigningAlgValuesSupported); diff != "" {
 		t.Fatalf("DPoPSigningAlgValuesSupported mismatch (-want +got):\n%s", diff)
 	}
-	if metadata.DPoPBoundAccessTokens == nil {
+	if server.DPoPBoundAccessTokens == nil {
 		t.Fatalf("expected DPoPBoundAccessTokens to be set")
 	}
-	if diff := cmp.Diff(true, *metadata.DPoPBoundAccessTokens); diff != "" {
+	if diff := cmp.Diff(true, *server.DPoPBoundAccessTokens); diff != "" {
 		t.Fatalf("DPoPBoundAccessTokens mismatch (-want +got):\n%s", diff)
 	}
-	if metadata.TLSClientCertificateBoundAccessTokens == nil {
+	if server.TLSClientCertificateBoundAccessTokens == nil {
 		t.Fatalf("expected TLSClientCertificateBoundAccessTokens to be set")
 	}
-	if diff := cmp.Diff(false, *metadata.TLSClientCertificateBoundAccessTokens); diff != "" {
+	if diff := cmp.Diff(false, *server.TLSClientCertificateBoundAccessTokens); diff != "" {
 		t.Fatalf("TLSClientCertificateBoundAccessTokens mismatch (-want +got):\n%s", diff)
 	}
 }
 
-func TestProviderMetadata_DPoPFields(t *testing.T) {
-	metadataJSON := `{
+func TestProvider_DPoPFields(t *testing.T) {
+	providerJSON := `{
 		"issuer": "https://issuer.test",
 		"authorization_endpoint": "https://issuer.test/authorize",
 		"jwks_uri": "https://issuer.test/jwks",
@@ -117,25 +117,25 @@ func TestProviderMetadata_DPoPFields(t *testing.T) {
 		"tls_client_certificate_bound_access_tokens": false
 	}`
 
-	var metadata ProviderMetadata
-	if err := json.Unmarshal([]byte(metadataJSON), &metadata); err != nil {
+	var provider Provider
+	if err := json.Unmarshal([]byte(providerJSON), &provider); err != nil {
 		t.Fatalf("Unmarshal() failed: %v", err)
 	}
 
 	want := []string{"PS256", "ES256"}
-	if diff := cmp.Diff(want, metadata.DPoPSigningAlgValuesSupported); diff != "" {
+	if diff := cmp.Diff(want, provider.DPoPSigningAlgValuesSupported); diff != "" {
 		t.Fatalf("DPoPSigningAlgValuesSupported mismatch (-want +got):\n%s", diff)
 	}
-	if metadata.DPoPBoundAccessTokens == nil {
+	if provider.DPoPBoundAccessTokens == nil {
 		t.Fatalf("expected DPoPBoundAccessTokens to be set")
 	}
-	if diff := cmp.Diff(true, *metadata.DPoPBoundAccessTokens); diff != "" {
+	if diff := cmp.Diff(true, *provider.DPoPBoundAccessTokens); diff != "" {
 		t.Fatalf("DPoPBoundAccessTokens mismatch (-want +got):\n%s", diff)
 	}
-	if metadata.TLSClientCertificateBoundAccessTokens == nil {
+	if provider.TLSClientCertificateBoundAccessTokens == nil {
 		t.Fatalf("expected TLSClientCertificateBoundAccessTokens to be set")
 	}
-	if diff := cmp.Diff(false, *metadata.TLSClientCertificateBoundAccessTokens); diff != "" {
+	if diff := cmp.Diff(false, *provider.TLSClientCertificateBoundAccessTokens); diff != "" {
 		t.Fatalf("TLSClientCertificateBoundAccessTokens mismatch (-want +got):\n%s", diff)
 	}
 }

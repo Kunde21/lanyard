@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import (
 	"context"
@@ -23,18 +23,18 @@ type webFingerLink struct {
 }
 
 // DiscoverProviderFromResource resolves issuer from WebFinger and then runs provider discovery.
-func (c *Client) DiscoverProviderFromResource(ctx context.Context, resource string) (ProviderMetadata, error) {
+func (c *Client) DiscoverProviderFromResource(ctx context.Context, resource string) (Provider, error) {
 	issuer, err := c.ResolveIssuerFromWebFinger(ctx, resource)
 	if err != nil {
-		return ProviderMetadata{}, err
+		return Provider{}, err
 	}
 
-	metadata, err := c.DiscoverProvider(ctx, issuer)
+	provider, err := c.DiscoverProvider(ctx, issuer)
 	if err != nil {
-		return ProviderMetadata{}, err
+		return Provider{}, err
 	}
 
-	return metadata, nil
+	return provider, nil
 }
 
 // ResolveIssuerFromWebFinger resolves an OIDC issuer from a WebFinger resource.

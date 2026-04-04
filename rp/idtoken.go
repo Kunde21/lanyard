@@ -89,7 +89,7 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 		}
 	}
 
-	keySet, err := r.oidcClient.RemoteKeySet(ctx, r.issuer)
+	keySet, err := r.metadataClient.RemoteKeySet(ctx, r.issuer)
 	if err != nil {
 		return idTokenClaims{}, fmt.Errorf("%w: load key set: %v", ErrIDTokenValidationFailed, err)
 	}

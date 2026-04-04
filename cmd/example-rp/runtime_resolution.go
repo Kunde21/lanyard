@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp"
 	"github.com/Kunde21/lanyard/rp/store/cookie"
 	"github.com/Kunde21/lanyard/rp/store/memory"
@@ -239,15 +239,15 @@ func newRPHTTPClient(keyProvider rp.ClientKeyProvider) *http.Client {
 
 func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*rp.RP, error) {
 	httpClient := newRPHTTPClient(resolved.keyProvider)
-	oidcOpts := []oidc.Option{oidc.WithHTTPClient(httpClient)}
+	metadataOpts := []metadata.Option{metadata.WithHTTPClient(httpClient)}
 	if envTrue("RP_CONFORMANCE_FRESH_DISCOVERY") {
-		oidcOpts = append(oidcOpts, oidc.WithConformanceFreshDiscovery(true))
+		metadataOpts = append(metadataOpts, metadata.WithConformanceFreshDiscovery(true))
 	}
-	oidcClient := oidc.NewClient(oidcOpts...)
+	metadataClient := metadata.NewClient(metadataOpts...)
 
 	opts := []rp.Option{
 		rp.WithHTTPClient(httpClient),
-		rp.WithOIDCClient(oidcClient),
+		rp.WithOIDCClient(metadataClient),
 		rp.WithStateStore(resolved.stateStore),
 		rp.WithUserInfoTokenTransport(resolved.userInfoTransport),
 		rp.WithScopes(resolved.scopes...),
@@ -281,22 +281,22 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	return rp.New(r.Context(), resolved.issuer, resolved.clientID, resolved.clientSecret, resolved.redirectURI, opts...)
 }
 
-func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (oidc.ProviderMetadata, bool) {
+func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (metadata.Provider, bool) {
 	if scopesContainOpenID(resolved.scopes) {
-		return oidc.ProviderMetadata{}, false
+		return metadata.Provider{}, false
 	}
 	if _, err := issuerAlias(resolved.issuer); err != nil {
-		return oidc.ProviderMetadata{}, false
+		return metadata.Provider{}, false
 	}
 
 	base := strings.TrimRight(strings.TrimSpace(resolved.issuer), "/")
 	mtlsBase, err := conformanceMTLSBaseURL(resolved.issuer)
 	if err != nil {
-		return oidc.ProviderMetadata{}, false
+		return metadata.Provider{}, false
 	}
 
-	return oidc.ProviderMetadata{
-		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+	return metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                            resolved.issuer,
 			AuthorizationEndpoint:             base + "/authorize",
 			TokenEndpoint:                     base + "/token",
@@ -306,7 +306,7 @@ func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (oidc.Provid
 			CodeChallengeMethodsSupported:     []string{"S256"},
 			TokenEndpointAuthMethodsSupported: []string{"tls_client_auth", "private_key_jwt"},
 			TokenEndpointAuthSigningAlgValuesSupported: []string{"PS256", "ES256", "EdDSA"},
-			MTLSEndpointAliases: oidc.MTLSEndpointAliases{
+			MTLSEndpointAliases: metadata.MTLSEndpointAliases{
 				TokenEndpoint:                      mtlsBase + "/token",
 				UserinfoEndpoint:                   mtlsBase + "/userinfo",
 				PushedAuthorizationRequestEndpoint: mtlsBase + "/par",

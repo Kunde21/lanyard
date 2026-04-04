@@ -7,7 +7,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 )
 
 // ClientCredentialsOption configures a ClientCredentials instance.
@@ -34,7 +34,7 @@ func WithClientCredentialsLogger(logger *slog.Logger) ClientCredentialsOption {
 }
 
 // WithClientCredentialsOIDCClient sets the OIDC discovery and JWKS client.
-func WithClientCredentialsOIDCClient(client *oidc.Client) ClientCredentialsOption {
+func WithClientCredentialsOIDCClient(client *metadata.Client) ClientCredentialsOption {
 	return func(c *ClientCredentials) {
 		if client == nil {
 			return
@@ -63,7 +63,7 @@ func WithClientCredentialsAuthMethod(method AuthMethod) ClientCredentialsOption 
 // WithClientCredentialsProviderMetadata supplies provider metadata up front so
 // [NewClientCredentials] can skip discovery and use the provided token
 // endpoint immediately.
-func WithClientCredentialsProviderMetadata(provider oidc.ProviderMetadata) ClientCredentialsOption {
+func WithClientCredentialsProviderMetadata(provider metadata.Provider) ClientCredentialsOption {
 	return func(c *ClientCredentials) {
 		c.provider = provider
 		c.providerSet = true

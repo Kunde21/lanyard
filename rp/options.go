@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 )
 
 // Option configures an RP instance.
@@ -24,10 +24,10 @@ type authorizationURLConfig struct {
 }
 
 // WithOIDCClient sets the OIDC discovery and JWKS client.
-func WithOIDCClient(client *oidc.Client) Option {
+func WithOIDCClient(client *metadata.Client) Option {
 	return func(r *RP) {
 		if client != nil {
-			r.oidcClient = client
+			r.metadataClient = client
 		}
 	}
 }
@@ -71,7 +71,7 @@ func WithClockSkew(skew time.Duration) Option {
 
 // WithProviderMetadata supplies provider metadata up front so [New] can skip
 // discovery and use the provided endpoints immediately.
-func WithProviderMetadata(provider oidc.ProviderMetadata) Option {
+func WithProviderMetadata(provider metadata.Provider) Option {
 	return func(r *RP) {
 		r.provider = provider
 		r.providerSet = true

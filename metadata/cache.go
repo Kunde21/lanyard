@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import "time"
 
@@ -21,27 +21,27 @@ const (
 // Its fields are intentionally unexported.
 type CacheEntry struct {
 	kind       cacheEntryKind
-	provider   ProviderMetadata
-	authorizer AuthorizationServerMetadata
+	provider   Provider
+	authorizer AuthorizationServer
 	etag       string
 	freshUntil time.Time
 	fetchedAt  time.Time
 }
 
-func newProviderCacheEntry(metadata ProviderMetadata, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
+func newProviderCacheEntry(provider Provider, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
 	return &CacheEntry{
 		kind:       cacheEntryKindProvider,
-		provider:   metadata,
+		provider:   provider,
 		etag:       etag,
 		freshUntil: freshUntil,
 		fetchedAt:  fetchedAt,
 	}
 }
 
-func newAuthorizationServerCacheEntry(metadata AuthorizationServerMetadata, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
+func newAuthorizationServerCacheEntry(server AuthorizationServer, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
 	return &CacheEntry{
 		kind:       cacheEntryKindAS,
-		authorizer: metadata,
+		authorizer: server,
 		etag:       etag,
 		freshUntil: freshUntil,
 		fetchedAt:  fetchedAt,

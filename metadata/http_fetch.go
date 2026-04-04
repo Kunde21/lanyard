@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 )
 
 type providerFetchResult struct {
-	metadata    ProviderMetadata
+	provider    Provider
 	notModified bool
 	etag        string
 	freshUntil  time.Time
@@ -21,22 +21,22 @@ type providerFetchResult struct {
 }
 
 type authorizationServerFetchResult struct {
-	metadata    AuthorizationServerMetadata
+	server      AuthorizationServer
 	notModified bool
 	etag        string
 	freshUntil  time.Time
 	fetchedAt   time.Time
 }
 
-func (c *Client) fetchProviderMetadata(ctx context.Context, rawURL, priorETag string) (providerFetchResult, error) {
-	var metadata ProviderMetadata
-	result, err := c.fetchRawJSON(ctx, rawURL, priorETag, &metadata)
+func (c *Client) fetchProvider(ctx context.Context, rawURL, priorETag string) (providerFetchResult, error) {
+	var provider Provider
+	result, err := c.fetchRawJSON(ctx, rawURL, priorETag, &provider)
 	if err != nil {
 		return providerFetchResult{}, err
 	}
 
 	return providerFetchResult{
-		metadata:    metadata,
+		provider:    provider,
 		notModified: result.notModified,
 		etag:        result.etag,
 		freshUntil:  result.freshUntil,
@@ -44,15 +44,15 @@ func (c *Client) fetchProviderMetadata(ctx context.Context, rawURL, priorETag st
 	}, nil
 }
 
-func (c *Client) fetchAuthorizationServerMetadata(ctx context.Context, rawURL, priorETag string) (authorizationServerFetchResult, error) {
-	var metadata AuthorizationServerMetadata
-	result, err := c.fetchRawJSON(ctx, rawURL, priorETag, &metadata)
+func (c *Client) fetchAuthorizationServer(ctx context.Context, rawURL, priorETag string) (authorizationServerFetchResult, error) {
+	var server AuthorizationServer
+	result, err := c.fetchRawJSON(ctx, rawURL, priorETag, &server)
 	if err != nil {
 		return authorizationServerFetchResult{}, err
 	}
 
 	return authorizationServerFetchResult{
-		metadata:    metadata,
+		server:      server,
 		notModified: result.notModified,
 		etag:        result.etag,
 		freshUntil:  result.freshUntil,

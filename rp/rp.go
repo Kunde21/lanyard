@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp/store/memory"
 	"github.com/Kunde21/lanyard/validateurl"
 )
@@ -73,13 +73,12 @@ type RP struct {
 	scopes       []string
 	authMethod   AuthMethod
 
-	httpClient *http.Client
-	logger     *slog.Logger
-	oidcClient *oidc.Client
+	httpClient     *http.Client
+	logger         *slog.Logger
+	metadataClient *metadata.Client
+	stateStore     StateStore
 
-	stateStore StateStore
-
-	provider    oidc.ProviderMetadata
+	provider    metadata.Provider
 	providerSet bool
 
 	userInfoTokenTransport UserInfoTokenTransport
@@ -138,10 +137,10 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 		return nil, err
 	}
 
-	if r.oidcClient == nil {
-		r.oidcClient = oidc.NewClient(
-			oidc.WithHTTPClient(r.httpClient),
-			oidc.WithLogger(r.logger),
+	if r.metadataClient == nil {
+		r.metadataClient = metadata.NewClient(
+			metadata.WithHTTPClient(r.httpClient),
+			metadata.WithLogger(r.logger),
 		)
 	}
 
@@ -204,26 +203,26 @@ func (r *RP) validate() error {
 	return nil
 }
 
-func (r *RP) discoverProviderMetadata(ctx context.Context, issuer string) (oidc.ProviderMetadata, error) {
+func (r *RP) discoverProviderMetadata(ctx context.Context, issuer string) (metadata.Provider, error) {
 	if r.usesOpenIDScope() {
 		return DiscoverProvider(ctx, issuer,
-			WithDiscoveryOIDCClient(r.oidcClient),
+			WithDiscoveryOIDCClient(r.metadataClient),
 		)
 	}
 
 	return oauthOnlyProviderMetadata(issuer), nil
 }
 
-func oauthOnlyProviderMetadata(issuer string) oidc.ProviderMetadata {
+func oauthOnlyProviderMetadata(issuer string) metadata.Provider {
 	base := strings.TrimRight(strings.TrimSpace(issuer), "/")
 
-	return oidc.ProviderMetadata{
-		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
+	return metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                 issuer,
 			AuthorizationEndpoint:  base + "/authorize",
 			TokenEndpoint:          base + "/token",
 			ResponseTypesSupported: []string{"code"},
-			MTLSEndpointAliases: oidc.MTLSEndpointAliases{
+			MTLSEndpointAliases: metadata.MTLSEndpointAliases{
 				TokenEndpoint:    base + "/mtls/token",
 				UserinfoEndpoint: base + "/mtls/userinfo",
 			},

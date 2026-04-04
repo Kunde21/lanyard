@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Kunde21/lanyard/oidc"
+	"github.com/Kunde21/lanyard/metadata"
 )
 
 func TestAuthorizationURL(t *testing.T) {
@@ -116,9 +116,9 @@ func TestAuthorizationURLDoesNotRediscoverAfterNew(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithOIDCClient(oidc.NewClient(
-			oidc.WithHTTPClient(ts.Client()),
-			oidc.WithConformanceFreshDiscovery(true),
+		WithOIDCClient(metadata.NewClient(
+			metadata.WithHTTPClient(ts.Client()),
+			metadata.WithConformanceFreshDiscovery(true),
 		)),
 		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
 	)

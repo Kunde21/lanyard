@@ -1,4 +1,4 @@
-package oidc
+package metadata
 
 import (
 	"errors"
@@ -14,19 +14,19 @@ func TestIssuerMatchesTrailingSlashTolerance(t *testing.T) {
 	}
 }
 
-func TestValidateProviderMetadataRequiredFields(t *testing.T) {
+func TestValidateProviderRequiredFields(t *testing.T) {
 	c := NewClient()
 	_, err := validateIssuerURL("https://issuer.example.com")
 	if err != nil {
 		t.Fatalf("validateIssuerURL() failed: %v", err)
 	}
 
-	meta := ProviderMetadata{
-		AuthorizationServerMetadata: AuthorizationServerMetadata{Issuer: "https://issuer.example.com"},
+	provider := Provider{
+		AuthorizationServer: AuthorizationServer{Issuer: "https://issuer.example.com"},
 	}
-	err = c.validateProviderMetadata("https://issuer.example.com", meta)
+	err = c.validateProvider("https://issuer.example.com", provider)
 	if err == nil {
-		t.Fatalf("validateProviderMetadata() expected error")
+		t.Fatalf("validateProvider() expected error")
 	}
 
 	var validationErr *ValidationError
