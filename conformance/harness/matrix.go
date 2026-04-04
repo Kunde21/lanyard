@@ -15,23 +15,46 @@ type RPProfileConfig struct {
 	AuthorizationRequestType string
 	FAPIClientType           string
 	FAPIProfile              string
+	FAPIRequestMethod        string
+	FAPIResponseMode         string
 }
 
 func expandMatrixVariants(matrixName, planName string) ([]matrixVariant, error) {
 	if matrixName == "" || matrixName == "off" {
 		return nil, nil
 	}
-	if planName != "fapi2-security-profile-final-client-test-plan" {
-		return nil, nil
-	}
 
 	switch matrixName {
 	case "fapi2-sp-final-plain-fapi-first4":
+		if planName != "fapi2-security-profile-final-client-test-plan" {
+			return nil, nil
+		}
 		return buildPlainFAPIMatrixVariants(false), nil
 	case "fapi2-sp-final-plain-fapi-all16":
+		if planName != "fapi2-security-profile-final-client-test-plan" {
+			return nil, nil
+		}
 		return buildPlainFAPIMatrixVariants(true), nil
 	case "fapi2-sp-final-plain-fapi-mtls":
+		if planName != "fapi2-security-profile-final-client-test-plan" {
+			return nil, nil
+		}
 		return buildPlainFAPIMTLSOnlyMatrixVariants(false), nil
+	case "fapi2-ms-final-plain-fapi-jar4":
+		if planName != "fapi2-message-signing-final-client-test-plan" {
+			return nil, nil
+		}
+		return buildMessageSigningMatrixVariants(false, "plain_response"), nil
+	case "fapi2-ms-final-plain-fapi-jarm4":
+		if planName != "fapi2-message-signing-final-client-test-plan" {
+			return nil, nil
+		}
+		return buildMessageSigningMatrixVariants(false, "jarm"), nil
+	case "fapi2-ms-final-plain-fapi-all32":
+		if planName != "fapi2-message-signing-final-client-test-plan" {
+			return nil, nil
+		}
+		return buildMessageSigningMatrixVariants(true, ""), nil
 	default:
 		return nil, fmt.Errorf("unknown matrix %q", matrixName)
 	}
@@ -117,6 +140,65 @@ func buildPlainFAPIMTLSOnlyMatrixVariants(includeAll bool) []matrixVariant {
 						},
 					})
 					index++
+				}
+			}
+		}
+	}
+
+	return variants
+}
+
+func buildMessageSigningMatrixVariants(includeAll bool, fixedResponseMode string) []matrixVariant {
+	types := []string{"private_key_jwt", "mtls"}
+	constrains := []string{"mtls", "dpop"}
+	requestTypes := []string{"simple"}
+	clientTypes := []string{"oidc"}
+	responseModes := []string{"plain_response"}
+	if fixedResponseMode != "" {
+		responseModes = []string{fixedResponseMode}
+	}
+	if includeAll {
+		requestTypes = []string{"simple", "rar"}
+		clientTypes = []string{"oidc", "plain_oauth"}
+		responseModes = []string{"plain_response", "jarm"}
+	}
+
+	variants := make([]matrixVariant, 0, len(types)*len(constrains)*len(requestTypes)*len(clientTypes)*len(responseModes))
+	index := 1
+	for _, authType := range types {
+		for _, constrain := range constrains {
+			for _, requestType := range requestTypes {
+				for _, clientType := range clientTypes {
+					for _, respMode := range responseModes {
+						variant := map[string]string{
+							"client_auth_type":           authType,
+							"sender_constrain":           constrain,
+							"authorization_request_type": requestType,
+							"fapi_client_type":           clientType,
+							"fapi_profile":               "plain_fapi",
+							"fapi_request_method":        "signed_non_repudiation",
+							"fapi_response_mode":         respMode,
+						}
+						respLabel := respMode
+						if respLabel == "plain_response" {
+							respLabel = "plain"
+						}
+						variants = append(variants, matrixVariant{
+							Name:     fmt.Sprintf("ms-plain-fapi-%s-%02d", respLabel, index),
+							PlanName: "fapi2-message-signing-final-client-test-plan",
+							Variant:  variant,
+							RPProfile: RPProfileConfig{
+								ClientAuthType:           authType,
+								SenderConstrain:          constrain,
+								AuthorizationRequestType: requestType,
+								FAPIClientType:           clientType,
+								FAPIProfile:              "plain_fapi",
+								FAPIRequestMethod:        "signed_non_repudiation",
+								FAPIResponseMode:         respMode,
+							},
+						})
+						index++
+					}
 				}
 			}
 		}

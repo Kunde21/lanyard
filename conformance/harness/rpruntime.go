@@ -31,6 +31,8 @@ type rpRuntimeRequest struct {
 	RequestType              string                    `json:"request_type,omitempty"`
 	RequirePAR               bool                      `json:"require_par,omitempty"`
 	ResponseMode             string                    `json:"response_mode,omitempty"`
+	FAPIRequestMethod        string                    `json:"fapi_request_method,omitempty"`
+	FAPIResponseMode         string                    `json:"fapi_response_mode,omitempty"`
 }
 
 type rpRuntimeClient interface {
@@ -116,6 +118,21 @@ func responseModeForPlan(planName string) string {
 	return ""
 }
 
+func responseModeForVariant(planVariant map[string]string) string {
+	mode := strings.ToLower(strings.TrimSpace(planVariant["fapi_response_mode"]))
+	if mode == "jarm" {
+		return "query.jwt"
+	}
+	return ""
+}
+
+func coalesceResponseMode(planMode, variantMode string) string {
+	if variantMode != "" {
+		return variantMode
+	}
+	return planMode
+}
+
 func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, suiteURL, alias string) rpRuntimeRequest {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -147,6 +164,8 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 		FAPIProfile:              planVariant["fapi_profile"],
 		RequestType:              requestType,
 		RequirePAR:               isFAPI2PlanVariant(planVariant),
-		ResponseMode:             responseModeForPlan(job.PlanName),
+		ResponseMode:             coalesceResponseMode(responseModeForPlan(job.PlanName), responseModeForVariant(planVariant)),
+		FAPIRequestMethod:        planVariant["fapi_request_method"],
+		FAPIResponseMode:         planVariant["fapi_response_mode"],
 	}
 }

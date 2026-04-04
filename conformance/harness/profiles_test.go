@@ -10,12 +10,13 @@ import (
 func TestSelectPlans_ProfileExpansion(t *testing.T) {
 	available := []AvailablePlan{
 		{Name: "oidcc-client-basic-certification-test-plan", Profile: "oidc-rp"},
-		{Name: "oidcc-client-test-plan", Profile: "oidcc"},
+		{Name: "oidcc-client-test-plan", Profile: "oidc"},
 		{Name: "oidcc-client-implicit-certification-test-plan", Profile: "oidc-rp"},
 		{Name: "oidcc-client-formpost-basic-certification-test-plan", Profile: "oidc-rp"},
 		{Name: "fapi2-security-profile-id2-client-test-plan", Profile: "fapi2-rp"},
 		{Name: "fapi2-message-signing-id1-client-test-plan", Profile: "fapi2-rp"},
 		{Name: "fapi2-security-profile-final-client-test-plan", Profile: "Test a Relying Party / OAuth2 Client"},
+		{Name: "fapi2-message-signing-final-client-test-plan", Profile: "Test a Relying Party / OAuth2 Client"},
 		{Name: "fapi2-security-profile-final-client-credentials-grant-test-plan", Profile: "Test an OpenID Provider / Authorization Server"},
 		{Name: "openid-provider-config-test-plan", Profile: "op"},
 	}
@@ -37,6 +38,7 @@ func TestSelectPlans_ProfileExpansion(t *testing.T) {
 			name:    "fapi rp profile",
 			profile: "fapi-rp",
 			want: []string{
+				"fapi2-message-signing-final-client-test-plan",
 				"fapi2-message-signing-id1-client-test-plan",
 				"fapi2-security-profile-final-client-test-plan",
 				"fapi2-security-profile-id2-client-test-plan",
@@ -46,6 +48,7 @@ func TestSelectPlans_ProfileExpansion(t *testing.T) {
 			name:    "all rp profile",
 			profile: "all-rp",
 			want: []string{
+				"fapi2-message-signing-final-client-test-plan",
 				"fapi2-message-signing-id1-client-test-plan",
 				"fapi2-security-profile-final-client-test-plan",
 				"fapi2-security-profile-id2-client-test-plan",

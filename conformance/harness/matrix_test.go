@@ -123,3 +123,89 @@ func TestPlainFAPIMatrix_All16(t *testing.T) {
 		t.Fatalf("plain fapi all16 mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestMessageSigningMatrix_JAR4(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi2-ms-final-plain-fapi-jar4", "fapi2-message-signing-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 4 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 4", len(variants))
+	}
+
+	for _, v := range variants {
+		if v.Variant["fapi_request_method"] != "signed_non_repudiation" {
+			t.Errorf("variant %q: fapi_request_method = %q, want signed_non_repudiation", v.Name, v.Variant["fapi_request_method"])
+		}
+		if v.Variant["fapi_response_mode"] != "plain_response" {
+			t.Errorf("variant %q: fapi_response_mode = %q, want plain_response", v.Name, v.Variant["fapi_response_mode"])
+		}
+		if v.RPProfile.FAPIRequestMethod != "signed_non_repudiation" {
+			t.Errorf("variant %q: RPProfile.FAPIRequestMethod = %q, want signed_non_repudiation", v.Name, v.RPProfile.FAPIRequestMethod)
+		}
+	}
+}
+
+func TestMessageSigningMatrix_JARM4(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi2-ms-final-plain-fapi-jarm4", "fapi2-message-signing-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 4 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 4", len(variants))
+	}
+
+	for _, v := range variants {
+		if v.Variant["fapi_request_method"] != "signed_non_repudiation" {
+			t.Errorf("variant %q: fapi_request_method = %q, want signed_non_repudiation", v.Name, v.Variant["fapi_request_method"])
+		}
+		if v.Variant["fapi_response_mode"] != "jarm" {
+			t.Errorf("variant %q: fapi_response_mode = %q, want jarm", v.Name, v.Variant["fapi_response_mode"])
+		}
+	}
+}
+
+func TestMessageSigningMatrix_All32(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi2-ms-final-plain-fapi-all32", "fapi2-message-signing-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 32 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 32", len(variants))
+	}
+
+	responseModeCounts := map[string]int{}
+	for _, v := range variants {
+		responseModeCounts[v.Variant["fapi_response_mode"]]++
+		if v.Variant["fapi_request_method"] != "signed_non_repudiation" {
+			t.Errorf("variant %q: fapi_request_method = %q, want signed_non_repudiation", v.Name, v.Variant["fapi_request_method"])
+		}
+	}
+
+	if responseModeCounts["plain_response"] != 16 {
+		t.Errorf("plain_response variants = %d, want 16", responseModeCounts["plain_response"])
+	}
+	if responseModeCounts["jarm"] != 16 {
+		t.Errorf("jarm variants = %d, want 16", responseModeCounts["jarm"])
+	}
+}
+
+func TestMessageSigningMatrix_IgnoresSecurityProfilePlan(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi2-ms-final-plain-fapi-jar4", "fapi2-security-profile-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 0 {
+		t.Fatalf("expected 0 variants for message-signing matrix against security-profile plan, got %d", len(variants))
+	}
+}
+
+func TestSecurityProfileMatrix_IgnoresMessageSigningPlan(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi2-sp-final-plain-fapi-first4", "fapi2-message-signing-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 0 {
+		t.Fatalf("expected 0 variants for security-profile matrix against message-signing plan, got %d", len(variants))
+	}
+}

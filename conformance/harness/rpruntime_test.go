@@ -262,3 +262,69 @@ func TestBuildRPRuntimeRequest_BasicExcludesResponseMode(t *testing.T) {
 		t.Fatalf("ResponseMode = %q, want empty", req.ResponseMode)
 	}
 }
+
+func TestBuildRPRuntimeRequest_MessageSigningFields(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "fapi2-message-signing-final-client-test-plan"}
+	req := buildRPRuntimeRequest(job, map[string]string{
+		"client_auth_type":           "private_key_jwt",
+		"sender_constrain":           "dpop",
+		"authorization_request_type": "simple",
+		"fapi_client_type":           "oidc",
+		"fapi_profile":               "plain_fapi",
+		"fapi_request_method":        "signed_non_repudiation",
+		"fapi_response_mode":         "jarm",
+	}, "https://suite.localhost")
+
+	if req.FAPIRequestMethod != "signed_non_repudiation" {
+		t.Fatalf("FAPIRequestMethod = %q, want %q", req.FAPIRequestMethod, "signed_non_repudiation")
+	}
+	if req.FAPIResponseMode != "jarm" {
+		t.Fatalf("FAPIResponseMode = %q, want %q", req.FAPIResponseMode, "jarm")
+	}
+	if req.ResponseMode != "query.jwt" {
+		t.Fatalf("ResponseMode = %q, want %q (query.jwt for JARM)", req.ResponseMode, "query.jwt")
+	}
+}
+
+func TestResponseModeForVariant(t *testing.T) {
+	tests := []struct {
+		name    string
+		variant map[string]string
+		want    string
+	}{
+		{name: "jarm", variant: map[string]string{"fapi_response_mode": "jarm"}, want: "query.jwt"},
+		{name: "plain_response", variant: map[string]string{"fapi_response_mode": "plain_response"}, want: ""},
+		{name: "empty", variant: map[string]string{}, want: ""},
+		{name: "missing key", variant: nil, want: ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := responseModeForVariant(tc.variant)
+			if got != tc.want {
+				t.Fatalf("responseModeForVariant() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCoalesceResponseMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		planMode    string
+		variantMode string
+		want        string
+	}{
+		{name: "variant overrides plan", planMode: "form_post", variantMode: "query.jwt", want: "query.jwt"},
+		{name: "plan used when variant empty", planMode: "form_post", variantMode: "", want: "form_post"},
+		{name: "both empty", planMode: "", variantMode: "", want: ""},
+		{name: "only variant set", planMode: "", variantMode: "query.jwt", want: "query.jwt"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := coalesceResponseMode(tc.planMode, tc.variantMode)
+			if got != tc.want {
+				t.Fatalf("coalesceResponseMode() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

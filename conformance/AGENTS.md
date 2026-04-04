@@ -34,12 +34,19 @@ Matrices expand a single plan into multiple variants with different configuratio
 | `fapi2-sp-final-plain-fapi-all16` | fapi2-security-profile-final | 16 | Full matrix: all auth types, constrains, request types, client types |
 | `fapi2-sp-final-plain-fapi-first4` | fapi2-security-profile-final | 4 | Smoke test: first 4 variants only |
 | `fapi2-sp-final-plain-fapi-mtls` | fapi2-security-profile-final | 2 | MTLS-only variants |
+| `fapi2-ms-final-plain-fapi-jar4` | fapi2-message-signing-final | 4 | JAR only: signed request objects, plain response |
+| `fapi2-ms-final-plain-fapi-jarm4` | fapi2-message-signing-final | 4 | JARM: signed request objects + signed JARM response |
+| `fapi2-ms-final-plain-fapi-all32` | fapi2-message-signing-final | 32 | Full matrix: all auth, constrain, request, client, response modes |
 
-The all16 matrix covers:
+The all16 security-profile matrix covers:
 - Client auth: `private_key_jwt`, `mtls`
 - Sender constrain: `mtls`, `dpop`
 - Authorization request: `simple`, `rar`
 - Client type: `oidc`, `plain_oauth`
+
+The all32 message-signing matrix adds:
+- Request method: `signed_non_repudiation` (JAR)
+- Response mode: `plain_response`, `jarm`
 
 ### Common Flags
 
@@ -152,6 +159,45 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
   -args -profile=fapi-rp \
   -include-plan-regex='fapi2-security-profile-final-client-test-plan' \
   -matrix=fapi2-sp-final-plain-fapi-all16 \
+  -parallel \
+  -max-parallel-runs=8
+```
+
+### FAPI2 Message Signing JAR4 (Smoke Test)
+
+Run 4 message-signing variants with plain response (JAR only):
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi2-message-signing-final-client-test-plan' \
+  -matrix=fapi2-ms-final-plain-fapi-jar4 \
+  -parallel \
+  -max-parallel-runs=4
+```
+
+### FAPI2 Message Signing JARM4
+
+Run 4 message-signing variants with JARM signed responses:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi2-message-signing-final-client-test-plan' \
+  -matrix=fapi2-ms-final-plain-fapi-jarm4 \
+  -parallel \
+  -max-parallel-runs=4
+```
+
+### FAPI2 Message Signing All32
+
+Run all 32 message-signing matrix variants:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi2-message-signing-final-client-test-plan' \
+  -matrix=fapi2-ms-final-plain-fapi-all32 \
   -parallel \
   -max-parallel-runs=8
 ```
