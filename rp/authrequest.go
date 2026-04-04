@@ -60,6 +60,9 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 			}
 			parParams = url.Values{}
 			parParams.Set("request", signed)
+			if r.resolvedAuthMethod == AuthMethodTLSClientAuth {
+				parParams.Set("client_id", r.clientID)
+			}
 		}
 
 		parResp, err := r.pushAuthorizationRequest(ctx, parParams)

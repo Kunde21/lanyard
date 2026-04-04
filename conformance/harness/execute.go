@@ -2,10 +2,15 @@ package conformanceharness
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"os"
@@ -464,6 +469,14 @@ func isNegativeTestModule(moduleName string) bool {
 		"fapi2-security-profile-final-client-test-remove-authorization-response-iss":                              true,
 		"fapi2-security-profile-final-client-test-ensure-authorization-response-with-invalid-state-fails":         true,
 		"fapi2-security-profile-final-client-test-ensure-authorization-response-with-invalid-missing-state-fails": true,
+		"fapi2-security-profile-final-client-test-ensure-jarm-without-iss-fails":                                  true,
+		"fapi2-security-profile-final-client-test-ensure-jarm-with-invalid-iss-fails":                             true,
+		"fapi2-security-profile-final-client-test-ensure-jarm-without-aud-fails":                                  true,
+		"fapi2-security-profile-final-client-test-ensure-jarm-with-invalid-aud-fails":                             true,
+		"fapi2-security-profile-final-client-test-ensure-jarm-without-exp-fails":                                  true,
+		"fapi2-security-profile-final-client-test-ensure-jarm-with-expired-exp-fails":                             true,
+		"fapi2-security-profile-final-client-test-ensure-jarm-with-invalid-sig-fails":                             true,
+		"fapi2-security-profile-final-client-test-ensure-jarm-signature-is-not-none":                              true,
 	}
 	return negativeModules[moduleName]
 }
@@ -747,8 +760,14 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 
 	if isFAPI2 {
 		cfg["server"] = map[string]any{"jwks": loadJWKS("server.jwks.json")}
-		cfg["client"].(map[string]any)["jwks"] = loadPublicJWKS("client.jwks.json")
-		cfg["client2"].(map[string]any)["jwks"] = loadPublicJWKS("client.jwks.json")
+		clientJWKS := loadPublicJWKS("client.jwks.json")
+
+		if strings.EqualFold(strings.TrimSpace(planVariant["client_auth_type"]), "mtls") {
+			clientJWKS = appendMTLSPublicKeyToJWKS(clientJWKS)
+		}
+
+		cfg["client"].(map[string]any)["jwks"] = clientJWKS
+		cfg["client2"].(map[string]any)["jwks"] = clientJWKS
 
 		if certPEM, keyPEM, err := loadClientMTLSCert(); err == nil {
 			cfg["client"].(map[string]any)["certificate"] = certPEM
@@ -858,6 +877,52 @@ func loadPublicJWKS(filename string) map[string]any {
 		publicKeys = append(publicKeys, publicKey)
 	}
 	jwks["keys"] = publicKeys
+	return jwks
+}
+
+func appendMTLSPublicKeyToJWKS(jwks map[string]any) map[string]any {
+	certPEM, _, err := loadClientMTLSCert()
+	if err != nil {
+		return jwks
+	}
+
+	block, _ := pem.Decode([]byte(certPEM))
+	if block == nil {
+		return jwks
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return jwks
+	}
+
+	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return jwks
+	}
+
+	curve := pubKey.Curve
+	xC := new(big.Int).Set(pubKey.X)
+	yC := new(big.Int).Set(pubKey.Y)
+
+	byteLen := (curve.Params().BitSize + 7) / 8
+	xBytes := make([]byte, byteLen)
+	yBytes := make([]byte, byteLen)
+	xC.FillBytes(xBytes)
+	yC.FillBytes(yBytes)
+
+	keyJWK := map[string]any{
+		"kty": "EC",
+		"crv": "P-256",
+		"kid": "client-mtls",
+		"alg": "ES256",
+		"use": "sig",
+		"x":   base64.RawURLEncoding.EncodeToString(xBytes),
+		"y":   base64.RawURLEncoding.EncodeToString(yBytes),
+	}
+
+	keys, _ := jwks["keys"].([]any)
+	jwks["keys"] = append(keys, keyJWK)
 	return jwks
 }
 

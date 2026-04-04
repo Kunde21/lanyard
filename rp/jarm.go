@@ -127,17 +127,16 @@ func (r *RP) validateJARMClaims(claims jarmClaims) error {
 	if claims.Exp == nil {
 		return fmt.Errorf("%w: JARM response missing exp", ErrInvalidState)
 	}
-	if claims.Iat == nil {
-		return fmt.Errorf("%w: JARM response missing iat", ErrInvalidState)
-	}
 
 	exp := time.Unix(*claims.Exp, 0).UTC()
 	if now.After(exp.Add(r.clockSkew)) {
 		return fmt.Errorf("%w: JARM response expired", ErrInvalidState)
 	}
-	iat := time.Unix(*claims.Iat, 0).UTC()
-	if iat.After(now.Add(r.clockSkew)) {
-		return fmt.Errorf("%w: JARM response iat in the future", ErrInvalidState)
+	if claims.Iat != nil {
+		iat := time.Unix(*claims.Iat, 0).UTC()
+		if iat.After(now.Add(r.clockSkew)) {
+			return fmt.Errorf("%w: JARM response iat in the future", ErrInvalidState)
+		}
 	}
 
 	return nil
