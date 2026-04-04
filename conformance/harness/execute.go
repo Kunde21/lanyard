@@ -352,27 +352,87 @@ func (jr *jobRunner) executeBrowserVisit(ctx context.Context, testID string, ini
 			return nil, "", fmt.Errorf("failed marking browser visit %q: %w", currentReq.URL.String(), err)
 		}
 
-		if resp.StatusCode < 300 || resp.StatusCode >= 400 {
-			return resp, currentReq.URL.String(), nil
-		}
-
-		location := strings.TrimSpace(resp.Header.Get("Location"))
-		if location == "" {
-			return resp, currentReq.URL.String(), nil
-		}
-
-		nextURL, err := currentReq.URL.Parse(location)
-		if err != nil {
+		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+			location := strings.TrimSpace(resp.Header.Get("Location"))
 			resp.Body.Close()
-			return nil, "", fmt.Errorf("failed resolving redirect location %q: %w", location, err)
-		}
-		resp.Body.Close()
+			if location == "" {
+				return nil, "", fmt.Errorf("redirect with empty location header")
+			}
 
-		nextReq, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL.String(), nil)
-		if err != nil {
-			return nil, "", fmt.Errorf("failed to build redirect request: %w", err)
+			nextURL, err := currentReq.URL.Parse(location)
+			if err != nil {
+				return nil, "", fmt.Errorf("failed resolving redirect location %q: %w", location, err)
+			}
+
+			nextReq, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL.String(), nil)
+			if err != nil {
+				return nil, "", fmt.Errorf("failed to build redirect request: %w", err)
+			}
+			currentReq = nextReq
+			continue
 		}
-		currentReq = nextReq
+
+		if isHTMLFormPostResponse(resp) {
+			bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+			resp.Body.Close()
+			if readErr == nil && isFormPostAutoSubmitHTML(string(bodyBytes)) {
+				actionURL, formParams, ok := parseFormPostAutoSubmit(string(bodyBytes))
+				if !ok {
+					return nil, "", fmt.Errorf("failed to parse form-post auto-submit response")
+				}
+
+				resolvedURL, err := currentReq.URL.Parse(actionURL)
+				if err != nil {
+					return nil, "", fmt.Errorf("failed resolving form-post action %q: %w", actionURL, err)
+				}
+
+				formReq, err := http.NewRequestWithContext(ctx, http.MethodPost, resolvedURL.String(), strings.NewReader(formParams.Encode()))
+				if err != nil {
+					return nil, "", fmt.Errorf("failed to build form-post request: %w", err)
+				}
+				formReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+				if err := jr.client.VisitBrowserURL(ctx, testID, resolvedURL.String()); err != nil {
+					return nil, "", fmt.Errorf("failed marking browser visit %q: %w", resolvedURL.String(), err)
+				}
+
+				formResp, err := client.Do(formReq)
+				if err != nil {
+					return nil, "", fmt.Errorf("failed submitting form-post callback: %w", err)
+				}
+
+				if formResp.StatusCode >= 300 && formResp.StatusCode < 400 {
+					location := strings.TrimSpace(formResp.Header.Get("Location"))
+					formResp.Body.Close()
+					if location == "" {
+						return nil, "", fmt.Errorf("redirect after form-post with empty location")
+					}
+
+					nextURL, err := resolvedURL.Parse(location)
+					if err != nil {
+						return nil, "", fmt.Errorf("failed resolving post-form-post redirect %q: %w", location, err)
+					}
+
+					nextReq, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL.String(), nil)
+					if err != nil {
+						return nil, "", fmt.Errorf("failed to build post-form-post request: %w", err)
+					}
+
+					finalResp, err := client.Do(nextReq)
+					if err != nil {
+						return nil, "", fmt.Errorf("failed following post-form-post redirect: %w", err)
+					}
+					return finalResp, nextURL.String(), nil
+				}
+
+				return formResp, resolvedURL.String(), nil
+			}
+
+			resp.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+			return resp, currentReq.URL.String(), nil
+		}
+
+		return resp, currentReq.URL.String(), nil
 	}
 
 	return nil, "", fmt.Errorf("front-channel trigger exceeded redirect limit")
