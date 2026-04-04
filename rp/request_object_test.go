@@ -185,8 +185,9 @@ func TestBuildSignedRequestObject_AuthorizationDetails(t *testing.T) {
 	}
 
 	claims := decodeRequestObjectPayload(t, signed)
-	if got := claims["authorization_details"]; got != details {
-		t.Errorf("authorization_details = %q, want %q", got, details)
+	want := []any{map[string]any{"type": "account_information"}}
+	if diff := cmp.Diff(want, claims["authorization_details"]); diff != "" {
+		t.Errorf("authorization_details mismatch (-want +got):\n%s", diff)
 	}
 }
 

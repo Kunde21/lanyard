@@ -22,7 +22,7 @@ type requestObjectClaims struct {
 	Nonce                string            `json:"nonce,omitempty"`
 	CodeChallenge        string            `json:"code_challenge,omitempty"`
 	CodeChallengeMethod  string            `json:"code_challenge_method,omitempty"`
-	AuthorizationDetails string            `json:"authorization_details,omitempty"`
+	AuthorizationDetails json.RawMessage   `json:"authorization_details,omitempty"`
 	ResponseMode         string            `json:"response_mode,omitempty"`
 	IssuedAt             int64             `json:"iat"`
 	NotBefore            int64             `json:"nbf"`
@@ -37,6 +37,11 @@ func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDeta
 	}
 
 	now := r.now()
+	parsedAuthorizationDetails, err := parseAuthorizationDetailsClaim(authorizationDetails)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse authorization_details for request object: %w", err)
+	}
+
 	claims := requestObjectClaims{
 		Iss:                  r.clientID,
 		Aud:                  r.issuer,
@@ -47,7 +52,7 @@ func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDeta
 		State:                state,
 		CodeChallenge:        challenge,
 		CodeChallengeMethod:  "S256",
-		AuthorizationDetails: authorizationDetails,
+		AuthorizationDetails: parsedAuthorizationDetails,
 		IssuedAt:             now.Unix(),
 		NotBefore:            now.Unix(),
 		Expiration:           now.Add(5 * time.Minute).Unix(),
@@ -136,8 +141,11 @@ func claimsToMap(claims requestObjectClaims) map[string]any {
 	if claims.Nonce != "" {
 		m["nonce"] = claims.Nonce
 	}
-	if claims.AuthorizationDetails != "" {
-		m["authorization_details"] = claims.AuthorizationDetails
+	if len(claims.AuthorizationDetails) > 0 {
+		var authorizationDetails any
+		if err := json.Unmarshal(claims.AuthorizationDetails, &authorizationDetails); err == nil {
+			m["authorization_details"] = authorizationDetails
+		}
 	}
 	if claims.ResponseMode != "" {
 		m["response_mode"] = claims.ResponseMode
@@ -146,6 +154,25 @@ func claimsToMap(claims requestObjectClaims) map[string]any {
 		m[k] = v
 	}
 	return m
+}
+
+func parseAuthorizationDetailsClaim(raw string) (json.RawMessage, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+
+	var decoded any
+	if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+		return nil, err
+	}
+
+	canonical, err := json.Marshal(decoded)
+	if err != nil {
+		return nil, err
+	}
+
+	return json.RawMessage(canonical), nil
 }
 
 func signingAlgorithm(alg string) jose.SignatureAlgorithm {
