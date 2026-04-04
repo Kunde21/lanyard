@@ -47,6 +47,24 @@ func (f fapiProfileType) isFAPI() bool {
 	return f != fapiProfileNone
 }
 
+type requestMethodType int
+
+const (
+	requestMethodPlain requestMethodType = iota
+	requestMethodSignedNonRepudiation
+)
+
+func normalizeRequestMethod(raw string) requestMethodType {
+	if strings.EqualFold(strings.TrimSpace(raw), "signed_non_repudiation") {
+		return requestMethodSignedNonRepudiation
+	}
+	return requestMethodPlain
+}
+
+func (r requestMethodType) isSigned() bool {
+	return r == requestMethodSignedNonRepudiation
+}
+
 type RP struct {
 	issuer       string
 	clientID     string
@@ -84,6 +102,7 @@ type RP struct {
 
 	authorizationDetails string
 	responseMode         string
+	requestMethod        requestMethodType
 }
 
 // New creates a browser-flow relying party that is ready to generate an

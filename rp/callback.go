@@ -29,6 +29,20 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	state := params.State
 	authzResponseIss := params.Iss
 
+	if r.isJARMResponse(params) {
+		jarmClaims, err := r.parseJARMResponse(ctx, params.Response)
+		if err != nil {
+			return nil, err
+		}
+		code = jarmClaims.Code
+		state = jarmClaims.State
+		authzResponseIss = jarmClaims.Iss
+
+		if jarmClaims.Error != "" {
+			return nil, fmt.Errorf("%w: JARM error %q: %s", ErrInvalidState, jarmClaims.Error, jarmClaims.ErrorDescription)
+		}
+	}
+
 	if state == "" {
 		return nil, fmt.Errorf("%w: missing state", ErrInvalidState)
 	}

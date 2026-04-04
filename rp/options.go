@@ -234,3 +234,13 @@ func WithResponseMode(mode string) Option {
 		}
 	}
 }
+
+// WithRequestMethod sets the FAPI request method. Use "signed_non_repudiation"
+// to enable JAR (signed request objects) for message-signing profiles.
+func WithRequestMethod(method string) Option {
+	return func(r *RP) {
+		if r != nil {
+			r.requestMethod = normalizeRequestMethod(method)
+		}
+	}
+}

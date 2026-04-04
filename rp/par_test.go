@@ -377,3 +377,120 @@ func providerWithAuthorizationAndPAR(parEndpoint string, methods ...string) oidc
 	provider.PushedAuthorizationRequestEndpoint = parEndpoint
 	return provider
 }
+
+func TestAuthorizationURL_SignedRequestObjectUsesRequestParameter(t *testing.T) {
+	var gotBody string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(body) failed: %v", err)
+		}
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:test:request-uri", "expires_in": 90})
+	}))
+	defer ts.Close()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(providerWithAuthorizationAndPAR(ts.URL, "private_key_jwt")),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(privateKey, "kid-1", "PS256", nil)),
+		WithRequirePAR(true),
+		WithRequestMethod("signed_non_repudiation"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	w := httptest.NewRecorder()
+	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	values, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("ParseQuery(body) failed: %v", err)
+	}
+
+	requestJWT := values.Get("request")
+	if requestJWT == "" {
+		t.Fatal("PAR body must contain 'request' parameter for signed request objects")
+	}
+
+	if values.Get("response_type") != "" {
+		t.Error("PAR body should not contain plain 'response_type' when using signed request objects")
+	}
+	if values.Get("client_id") != "" {
+		t.Error("PAR body should not contain plain 'client_id' when using signed request objects (only inside request object)")
+	}
+
+	parts := strings.Split(requestJWT, ".")
+	if len(parts) != 3 {
+		t.Fatalf("request should be a compact JWT with 3 parts, got %d", len(parts))
+	}
+
+	assertion := values.Get("client_assertion")
+	if assertion == "" {
+		t.Fatal("PAR body must still contain client_assertion for private_key_jwt")
+	}
+}
+
+func TestAuthorizationURL_PlainPARUnaffectedBySignedRequestMethod(t *testing.T) {
+	var gotBody string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(body) failed: %v", err)
+		}
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:test:request-uri", "expires_in": 90})
+	}))
+	defer ts.Close()
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(providerWithAuthorizationAndPAR(ts.URL)),
+		WithRequirePAR(true),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	w := httptest.NewRecorder()
+	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	values, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("ParseQuery(body) failed: %v", err)
+	}
+
+	if values.Get("request") != "" {
+		t.Error("plain PAR should not contain 'request' parameter")
+	}
+	if values.Get("response_type") != "code" {
+		t.Error("plain PAR should contain 'response_type' parameter")
+	}
+}

@@ -11,6 +11,7 @@ type callbackParams struct {
 	Iss              string
 	Error            string
 	ErrorDescription string
+	Response         string
 }
 
 func extractCallbackParams(req *http.Request) callbackParams {
@@ -23,6 +24,7 @@ func extractCallbackParams(req *http.Request) callbackParams {
 			params.Iss = strings.TrimSpace(req.FormValue("iss"))
 			params.Error = strings.TrimSpace(req.FormValue("error"))
 			params.ErrorDescription = strings.TrimSpace(req.FormValue("error_description"))
+			params.Response = strings.TrimSpace(req.FormValue("response"))
 			return params
 		}
 	}
@@ -33,6 +35,7 @@ func extractCallbackParams(req *http.Request) callbackParams {
 	params.Iss = strings.TrimSpace(query.Get("iss"))
 	params.Error = strings.TrimSpace(query.Get("error"))
 	params.ErrorDescription = strings.TrimSpace(query.Get("error_description"))
+	params.Response = strings.TrimSpace(query.Get("response"))
 
 	return params
 }

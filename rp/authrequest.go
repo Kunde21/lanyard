@@ -52,7 +52,17 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails, cfg.parameters)
 
 	if r.shouldUsePAR() {
-		parResp, err := r.pushAuthorizationRequest(ctx, params)
+		parParams := params
+		if r.requestMethod.isSigned() {
+			signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, cfg.parameters)
+			if err != nil {
+				return "", err
+			}
+			parParams = url.Values{}
+			parParams.Set("request", signed)
+		}
+
+		parResp, err := r.pushAuthorizationRequest(ctx, parParams)
 		if err != nil {
 			return "", err
 		}
