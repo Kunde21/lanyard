@@ -23,7 +23,11 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
         *   `client_secret_basic`
         *   `client_secret_post`
         *   `private_key_jwt` (asymmetric signatures)
+        *   `tls_client_auth` (mTLS)
     *   Pushed Authorization Requests (PAR) support.
+    *   JWT Secured Authorization Requests (JAR).
+    *   JWT Secured Authorization Response Mode (JARM).
+    *   Rich Authorization Requests (RAR).
 
 *   **Client Credentials Grant** (RFC 6749 §4.4):
     *   OAuth 2.0 Client Credentials flow for service-to-service authentication.
@@ -35,6 +39,7 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
     *   User Info endpoint retrieval.
     *   Token exchange support (RFC 8693).
     *   DPoP (Demonstrating Proof-of-Possession) support.
+    *   mTLS sender-constrained access token support.
 
 *   **Security & Validation**:
     *   HTTPS enforcement for issuer and redirect URIs.
@@ -46,7 +51,7 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
 Lanyard is designed to pass OpenID Connect conformance tests.
 
 *   **Profile**: OpenID Connect Core: Basic Certification Profile Relying Party Tests
-*   **Status**: The library includes a conformance harness to automate testing against the official OpenID Foundation conformance suite.
+*   **Status**: Verified with the included conformance harness against the official OpenID Foundation conformance suite.
 *   **Setup**: See `conformance/README.md` for instructions on running the conformance tests locally using Docker.
 
 To run the conformance tests (Linux required):
@@ -54,6 +59,39 @@ To run the conformance tests (Linux required):
 ```bash
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
   -args -profile=oidc-rp
+```
+
+### FAPI Conformance Status
+
+Lanyard also includes verified FAPI 2.0 relying party coverage.
+
+*   **FAPI 2.0 Security Profile Final**: verified with the `fapi2-sp-final-plain-fapi-all16` matrix (`16/16` plans passed)
+*   **FAPI 2.0 Message Signing Final**: verified with the `fapi2-ms-final-plain-fapi-all32` matrix (`32/32` plans passed)
+*   **Implemented capabilities**:
+    *   `private_key_jwt` and `tls_client_auth`
+    *   DPoP and mTLS sender constraining
+    *   PAR, JAR, JARM, and RAR
+
+Useful commands:
+
+```bash
+# FAPI 2.0 Security Profile Final
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -test.timeout=45m \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi2-security-profile-final-client-test-plan' \
+  -matrix=fapi2-sp-final-plain-fapi-all16 \
+  -parallel \
+  -max-parallel-runs=8
+
+# FAPI 2.0 Message Signing Final
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -test.timeout=60m \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi2-message-signing-final-client-test-plan' \
+  -matrix=fapi2-ms-final-plain-fapi-all32 \
+  -parallel \
+  -max-parallel-runs=8
 ```
 
 ## Installation
