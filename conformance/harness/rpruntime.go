@@ -30,6 +30,7 @@ type rpRuntimeRequest struct {
 	FAPIProfile              string                    `json:"fapi_profile,omitempty"`
 	RequestType              string                    `json:"request_type,omitempty"`
 	RequirePAR               bool                      `json:"require_par,omitempty"`
+	ResponseMode             string                    `json:"response_mode,omitempty"`
 }
 
 type rpRuntimeClient interface {
@@ -108,6 +109,13 @@ func scopesForPlanVariant(planVariant map[string]string) []string {
 	return []string{"openid", "profile", "email", "phone", "address"}
 }
 
+func responseModeForPlan(planName string) string {
+	if strings.Contains(strings.ToLower(planName), "formpost") {
+		return "form_post"
+	}
+	return ""
+}
+
 func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, suiteURL, alias string) rpRuntimeRequest {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -139,5 +147,6 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 		FAPIProfile:              planVariant["fapi_profile"],
 		RequestType:              requestType,
 		RequirePAR:               isFAPI2PlanVariant(planVariant),
+		ResponseMode:             responseModeForPlan(job.PlanName),
 	}
 }

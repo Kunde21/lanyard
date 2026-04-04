@@ -30,6 +30,7 @@ func TestSelectPlans_ProfileExpansion(t *testing.T) {
 			profile: "oidc-rp",
 			want: []string{
 				"oidcc-client-basic-certification-test-plan",
+				"oidcc-client-formpost-basic-certification-test-plan",
 			},
 		},
 		{
@@ -49,6 +50,7 @@ func TestSelectPlans_ProfileExpansion(t *testing.T) {
 				"fapi2-security-profile-final-client-test-plan",
 				"fapi2-security-profile-id2-client-test-plan",
 				"oidcc-client-basic-certification-test-plan",
+				"oidcc-client-formpost-basic-certification-test-plan",
 			},
 		},
 	}
@@ -97,5 +99,32 @@ func TestSelectPlans_Filters(t *testing.T) {
 	want := []string{"oidcc-client-basic-certification-test-plan"}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Fatalf("filtered plans mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestSelectPlans_FormPostFilter(t *testing.T) {
+	available := []AvailablePlan{
+		{Name: "oidcc-client-basic-certification-test-plan", Profile: "oidc-rp"},
+		{Name: "oidcc-client-formpost-basic-certification-test-plan", Profile: "oidc-rp"},
+		{Name: "oidcc-client-implicit-certification-test-plan", Profile: "oidc-rp"},
+	}
+
+	includeRE := regexp.MustCompile(`formpost-basic`)
+
+	cfg := harnessConfig{
+		Profile:          "oidc-rp",
+		IncludePlanRegex: includeRE,
+	}
+
+	plans, err := selectPlans(cfg, available)
+	if err != nil {
+		t.Fatalf("selectPlans() failed: %v", err)
+	}
+
+	if len(plans) != 1 {
+		t.Fatalf("expected 1 plan, got %d", len(plans))
+	}
+	if plans[0].Name != "oidcc-client-formpost-basic-certification-test-plan" {
+		t.Fatalf("plan name = %q, want formpost plan", plans[0].Name)
 	}
 }

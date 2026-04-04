@@ -115,7 +115,7 @@ func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 }
 
 func handleCallback(w http.ResponseWriter, r *http.Request) {
-	if authErr := strings.TrimSpace(r.URL.Query().Get("error")); authErr != "" {
+	if err, _ := extractAuthError(r); err != "" {
 		http.Error(w, "authorization failed", http.StatusBadRequest)
 		return
 	}
@@ -162,7 +162,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 
 func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if authErr := strings.TrimSpace(r.URL.Query().Get("error")); authErr != "" {
+		if err, _ := extractAuthError(r); err != "" {
 			http.Error(w, "authorization failed", http.StatusBadRequest)
 			return
 		}
@@ -191,6 +191,22 @@ func callbackStatus(err error) int {
 		return http.StatusBadRequest
 	}
 	return http.StatusInternalServerError
+}
+
+func extractAuthError(r *http.Request) (string, string) {
+	if err := strings.TrimSpace(r.URL.Query().Get("error")); err != "" {
+		return err, strings.TrimSpace(r.URL.Query().Get("error_description"))
+	}
+
+	if r.Method == http.MethodPost && strings.HasPrefix(strings.TrimSpace(r.Header.Get("Content-Type")), "application/x-www-form-urlencoded") {
+		if parseErr := r.ParseForm(); parseErr == nil {
+			if err := strings.TrimSpace(r.FormValue("error")); err != "" {
+				return err, strings.TrimSpace(r.FormValue("error_description"))
+			}
+		}
+	}
+
+	return "", ""
 }
 
 type dpopProofAttacher interface {

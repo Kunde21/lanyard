@@ -47,6 +47,7 @@ type resolvedRPRequest struct {
 	senderConstrain      string
 	fapiProfile          string
 	authorizationDetails []map[string]any
+	responseMode         string
 }
 
 func newSharedStateStore() rp.StateStore {
@@ -122,6 +123,7 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig) 
 	resolved.senderConstrain = runtimeCfg.SenderConstrain
 	resolved.fapiProfile = runtimeCfg.FAPIProfile
 	resolved.authorizationDetails = authorizationDetailsForRuntime(runtimeCfg)
+	resolved.responseMode = runtimeCfg.ResponseMode
 
 	keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
 	if err != nil {
@@ -266,6 +268,9 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	}
 	if len(resolved.authorizationDetails) > 0 {
 		opts = append(opts, rp.WithAuthorizationDetails(resolved.authorizationDetails))
+	}
+	if strings.TrimSpace(resolved.responseMode) != "" {
+		opts = append(opts, rp.WithResponseMode(resolved.responseMode))
 	}
 
 	return rp.New(r.Context(), resolved.issuer, resolved.clientID, resolved.clientSecret, resolved.redirectURI, opts...)

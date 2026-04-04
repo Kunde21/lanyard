@@ -219,3 +219,46 @@ func TestBuildRPRuntimeRequest_PlainOAuthOmitsOpenIDScope(t *testing.T) {
 		t.Fatalf("Scopes = %v, must not contain openid for plain_oauth", req.Scopes)
 	}
 }
+
+func TestResponseModeForPlan(t *testing.T) {
+	tests := []struct {
+		planName string
+		want     string
+	}{
+		{planName: "oidcc-client-formpost-basic-certification-test-plan", want: "form_post"},
+		{planName: "OIDCC-CLIENT-FORMPOST-BASIC-CERTIFICATION-TEST-PLAN", want: "form_post"},
+		{planName: "oidcc-client-basic-certification-test-plan", want: ""},
+		{planName: "fapi2-security-profile-final-client-test-plan", want: ""},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.planName, func(t *testing.T) {
+			got := responseModeForPlan(tc.planName)
+			if got != tc.want {
+				t.Fatalf("responseModeForPlan() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildRPRuntimeRequest_FormPostIncludesResponseMode(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "oidcc-client-formpost-basic-certification-test-plan"}
+	req := buildRPRuntimeRequest(job, map[string]string{
+		"client_registration": "static_client",
+	}, "https://suite.localhost")
+
+	if req.ResponseMode != "form_post" {
+		t.Fatalf("ResponseMode = %q, want %q", req.ResponseMode, "form_post")
+	}
+}
+
+func TestBuildRPRuntimeRequest_BasicExcludesResponseMode(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "oidcc-client-basic-certification-test-plan"}
+	req := buildRPRuntimeRequest(job, map[string]string{
+		"client_registration": "static_client",
+	}, "https://suite.localhost")
+
+	if req.ResponseMode != "" {
+		t.Fatalf("ResponseMode = %q, want empty", req.ResponseMode)
+	}
+}

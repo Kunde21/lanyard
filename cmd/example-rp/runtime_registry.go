@@ -25,6 +25,7 @@ type rpRuntimeConfig struct {
 	FAPIProfile              string                    `json:"fapi_profile,omitempty"`
 	RequestType              string                    `json:"request_type,omitempty"`
 	RequirePAR               bool                      `json:"require_par,omitempty"`
+	ResponseMode             string                    `json:"response_mode,omitempty"`
 }
 
 type runtimeRegistry struct {

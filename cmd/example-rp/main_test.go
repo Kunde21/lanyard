@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -32,6 +33,14 @@ func (s stubFlow) HandleCallback(_ context.Context, _ http.ResponseWriter, req *
 	}
 	code := strings.TrimSpace(req.URL.Query().Get("code"))
 	state := strings.TrimSpace(req.URL.Query().Get("state"))
+	if code == "" && state == "" {
+		if req.Method == http.MethodPost && strings.HasPrefix(strings.TrimSpace(req.Header.Get("Content-Type")), "application/x-www-form-urlencoded") {
+			if err := req.ParseForm(); err == nil {
+				code = strings.TrimSpace(req.FormValue("code"))
+				state = strings.TrimSpace(req.FormValue("state"))
+			}
+		}
+	}
 	if state == "" {
 		return nil, rp.ErrInvalidState
 	}
@@ -412,5 +421,86 @@ func TestRuntimeRequiresPAR(t *testing.T) {
 				t.Fatalf("runtimeRequiresPAR() = %t, want %t", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestCallback_FormPostError(t *testing.T) {
+	h := newMuxForTest(stubFlow{})
+	form := url.Values{}
+	form.Set("error", "access_denied")
+	req := httptest.NewRequest(http.MethodPost, "/callback", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status mismatch: got %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestCallback_FormPostSuccess(t *testing.T) {
+	h := newMuxForTest(stubFlow{callbackResp: &rp.CallbackResult{Subject: "form-sub"}})
+	form := url.Values{}
+	form.Set("code", "form-code")
+	form.Set("state", "form-state")
+	req := httptest.NewRequest(http.MethodPost, "/callback", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status mismatch: got %d, want %d", w.Code, http.StatusOK)
+	}
+	if !strings.Contains(w.Body.String(), "form-sub") {
+		t.Fatalf("response should contain subject")
+	}
+}
+
+func TestCallback_FormPostWithAlias(t *testing.T) {
+	conformanceRuntimes = newRuntimeRegistry()
+	if err := conformanceRuntimes.Register(rpRuntimeConfig{
+		Alias:        "alias-a",
+		Issuer:       "https://suite.localhost/test/a/alias-a/",
+		ClientID:     "client-a",
+		ClientSecret: "secret-a",
+		RedirectURI:  "https://rp.localhost/callback/alias-a",
+		Namespace:    "alias-a",
+		Scopes:       []string{"openid"},
+	}); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+
+	h := newMuxForTest(stubFlow{callbackResp: &rp.CallbackResult{Subject: "alias-sub"}})
+	form := url.Values{}
+	form.Set("code", "code")
+	form.Set("state", "state")
+	req := httptest.NewRequest(http.MethodPost, "/callback/alias-a", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status mismatch: got %d, want %d", w.Code, http.StatusOK)
+	}
+	if !strings.Contains(w.Body.String(), "alias-sub") {
+		t.Fatalf("response should contain subject")
+	}
+}
+
+func TestCallback_GETBehaviorUnchanged(t *testing.T) {
+	h := newMuxForTest(stubFlow{callbackResp: &rp.CallbackResult{Subject: "get-sub"}})
+	req := httptest.NewRequest(http.MethodGet, "/callback?code=get-code&state=get-state", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status mismatch: got %d, want %d", w.Code, http.StatusOK)
+	}
+	if !strings.Contains(w.Body.String(), "get-sub") {
+		t.Fatalf("response should contain subject")
 	}
 }
