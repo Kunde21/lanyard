@@ -499,7 +499,7 @@ Financial-grade API Part 2: Advanced security profile.
 
 ### FAPI 2.0 Security Profile
 
-**Status**: Implemented (Conformance Testing)
+**Status**: Implemented (Conformance Verified)
 
 Financial-grade API security profile.
 
@@ -545,6 +545,13 @@ FAPI 2.0 profile with signed protocol messages.
 - `plain_fapi` variant
 - `fapi2-ms-final-plain-fapi-jar4`
 - `fapi2-ms-final-plain-fapi-jarm4`
+- `fapi2-ms-final-plain-fapi-all32`
+
+**Verification**:
+
+- `jar4` smoke matrix: `4/4` plans passed
+- `jarm4` smoke matrix: `4/4` plans passed
+- full `all32` matrix: `32/32` plans passed
 
 **Implementation**:
 
