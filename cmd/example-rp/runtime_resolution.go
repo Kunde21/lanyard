@@ -297,17 +297,25 @@ func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (oidc.Provid
 
 	return oidc.ProviderMetadata{
 		AuthorizationServerMetadata: oidc.AuthorizationServerMetadata{
-			Issuer:                 resolved.issuer,
-			AuthorizationEndpoint:  base + "/authorize",
-			TokenEndpoint:          base + "/token",
-			ResponseTypesSupported: []string{"code"},
+			Issuer:                            resolved.issuer,
+			AuthorizationEndpoint:             base + "/authorize",
+			TokenEndpoint:                     base + "/token",
+			JWKSURI:                           base + "/jwks",
+			ResponseTypesSupported:            []string{"code"},
+			ResponseModesSupported:            []string{"jwt"},
+			CodeChallengeMethodsSupported:     []string{"S256"},
+			TokenEndpointAuthMethodsSupported: []string{"tls_client_auth", "private_key_jwt"},
+			TokenEndpointAuthSigningAlgValuesSupported: []string{"PS256", "ES256", "EdDSA"},
 			MTLSEndpointAliases: oidc.MTLSEndpointAliases{
 				TokenEndpoint:                      mtlsBase + "/token",
 				UserinfoEndpoint:                   mtlsBase + "/userinfo",
 				PushedAuthorizationRequestEndpoint: mtlsBase + "/par",
 			},
 		},
-		PushedAuthorizationRequestEndpoint: base + "/par",
+		UserinfoEndpoint:                       base + "/userinfo",
+		PushedAuthorizationRequestEndpoint:     base + "/par",
+		RequestObjectSigningAlgValuesSupported: []string{"PS256", "ES256", "EdDSA"},
+		AuthorizationSigningAlgValuesSupported: []string{"PS256"},
 	}, true
 }
 
