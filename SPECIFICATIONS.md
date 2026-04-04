@@ -528,16 +528,31 @@ Financial-grade API security profile.
 
 ### FAPI 2.0 Message Signing
 
-**Status**: Not Implemented
+**Status**: Implemented (Conformance Testing)
 
 FAPI 2.0 profile with signed protocol messages.
 
 | Feature              | Status | Notes                          |
 |----------------------|--------|--------------------------------|
-| All Security Profile | ⚠️     | Partial implementation         |
-| JAR                  | ❌     | Signed authorization requests  |
-| JARM                 | ❌     | Signed authorization responses |
-| PS256/ES256 Signing  | ✅     | Already supported              |
+| All Security Profile | ✅     | Final profile support          |
+| JAR                  | ✅     | Signed authorization requests  |
+| JARM                 | ✅     | Signed authorization responses |
+| PS256/ES256 Signing  | ✅     | Conformance-tested             |
+
+**Conformance Profiles Tested**:
+
+- `fapi2-message-signing-final-client-test-plan`
+- `plain_fapi` variant
+- `fapi2-ms-final-plain-fapi-jar4`
+- `fapi2-ms-final-plain-fapi-jarm4`
+
+**Implementation**:
+
+- `rp/request_object.go` - JAR request object construction and signing
+- `rp/jarm.go` - JARM validation and callback normalization
+- `rp/par.go` - PAR transport for signed request objects
+- `conformance/harness/matrix.go` - message-signing final matrices
+- `conformance/harness/execute.go` - negative-case handling for JARM tests
 
 **Required for**:
 
