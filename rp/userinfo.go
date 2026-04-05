@@ -14,23 +14,33 @@ import (
 )
 
 func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedSub string, transport UserInfoTokenTransport) (map[string]any, error) {
-	req, err := buildUserInfoRequest(ctx, endpoint, accessToken, transport)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrUserInfoValidationFailed, err)
-	}
-
 	useDPoP := transport == UserInfoTokenTransportHeader && r.shouldUseDPoP()
-	if useDPoP {
-		req.Header.Set("Authorization", "DPoP "+accessToken)
-		cachedNonce := r.cachedDPoPNonce(endpoint)
-		if err := r.attachDPoPProof(req, accessToken, cachedNonce); err != nil {
-			return nil, fmt.Errorf("%w: failed to generate DPoP proof: %v", ErrUserInfoValidationFailed, err)
-		}
-	}
 
 	var payload map[string]any
-	resp, status, preview, err := doJSONStatus(req, r.httpClient, http.StatusOK, func(body io.Reader) error {
-		return json.NewDecoder(body).Decode(&payload)
+	_, status, preview, err := doRequestWithDPoPRetry(dpopRequestConfig{
+		buildRequest: func() (*http.Request, error) {
+			req, err := buildUserInfoRequest(ctx, endpoint, accessToken, transport)
+			if err != nil {
+				return nil, err
+			}
+			if useDPoP {
+				req.Header.Set("Authorization", "DPoP "+accessToken)
+			}
+			return req, nil
+		},
+		attachDPoP: func(req *http.Request, nonce string) error {
+			return r.attachDPoPProof(req, accessToken, nonce)
+		},
+		handleResponse: func(body io.Reader) error {
+			return json.NewDecoder(body).Decode(&payload)
+		},
+		storeNonce: func(resp *http.Response) {
+			r.extractAndStoreDPoPNonce(resp, endpoint)
+		},
+		successStatus: http.StatusOK,
+		httpClient:    r.httpClient,
+		useDPoP:       useDPoP,
+		cachedNonce:   r.cachedDPoPNonce(endpoint),
 	})
 	if err != nil {
 		var decodeErr *jsonDecodeError
@@ -38,41 +48,6 @@ func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedS
 			return nil, fmt.Errorf("%w: failed to decode userinfo JSON: %v", ErrUserInfoValidationFailed, decodeErr.Err)
 		}
 		return nil, fmt.Errorf("%w: failed to execute userinfo request: %v", ErrUserInfoValidationFailed, err)
-	}
-
-	if useDPoP && resp != nil {
-		r.extractAndStoreDPoPNonce(resp, endpoint)
-	}
-
-	if useDPoP && isUseDPoPNonce(resp) {
-		nonce, ok := extractDPoPNonce(resp)
-		if ok {
-			retryReq, err := buildUserInfoRequest(ctx, endpoint, accessToken, transport)
-			if err != nil {
-				return nil, fmt.Errorf("%w: %v", ErrUserInfoValidationFailed, err)
-			}
-			retryReq.Header.Set("Authorization", "DPoP "+accessToken)
-			if err := r.attachDPoPProof(retryReq, accessToken, nonce); err != nil {
-				return nil, fmt.Errorf("%w: failed to generate DPoP proof: %v", ErrUserInfoValidationFailed, err)
-			}
-
-			resp, status, preview, err = doJSONStatus(retryReq, r.httpClient, http.StatusOK, func(body io.Reader) error {
-				return json.NewDecoder(body).Decode(&payload)
-			})
-			if err != nil {
-				var decodeErr *jsonDecodeError
-				if errors.As(err, &decodeErr) {
-					return nil, fmt.Errorf("%w: failed to decode userinfo JSON: %v", ErrUserInfoValidationFailed, decodeErr.Err)
-				}
-				return nil, fmt.Errorf("%w: failed to execute userinfo request: %v", ErrUserInfoValidationFailed, err)
-			}
-			if err == nil && resp != nil {
-				r.extractAndStoreDPoPNonce(resp, endpoint)
-			}
-			if status != http.StatusOK {
-				return nil, fmt.Errorf("%w: userinfo endpoint returned status %d: %s", ErrUserInfoValidationFailed, status, preview)
-			}
-		}
 	}
 
 	if status != http.StatusOK {

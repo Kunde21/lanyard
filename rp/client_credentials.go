@@ -311,26 +311,30 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 		// client_id not included in form when using Basic auth
 	}
 
-	req, err := c.buildTokenRequest(ctx, method, form)
-	if err != nil {
-		return nil, 0, "", err
-	}
-
 	useDPoP := c.shouldUseDPoP()
-	if useDPoP {
-		cachedNonce := c.cachedDPoPNonce(c.provider.TokenEndpoint)
-		if err := c.attachDPoPProof(req, cachedNonce); err != nil {
-			return nil, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
-		}
-	}
 
 	var token Token
-	resp, status, preview, err := doJSONStatus(req, c.httpClient, http.StatusOK, func(body io.Reader) error {
-		payload, err := io.ReadAll(body)
-		if err != nil {
-			return fmt.Errorf("failed to read token response: %w", err)
-		}
-		return parseTokenResponse(payload, &token)
+	_, status, preview, err := doRequestWithDPoPRetry(dpopRequestConfig{
+		buildRequest: func() (*http.Request, error) {
+			return c.buildTokenRequest(ctx, method, form)
+		},
+		attachDPoP: func(req *http.Request, nonce string) error {
+			return c.attachDPoPProof(req, nonce)
+		},
+		handleResponse: func(body io.Reader) error {
+			payload, err := io.ReadAll(body)
+			if err != nil {
+				return fmt.Errorf("failed to read token response: %w", err)
+			}
+			return parseTokenResponse(payload, &token)
+		},
+		storeNonce: func(resp *http.Response) {
+			c.extractAndStoreDPoPNonce(resp, c.provider.TokenEndpoint)
+		},
+		successStatus: http.StatusOK,
+		httpClient:    c.httpClient,
+		useDPoP:       useDPoP,
+		cachedNonce:   c.cachedDPoPNonce(c.provider.TokenEndpoint),
 	})
 	if err != nil {
 		var decodeErr *jsonDecodeError
@@ -394,27 +398,8 @@ func (c *ClientCredentials) buildClientAssertion() (string, error) {
 }
 
 func signClientAssertion(input, alg string, privateKey crypto.PrivateKey) (string, error) {
-	var joseAlg jose.SignatureAlgorithm
-	switch alg {
-	case "PS256":
-		joseAlg = jose.PS256
-	case "PS384":
-		joseAlg = jose.PS384
-	case "PS512":
-		joseAlg = jose.PS512
-	case "RS256":
-		joseAlg = jose.RS256
-	case "RS384":
-		joseAlg = jose.RS384
-	case "RS512":
-		joseAlg = jose.RS512
-	case "ES256":
-		joseAlg = jose.ES256
-	case "ES384":
-		joseAlg = jose.ES384
-	case "ES512":
-		joseAlg = jose.ES512
-	default:
+	joseAlg := signatureAlgorithm(alg)
+	if joseAlg == "" {
 		return "", fmt.Errorf("unsupported algorithm: %s", alg)
 	}
 

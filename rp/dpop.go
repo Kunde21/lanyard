@@ -261,6 +261,62 @@ func (r *RP) ShouldUseDPoP() bool {
 	return r.shouldUseDPoP()
 }
 
+type dpopRequestConfig struct {
+	buildRequest   func() (*http.Request, error)
+	attachDPoP     func(req *http.Request, nonce string) error
+	handleResponse func(body io.Reader) error
+	storeNonce     func(resp *http.Response)
+	successStatus  int
+	httpClient     *http.Client
+	useDPoP        bool
+	cachedNonce    string
+}
+
+func doRequestWithDPoPRetry(cfg dpopRequestConfig) (*http.Response, int, string, error) {
+	req, err := cfg.buildRequest()
+	if err != nil {
+		return nil, 0, "", err
+	}
+
+	if cfg.useDPoP {
+		if err := cfg.attachDPoP(req, cfg.cachedNonce); err != nil {
+			return nil, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
+		}
+	}
+
+	resp, status, preview, err := doJSONStatus(req, cfg.httpClient, cfg.successStatus, cfg.handleResponse)
+	if err != nil {
+		return resp, status, preview, err
+	}
+
+	if cfg.useDPoP && resp != nil {
+		cfg.storeNonce(resp)
+	}
+
+	if cfg.useDPoP && isUseDPoPNonce(resp) {
+		nonce, ok := extractDPoPNonce(resp)
+		if ok {
+			retryReq, retryErr := cfg.buildRequest()
+			if retryErr != nil {
+				return nil, 0, "", retryErr
+			}
+			if err := cfg.attachDPoP(retryReq, nonce); err != nil {
+				return nil, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
+			}
+
+			resp, status, preview, err = doJSONStatus(retryReq, cfg.httpClient, cfg.successStatus, cfg.handleResponse)
+			if err != nil {
+				return resp, status, preview, err
+			}
+			if resp != nil {
+				cfg.storeNonce(resp)
+			}
+		}
+	}
+
+	return resp, status, preview, nil
+}
+
 func validateDPoPProof(proof, method, url, expectedAth string) error {
 	parts := strings.Split(proof, ".")
 	if len(parts) != 3 {
