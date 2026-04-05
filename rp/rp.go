@@ -111,7 +111,39 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 		ctx = context.Background()
 	}
 
-	r := &RP{
+	r := newRP(issuer, clientID, clientSecret, redirectURI)
+
+	for _, opt := range opts {
+		opt(r)
+	}
+
+	r.initDefaults()
+
+	if err := r.validate(); err != nil {
+		return nil, err
+	}
+
+	r.initMetadataClient()
+
+	if err := r.initProvider(ctx); err != nil {
+		return nil, err
+	}
+
+	if err := r.resolveAuthMethod(); err != nil {
+		return nil, err
+	}
+
+	if err := r.validateProviderReadyForAuthorizationURL(); err != nil {
+		return nil, err
+	}
+
+	r.finalizeSecurityDefaults()
+
+	return r, nil
+}
+
+func newRP(issuer, clientID, clientSecret, redirectURI string) *RP {
+	return &RP{
 		issuer:                 strings.TrimSpace(issuer),
 		clientID:               strings.TrimSpace(clientID),
 		clientSecret:           clientSecret,
@@ -124,52 +156,42 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 		randReader:             rand.Reader,
 		clockSkew:              defaultClockSkew,
 	}
+}
 
-	for _, opt := range opts {
-		opt(r)
-	}
-
+func (r *RP) initDefaults() {
 	if r.dpopNonces == nil {
 		r.dpopNonces = newDPoPNonceStore(5 * time.Minute)
 	}
-
-	if err := r.validate(); err != nil {
-		return nil, err
+	if r.stateStore == nil {
+		r.stateStore = memory.New(10 * time.Minute)
 	}
+}
 
+func (r *RP) initMetadataClient() {
 	if r.metadataClient == nil {
 		r.metadataClient = metadata.NewClient(
 			metadata.WithHTTPClient(r.httpClient),
 			metadata.WithLogger(r.logger),
 		)
 	}
+}
 
+func (r *RP) initProvider(ctx context.Context) error {
 	if !r.providerSet {
 		provider, err := r.discoverProviderMetadata(ctx, r.issuer)
 		if err != nil {
-			return nil, fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
+			return fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
 		}
 		r.provider = provider
 		r.providerSet = true
 	}
+	return nil
+}
 
-	if err := r.resolveAuthMethod(); err != nil {
-		return nil, err
-	}
-
-	if err := r.validateProviderReadyForAuthorizationURL(); err != nil {
-		return nil, err
-	}
-
-	if r.stateStore == nil {
-		r.stateStore = memory.New(10 * time.Minute)
-	}
-
+func (r *RP) finalizeSecurityDefaults() {
 	if !r.fapiProfile.isFAPI() && !r.allowUnsecuredIDTokens {
 		r.allowUnsecuredIDTokens = true
 	}
-
-	return r, nil
 }
 
 func (r *RP) validateProviderReadyForAuthorizationURL() error {
