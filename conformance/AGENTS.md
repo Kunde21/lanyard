@@ -6,18 +6,14 @@ This document provides guidance for working with the OpenID Connect RP conforman
 
 ### One-Command Execution (Recommended)
 
-Run the full conformance suite (OIDC basic + FAPI2 all16 matrix) in parallel:
+Run the full conformance suite (OIDC basic + FAPI2 SP all16 + FAPI2 MS all32) using a preset:
 
 ```bash
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -args -profile=all-rp \
-  -include-plan-regex='oidcc-client-basic|fapi2-security-profile-final-client-test-plan' \
-  -matrix=fapi2-sp-final-plain-fapi-all16 \
-  -parallel \
-  -max-parallel-runs=8
+  -args -preset=all-rp-full
 ```
 
-This runs 17 plans (1 OIDC + 16 FAPI2 matrix variants) with 334 total tests in ~4 minutes.
+This runs 49 plans (1 OIDC + 16 FAPI2-SP + 32 FAPI2-MS matrix variants) with all tests in parallel.
 
 ### Available Profiles
 
@@ -48,6 +44,17 @@ The all32 message-signing matrix adds:
 - Request method: `signed_non_repudiation` (JAR)
 - Response mode: `plain_response`, `jarm`
 
+### Presets
+
+Presets bundle profile + matrices + parallel settings for common configurations. Explicit flags override preset values.
+
+| Preset | Profile | Matrices | Parallel | Total Jobs |
+|--------|---------|----------|----------|------------|
+| `all-rp-full` | all-rp | fapi2-sp-all16 + fapi2-ms-all32 | 8 | 49 (1 OIDC + 16 SP + 32 MS) |
+| `all-rp-smoke` | all-rp | fapi2-sp-first4 + fapi2-ms-jar4 | 4 | 9 (1 OIDC + 4 SP + 4 MS) |
+| `fapi2-sp-full` | fapi-rp | fapi2-sp-all16 | 8 | 16 |
+| `fapi2-ms-full` | fapi-rp | fapi2-ms-all32 | 8 | 32 |
+
 ### Common Flags
 
 | Flag                  | Default                   | Description                                        |
@@ -68,7 +75,8 @@ The all32 message-signing matrix adds:
 | `-rebuild-suite`      | `false`                   | Force rebuild suite image                          |
 | `-parallel`           | `false`                   | Run expanded jobs in parallel                      |
 | `-max-parallel-runs`  | `1`                       | Maximum concurrent jobs                            |
-| `-matrix`             | `""`                      | Named matrix expansion for selected plans          |
+| `-matrix`             | `""`                      | Named matrix expansion (repeatable; each matched to its plan automatically) |
+| `-preset`             | `""`                      | Named preset bundling profile + matrices + parallel (all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full) |
 | `-fail-fast`          | `false`                   | Stop launching queued jobs after the first failure |
 
 ## Setup Requirements
@@ -139,6 +147,25 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
   -matrix=fapi2-sp-final-plain-fapi-first4 \
   -parallel \
   -max-parallel-runs=4
+```
+
+### Run All Profiles in One Batch
+
+Run OIDC + FAPI2-SP + FAPI2-MS together using a preset:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=all-rp-full
+```
+
+Or use explicit flags for more control:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=all-rp \
+  -matrix=fapi2-sp-final-plain-fapi-all16 \
+  -matrix=fapi2-ms-final-plain-fapi-all32 \
+  -parallel -max-parallel-runs=8
 ```
 
 ### OIDC Basic Only
@@ -259,8 +286,9 @@ Reports are generated at `./artifacts/{RunID}/report.json`:
   "timestamp": "2026-02-23T15:04:05Z",
   "git_sha": "8dcce57d4097ec956de6adb85ae45dfcb67c739d",
   "suite_url": "https://suite.localhost",
-  "profile": "oidc-rp",
-  "selected_plans": ["oidcc-client-basic-certification-test-plan"],
+  "profile": "all-rp",
+  "matrices": ["fapi2-sp-final-plain-fapi-all16", "fapi2-ms-final-plain-fapi-all32"],
+  "selected_plans": ["oidcc-client-basic-certification-test-plan", "fapi2-security-profile-final-client-test-plan", "fapi2-message-signing-final-client-test-plan"],
   "failed": false,
   "plans": [
     {
