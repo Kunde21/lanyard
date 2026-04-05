@@ -147,9 +147,14 @@ func printDryRunMatrix(logf func(string, ...any), jobs []RunJob) {
 		}
 		variantLabel := "-"
 		if len(job.PlanVariant) > 0 {
-			parts := make([]string, 0, len(job.PlanVariant))
-			for k, v := range job.PlanVariant {
-				parts = append(parts, k+"="+v)
+			keys := make([]string, 0, len(job.PlanVariant))
+			for k := range job.PlanVariant {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			parts := make([]string, 0, len(keys))
+			for _, k := range keys {
+				parts = append(parts, k+"="+job.PlanVariant[k])
 			}
 			variantLabel = strings.Join(parts, ", ")
 		}
