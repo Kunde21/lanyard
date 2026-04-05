@@ -30,4 +30,5 @@ type harnessConfig struct {
 	ForcedVariants       map[string]string
 	WaitingMaxRetries    int
 	WaitingRetryInterval time.Duration
+	DryRun               bool
 }

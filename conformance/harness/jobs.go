@@ -133,3 +133,26 @@ func stableVariantMap(variant map[string]string) map[string]string {
 	}
 	return stable
 }
+
+func printDryRunMatrix(logf func(string, ...any), jobs []RunJob) {
+	logf("DRY RUN: %d job(s) would be executed", len(jobs))
+	if len(jobs) == 0 {
+		return
+	}
+
+	for i, job := range jobs {
+		caseLabel := "-"
+		if job.MatrixCase != "" {
+			caseLabel = job.MatrixCase
+		}
+		variantLabel := "-"
+		if len(job.PlanVariant) > 0 {
+			parts := make([]string, 0, len(job.PlanVariant))
+			for k, v := range job.PlanVariant {
+				parts = append(parts, k+"="+v)
+			}
+			variantLabel = strings.Join(parts, ", ")
+		}
+		logf("  %d\t%s\t%s\t%s\t%s", i+1, job.JobID, job.PlanName, caseLabel, variantLabel)
+	}
+}

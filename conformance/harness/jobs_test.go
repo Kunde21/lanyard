@@ -1,6 +1,8 @@
 package conformanceharness
 
 import (
+	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -184,5 +186,59 @@ func TestExpandRunJobs_MultipleMatricesExpandDifferentPlans(t *testing.T) {
 			t.Fatalf("duplicate Alias %q", job.Alias)
 		}
 		seenAliases[job.Alias] = struct{}{}
+	}
+}
+
+func TestPrintDryRunMatrix(t *testing.T) {
+	jobs := []RunJob{
+		{
+			JobID:       "job-001",
+			PlanName:    "oidcc-client-basic-certification-test-plan",
+			MatrixCase:  "",
+			PlanVariant: nil,
+		},
+		{
+			JobID:      "job-002",
+			PlanName:   "fapi2-security-profile-final-client-test-plan",
+			MatrixCase: "plain-fapi-01",
+			PlanVariant: map[string]string{
+				"client_auth_type": "private_key_jwt",
+				"sender_constrain": "mtls",
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	printDryRunMatrix(func(format string, args ...any) {
+		fmt.Fprintf(&buf, format+"\n", args...)
+	}, jobs)
+
+	got := buf.String()
+	if !strings.Contains(got, "2 job") {
+		t.Errorf("expected summary line with job count, got:\n%s", got)
+	}
+	if !strings.Contains(got, "job-001") {
+		t.Errorf("expected job-001 in output, got:\n%s", got)
+	}
+	if !strings.Contains(got, "job-002") {
+		t.Errorf("expected job-002 in output, got:\n%s", got)
+	}
+	if !strings.Contains(got, "plain-fapi-01") {
+		t.Errorf("expected matrix case in output, got:\n%s", got)
+	}
+	if !strings.Contains(got, "client_auth_type=private_key_jwt") {
+		t.Errorf("expected variant key=value in output, got:\n%s", got)
+	}
+}
+
+func TestPrintDryRunMatrixEmpty(t *testing.T) {
+	var buf bytes.Buffer
+	printDryRunMatrix(func(format string, args ...any) {
+		fmt.Fprintf(&buf, format+"\n", args...)
+	}, nil)
+
+	got := buf.String()
+	if !strings.Contains(got, "0 job") {
+		t.Errorf("expected 0 jobs summary, got:\n%s", got)
 	}
 }
