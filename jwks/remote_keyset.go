@@ -61,18 +61,43 @@ func NewRemoteKeySet(jwksURL string, opts ...Option) (*RemoteKeySet, error) {
 	return r, nil
 }
 
+func (r *RemoteKeySet) cacheKey() string {
+	return cacheKeyPrefix + r.jwksURL
+}
+
+func (r *RemoteKeySet) cachedEntry() (*CacheEntry, bool) {
+	entry, ok := r.cache.Get(r.cacheKey())
+	if !ok || entry == nil {
+		return nil, false
+	}
+	return entry, true
+}
+
+func (r *RemoteKeySet) markRefreshAttempt(entry *CacheEntry) bool {
+	if entry == nil {
+		return true
+	}
+	now := time.Now().UTC()
+	if !entry.lastRefreshAttempt.IsZero() && now.Sub(entry.lastRefreshAttempt) < r.minRefreshInterval {
+		return false
+	}
+	entry.lastRefreshAttempt = now
+	r.cache.Set(r.cacheKey(), entry)
+	return true
+}
+
 // Keys returns keys from cache, refreshing stale or missing values as needed.
 func (r *RemoteKeySet) Keys(ctx context.Context) ([]jose.JSONWebKey, error) {
-	cacheKey := cacheKeyPrefix + r.jwksURL
-	entry, ok := r.cache.Get(cacheKey)
-	if ok && entry != nil {
+	key := r.cacheKey()
+	entry, ok := r.cachedEntry()
+	if ok {
 		if time.Now().UTC().Add(r.expiryDelta).Before(entry.freshUntil) {
 			return entry.keysCopy(), nil
 		}
 
 		keys := entry.keysCopy()
 		go func(existing *CacheEntry) {
-			_, err := r.refresh(context.Background(), cacheKey, existing)
+			_, err := r.refresh(context.Background(), key, existing)
 			if err != nil {
 				r.logger.DebugContext(ctx, "jwks background refresh failed", "jwks_url", r.jwksURL, "err", err)
 			}
@@ -80,7 +105,7 @@ func (r *RemoteKeySet) Keys(ctx context.Context) ([]jose.JSONWebKey, error) {
 		return keys, nil
 	}
 
-	entry, err := r.refresh(ctx, cacheKey, nil)
+	entry, err := r.refresh(ctx, key, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -99,20 +124,14 @@ func (r *RemoteKeySet) Key(ctx context.Context, kid string) (jose.JSONWebKey, er
 		return key, nil
 	}
 
-	cacheKey := cacheKeyPrefix + r.jwksURL
-	entry, ok := r.cache.Get(cacheKey)
-	if ok && entry != nil {
-		now := time.Now().UTC()
-		if !entry.lastRefreshAttempt.IsZero() && now.Sub(entry.lastRefreshAttempt) < r.minRefreshInterval {
-			return jose.JSONWebKey{}, &KeyNotFoundError{JWKSURL: r.jwksURL, KID: kid}
-		}
-		entry.lastRefreshAttempt = now
-		r.cache.Set(cacheKey, entry)
+	entry, _ := r.cachedEntry()
+	if !r.markRefreshAttempt(entry) {
+		return jose.JSONWebKey{}, &KeyNotFoundError{JWKSURL: r.jwksURL, KID: kid}
 	}
 
-	refreshed, refreshErr := r.refresh(ctx, cacheKey, entry)
+	refreshed, refreshErr := r.refresh(ctx, r.cacheKey(), entry)
 	if refreshErr != nil {
-		if ok && entry != nil && len(entry.keys) > 0 {
+		if entry != nil && len(entry.keys) > 0 {
 			r.logger.DebugContext(ctx, "jwks refresh failed for unknown kid", "jwks_url", r.jwksURL, "kid", kid, "err", refreshErr)
 			return jose.JSONWebKey{}, &KeyNotFoundError{JWKSURL: r.jwksURL, KID: kid}
 		}
