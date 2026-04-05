@@ -105,6 +105,33 @@ func TestExpandRunJobs_PlainFAPIAll16ProducesDistinctJobs(t *testing.T) {
 	}
 }
 
+func TestExpandRunJobs_OverlappingMatricesDeduplicate(t *testing.T) {
+	plans := []AvailablePlan{{
+		Name:    "fapi2-security-profile-final-client-test-plan",
+		Profile: "fapi-rp",
+	}}
+
+	cfg := harnessConfig{
+		Profile:  "fapi-rp",
+		Matrices: []string{"fapi2-sp-final-plain-fapi-all16", "fapi2-sp-final-plain-fapi-first4"},
+	}
+
+	got := expandRunJobs("run-overlap", cfg, plans)
+
+	if len(got) != 16 {
+		t.Fatalf("total jobs = %d, want 16 (first4 are subset of all16, so deduped to all16)", len(got))
+	}
+
+	seenKeys := map[string]struct{}{}
+	for _, job := range got {
+		key := variantKey(job.PlanName, job.PlanVariant)
+		if _, ok := seenKeys[key]; ok {
+			t.Errorf("duplicate variant: job=%s variant=%v", job.JobID, job.PlanVariant)
+		}
+		seenKeys[key] = struct{}{}
+	}
+}
+
 func TestExpandRunJobs_MultipleMatricesExpandDifferentPlans(t *testing.T) {
 	plans := []AvailablePlan{
 		{Name: "oidcc-client-basic-certification-test-plan", Profile: "oidc-rp"},
