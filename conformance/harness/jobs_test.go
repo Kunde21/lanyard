@@ -1,6 +1,7 @@
 package conformanceharness
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -43,8 +44,8 @@ func TestExpandRunJobs_PlainFAPIMatrixProducesDistinctJobs(t *testing.T) {
 	}}
 
 	cfg := harnessConfig{
-		Profile: "fapi-rp",
-		Matrix:  "fapi2-sp-final-plain-fapi-first4",
+		Profile:  "fapi-rp",
+		Matrices: []string{"fapi2-sp-final-plain-fapi-first4"},
 	}
 
 	got := expandRunJobs("run-plain-fapi", cfg, plans)
@@ -74,8 +75,8 @@ func TestExpandRunJobs_PlainFAPIAll16ProducesDistinctJobs(t *testing.T) {
 	}}
 
 	cfg := harnessConfig{
-		Profile: "fapi-rp",
-		Matrix:  "fapi2-sp-final-plain-fapi-all16",
+		Profile:  "fapi-rp",
+		Matrices: []string{"fapi2-sp-final-plain-fapi-all16"},
 	}
 
 	got := expandRunJobs("run-plain-fapi-all16", cfg, plans)
@@ -101,5 +102,60 @@ func TestExpandRunJobs_PlainFAPIAll16ProducesDistinctJobs(t *testing.T) {
 			t.Fatalf("duplicate MatrixCase %q", job.MatrixCase)
 		}
 		seenCases[job.MatrixCase] = struct{}{}
+	}
+}
+
+func TestExpandRunJobs_MultipleMatricesExpandDifferentPlans(t *testing.T) {
+	plans := []AvailablePlan{
+		{Name: "oidcc-client-basic-certification-test-plan", Profile: "oidc-rp"},
+		{Name: "fapi2-security-profile-final-client-test-plan", Profile: "fapi-rp"},
+		{Name: "fapi2-message-signing-final-client-test-plan", Profile: "fapi-rp"},
+	}
+
+	cfg := harnessConfig{
+		Profile:  "all-rp",
+		Matrices: []string{"fapi2-sp-final-plain-fapi-first4", "fapi2-ms-final-plain-fapi-jar4"},
+	}
+
+	got := expandRunJobs("run-multi", cfg, plans)
+
+	oidcJobs := 0
+	spJobs := 0
+	msJobs := 0
+	for _, job := range got {
+		switch {
+		case strings.Contains(job.PlanName, "oidcc-client-basic"):
+			oidcJobs++
+		case strings.Contains(job.PlanName, "security-profile"):
+			spJobs++
+		case strings.Contains(job.PlanName, "message-signing"):
+			msJobs++
+		}
+	}
+
+	if oidcJobs != 1 {
+		t.Errorf("OIDC jobs = %d, want 1", oidcJobs)
+	}
+	if spJobs != 4 {
+		t.Errorf("SP jobs = %d, want 4", spJobs)
+	}
+	if msJobs != 4 {
+		t.Errorf("MS jobs = %d, want 4", msJobs)
+	}
+	if len(got) != 9 {
+		t.Fatalf("total jobs = %d, want 9 (1 OIDC + 4 SP + 4 MS)", len(got))
+	}
+
+	seenJobIDs := map[string]struct{}{}
+	seenAliases := map[string]struct{}{}
+	for _, job := range got {
+		if _, ok := seenJobIDs[job.JobID]; ok {
+			t.Fatalf("duplicate JobID %q", job.JobID)
+		}
+		seenJobIDs[job.JobID] = struct{}{}
+		if _, ok := seenAliases[job.Alias]; ok {
+			t.Fatalf("duplicate Alias %q", job.Alias)
+		}
+		seenAliases[job.Alias] = struct{}{}
 	}
 }

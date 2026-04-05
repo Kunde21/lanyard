@@ -11,7 +11,7 @@ type harnessConfig struct {
 	ArtifactsDir         string
 	Parallel             bool
 	MaxParallelRuns      int
-	Matrix               string
+	Matrices             []string
 	FailFast             bool
 	IncludePlanRegex     *regexp.Regexp
 	ExcludePlanRegex     *regexp.Regexp

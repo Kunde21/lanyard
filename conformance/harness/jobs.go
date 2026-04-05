@@ -22,19 +22,55 @@ func expandRunJobs(runID string, cfg harnessConfig, plans []AvailablePlan) []Run
 	jobs := make([]RunJob, 0, len(plans))
 	jobIndex := 1
 	for _, plan := range plans {
-		variants, err := expandMatrixVariants(cfg.Matrix, plan.Name)
-		if err != nil || len(variants) == 0 {
-			jobs = append(jobs, buildRunJob(runID, jobIndex, plan, cfg.Matrix, "", nil, RPProfileConfig{}))
+		var allVariants []matrixVariant
+		for _, matrixName := range cfg.Matrices {
+			variants, err := expandMatrixVariants(matrixName, plan.Name)
+			if err != nil {
+				continue
+			}
+			allVariants = append(allVariants, variants...)
+		}
+		allVariants = deduplicateMatrixVariants(plan.Name, allVariants)
+
+		if len(allVariants) == 0 {
+			jobs = append(jobs, buildRunJob(runID, jobIndex, plan, "", "", nil, RPProfileConfig{}))
 			jobIndex++
 			continue
 		}
 
-		for _, variant := range variants {
-			jobs = append(jobs, buildRunJob(runID, jobIndex, plan, cfg.Matrix, variant.Name, variant.Variant, variant.RPProfile))
+		for _, variant := range allVariants {
+			jobs = append(jobs, buildRunJob(runID, jobIndex, plan, "", variant.Name, variant.Variant, variant.RPProfile))
 			jobIndex++
 		}
 	}
 	return jobs
+}
+
+func deduplicateMatrixVariants(planName string, variants []matrixVariant) []matrixVariant {
+	seen := make(map[string]struct{}, len(variants))
+	deduped := make([]matrixVariant, 0, len(variants))
+	for _, v := range variants {
+		key := variantKey(planName, v.Variant)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		deduped = append(deduped, v)
+	}
+	return deduped
+}
+
+func variantKey(planName string, variant map[string]string) string {
+	keys := make([]string, 0, len(variant))
+	for k := range variant {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+variant[k])
+	}
+	return planName + "|" + strings.Join(parts, ",")
 }
 
 func buildRunJob(runID string, jobIndex int, plan AvailablePlan, matrixName, matrixCase string, matrixVariant map[string]string, rpProfile RPProfileConfig) RunJob {

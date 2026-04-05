@@ -21,7 +21,7 @@ var (
 	flagModuleRegex      = flag.String("module-regex", "", "Regex for module names to include")
 	flagParallel         = flag.Bool("parallel", false, "Run selected conformance jobs in parallel")
 	flagMaxParallelRuns  = flag.Int("max-parallel-runs", 1, "Maximum number of conformance jobs to run concurrently")
-	flagMatrix           = flag.String("matrix", "", "Named matrix expansion to apply to selected plans")
+	flagMatrices         repeatableStringFlag
 	flagFailFast         = flag.Bool("fail-fast", false, "Cancel queued jobs after the first job failure")
 
 	flagProvisionTimeout  = flag.Duration("provision-timeout", 5*time.Minute, "Max time to provision local conformance stack")
@@ -41,6 +41,7 @@ var (
 )
 
 func init() {
+	flag.Var(&flagMatrices, "matrix", "Named matrix expansion to apply to selected plans (repeatable)")
 	flag.Var(&flagForceVariants, "force-variant", "Force suite variant (repeatable key=value, e.g. client_auth_type=client_secret_post)")
 }
 
@@ -119,7 +120,7 @@ func parseHarnessConfig() (harnessConfig, error) {
 		ArtifactsDir:         strings.TrimSpace(*flagArtifactsDir),
 		Parallel:             *flagParallel,
 		MaxParallelRuns:      *flagMaxParallelRuns,
-		Matrix:               strings.TrimSpace(*flagMatrix),
+		Matrices:             []string(flagMatrices),
 		FailFast:             *flagFailFast,
 		ProvisionTimeout:     *flagProvisionTimeout,
 		PlanTimeout:          *flagPlanTimeout,
