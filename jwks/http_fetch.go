@@ -21,16 +21,23 @@ type fetchResult struct {
 	fetchedAt   time.Time
 }
 
-func (r *RemoteKeySet) fetchJWKS(ctx context.Context, priorETag string) (fetchResult, error) {
-	var result fetchResult
+func mapFetchResult(r httputil.FetchJSONResult) fetchResult {
+	return fetchResult{
+		notModified: r.NotModified,
+		etag:        r.ETag,
+		freshUntil:  r.FreshUntil,
+		fetchedAt:   r.FetchedAt,
+	}
+}
 
+func (r *RemoteKeySet) fetchJWKS(ctx context.Context, priorETag string) (fetchResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.jwksURL, nil)
 	if err != nil {
-		return result, fmt.Errorf("failed to build jwks request: %w", err)
+		return fetchResult{}, fmt.Errorf("failed to build jwks request: %w", err)
 	}
 
 	var keySet []jose.JSONWebKey
-	fetchResult, err := httputil.FetchJSON(req, r.httpClient, priorETag, r.defaultTTL, func(body io.Reader) error {
+	fr, err := httputil.FetchJSON(req, r.httpClient, priorETag, r.defaultTTL, func(body io.Reader) error {
 		decoded, decodeErr := decodeJWKS(body)
 		if decodeErr != nil {
 			return decodeErr
@@ -41,22 +48,19 @@ func (r *RemoteKeySet) fetchJWKS(ctx context.Context, priorETag string) (fetchRe
 	if err != nil {
 		var decodeErr *httputil.DecodeError
 		if errors.As(err, &decodeErr) {
-			return result, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("failed to decode jwks: %w", decodeErr.Err)}
+			return fetchResult{}, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("failed to decode jwks: %w", decodeErr.Err)}
 		}
-		return result, &FetchError{JWKSURL: r.jwksURL, Err: err}
+		return fetchResult{}, &FetchError{JWKSURL: r.jwksURL, Err: err}
 	}
 
-	result.etag = fetchResult.ETag
-	result.freshUntil = fetchResult.FreshUntil
-	result.fetchedAt = fetchResult.FetchedAt
+	result := mapFetchResult(fr)
 
-	if fetchResult.NotModified {
-		result.notModified = true
+	if result.notModified {
 		return result, nil
 	}
 
-	if fetchResult.StatusCode != http.StatusOK {
-		return result, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("status %d: %s", fetchResult.StatusCode, fetchResult.BodyPreview)}
+	if fr.StatusCode != http.StatusOK {
+		return result, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("status %d: %s", fr.StatusCode, fr.BodyPreview)}
 	}
 
 	result.keys = append([]jose.JSONWebKey(nil), keySet...)

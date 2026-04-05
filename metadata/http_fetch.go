@@ -34,37 +34,41 @@ type rawFetchResult struct {
 	fetchedAt   time.Time
 }
 
-func (c *Client) fetchRawJSON(ctx context.Context, rawURL, priorETag string, out any) (rawFetchResult, error) {
-	var result rawFetchResult
+func mapFetchResult(r httputil.FetchJSONResult) rawFetchResult {
+	return rawFetchResult{
+		notModified: r.NotModified,
+		etag:        r.ETag,
+		freshUntil:  r.FreshUntil,
+		fetchedAt:   r.FetchedAt,
+	}
+}
 
+func (c *Client) fetchRawJSON(ctx context.Context, rawURL, priorETag string, out any) (rawFetchResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return result, fmt.Errorf("failed to build discovery request: %w", err)
+		return rawFetchResult{}, fmt.Errorf("failed to build discovery request: %w", err)
 	}
 
-	fetchResult, err := httputil.FetchJSON(req, c.httpClient, priorETag, c.defaultDiscoveryTTL, func(body io.Reader) error {
+	fr, err := httputil.FetchJSON(req, c.httpClient, priorETag, c.defaultDiscoveryTTL, func(body io.Reader) error {
 		decoder := json.NewDecoder(body)
 		return decoder.Decode(out)
 	})
 	if err != nil {
 		var decodeErr *httputil.DecodeError
 		if errors.As(err, &decodeErr) {
-			return result, fmt.Errorf("failed to decode discovery response: %w", decodeErr.Err)
+			return rawFetchResult{}, fmt.Errorf("failed to decode discovery response: %w", decodeErr.Err)
 		}
-		return result, fmt.Errorf("failed to execute discovery request: %w", err)
+		return rawFetchResult{}, fmt.Errorf("failed to execute discovery request: %w", err)
 	}
 
-	result.etag = fetchResult.ETag
-	result.freshUntil = fetchResult.FreshUntil
-	result.fetchedAt = fetchResult.FetchedAt
+	result := mapFetchResult(fr)
 
-	if fetchResult.NotModified {
-		result.notModified = true
+	if result.notModified {
 		return result, nil
 	}
 
-	if fetchResult.StatusCode != http.StatusOK {
-		return result, &HTTPStatusError{URL: rawURL, StatusCode: fetchResult.StatusCode, BodyPreview: fetchResult.BodyPreview}
+	if fr.StatusCode != http.StatusOK {
+		return result, &HTTPStatusError{URL: rawURL, StatusCode: fr.StatusCode, BodyPreview: fr.BodyPreview}
 	}
 
 	return result, nil
