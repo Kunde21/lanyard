@@ -44,18 +44,85 @@ return a precise execution report with complete module coverage and deep failure
        -args -profile=<profile>
      ```
 
-   - Respect caller-provided flags such as:
-     - `-profile`
-     - `-suite-url`
-     - `-artifacts-dir`
-     - `-include-plan-regex`
-     - `-exclude-plan-regex`
-     - `-module-regex`
-     - `-cleanup`
-     - `-export-zip`
-     - `-redact`
-     - `-rebuild-suite`
-   - If the caller does not specify a profile, default to `oidc-rp`.
+    - Respect caller-provided flags such as:
+      - `-profile`
+      - `-preset` — bundles profile + matrices + parallel (overrides individual flags when set)
+      - `-matrix` (repeatable) — each instance expands its matching plan into variants
+      - `-parallel` and `-max-parallel-runs`
+      - `-suite-url`
+      - `-artifacts-dir`
+      - `-include-plan-regex`
+      - `-exclude-plan-regex`
+      - `-module-regex`
+      - `-cleanup`
+      - `-export-zip`
+      - `-redact`
+      - `-rebuild-suite`
+      - `-fail-fast`
+    - If the caller does not specify a profile or preset, default to `oidc-rp`.
+
+    ### Available Matrices
+
+    Matrices expand a single plan into multiple variants with different configurations. Each
+    matrix targets a specific plan:
+
+    | Matrix | Plan | Variants | Description |
+    |--------|------|----------|-------------|
+    | `fapi2-sp-final-plain-fapi-all16` | fapi2-security-profile-final | 16 | Full matrix: all auth types, constrains, request types, client types |
+    | `fapi2-sp-final-plain-fapi-first4` | fapi2-security-profile-final | 4 | Smoke test: first 4 variants only |
+    | `fapi2-sp-final-plain-fapi-mtls` | fapi2-security-profile-final | 2 | MTLS-only variants |
+    | `fapi2-ms-final-plain-fapi-jar4` | fapi2-message-signing-final | 4 | JAR only: signed request objects, plain response |
+    | `fapi2-ms-final-plain-fapi-jarm4` | fapi2-message-signing-final | 4 | JARM: signed request objects + signed JARM response |
+    | `fapi2-ms-final-plain-fapi-all32` | fapi2-message-signing-final | 32 | Full matrix: all auth, constrain, request, client, response modes |
+
+    The `all16` security-profile matrix covers:
+    - Client auth: `private_key_jwt`, `mtls`
+    - Sender constrain: `mtls`, `dpop`
+    - Authorization request: `simple`, `rar`
+    - Client type: `oidc`, `plain_oauth`
+
+    The `all32` message-signing matrix adds:
+    - Request method: `signed_non_repudiation` (JAR)
+    - Response mode: `plain_response`, `jarm`
+
+    ### Matrix selection
+
+    The `-matrix` flag is repeatable. Pass it once per matrix; each matrix only produces
+    variants for its matching plan, so combining matrices for different profiles is safe:
+
+    ```bash
+    # OIDC + FAPI2-SP all16 + FAPI2-MS all32 in one run
+    LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+      -args -profile=all-rp \
+        -matrix=fapi2-sp-final-plain-fapi-all16 \
+        -matrix=fapi2-ms-final-plain-fapi-all32 \
+        -parallel -max-parallel-runs=8
+    ```
+
+    Overlapping matrices (e.g., `-matrix=fapi2-sp-final-plain-fapi-all16 -matrix=fapi2-sp-final-plain-fapi-first4`)
+    are deduplicated automatically — duplicate variant configs are removed.
+
+    ### Presets
+
+    When the caller wants "run everything" or a known smoke test, prefer `-preset` over
+    assembling individual flags:
+
+    | Preset | What it runs | Jobs |
+    |--------|-------------|------|
+    | `all-rp-full` | OIDC + FAPI2-SP all16 + FAPI2-MS all32 (parallel 8) | 49 |
+    | `all-rp-smoke` | OIDC + FAPI2-SP first4 + FAPI2-MS jar4 (parallel 4) | 9 |
+    | `fapi2-sp-full` | FAPI2-SP all16 only (parallel 8) | 16 |
+    | `fapi2-ms-full` | FAPI2-MS all32 only (parallel 8) | 32 |
+
+    Example:
+
+    ```bash
+    LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+      -args -preset=all-rp-full
+    ```
+
+    Explicit flags (`-profile`, `-matrix`, `-parallel`, etc.) override preset values when both
+    are provided.
    - Prefer preserving full console output from the harness so plan and module progress can be
      summarized accurately.
 
