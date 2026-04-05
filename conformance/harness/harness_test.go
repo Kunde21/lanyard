@@ -38,6 +38,7 @@ var (
 	flagRebuild   = flag.Bool("rebuild-suite", false, "Force rebuilding suite image before compose up")
 
 	flagForceVariants repeatableStringFlag
+	flagPreset        = flag.String("preset", "", "Named preset combining profile + matrices + parallel settings")
 )
 
 func init() {
@@ -134,6 +135,32 @@ func parseHarnessConfig() (harnessConfig, error) {
 		RebuildSuite:         *flagRebuild,
 		WaitingMaxRetries:    *flagWaitingMaxRetries,
 		WaitingRetryInterval: *flagWaitingInterval,
+	}
+
+	if presetName := strings.TrimSpace(*flagPreset); presetName != "" {
+		preset, err := resolvePreset(presetName)
+		if err != nil {
+			return harnessConfig{}, err
+		}
+		if cfg.Profile == "" {
+			cfg.Profile = preset.Profile
+		}
+		if len(cfg.Matrices) == 0 {
+			cfg.Matrices = preset.Matrices
+		}
+		if !*flagParallel && preset.Parallel {
+			cfg.Parallel = preset.Parallel
+		}
+		if *flagMaxParallelRuns == 1 && preset.MaxParallelRuns > 0 {
+			cfg.MaxParallelRuns = preset.MaxParallelRuns
+		}
+		if *flagIncludePlanRegex == "" && preset.IncludePlanRegex != "" {
+			re, regexErr := compileRegex(preset.IncludePlanRegex)
+			if regexErr != nil {
+				return harnessConfig{}, fmt.Errorf("preset has invalid include-plan-regex: %w", regexErr)
+			}
+			cfg.IncludePlanRegex = re
+		}
 	}
 
 	if cfg.Profile == "" {

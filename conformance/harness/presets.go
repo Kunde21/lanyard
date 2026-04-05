@@ -1,0 +1,48 @@
+package conformanceharness
+
+import "fmt"
+
+type presetConfig struct {
+	Profile          string
+	Matrices         []string
+	Parallel         bool
+	MaxParallelRuns  int
+	IncludePlanRegex string
+}
+
+var builtInPresets = map[string]presetConfig{
+	"all-rp-full": {
+		Profile:         "all-rp",
+		Matrices:        []string{"fapi2-sp-final-plain-fapi-all16", "fapi2-ms-final-plain-fapi-all32"},
+		Parallel:        true,
+		MaxParallelRuns: 8,
+	},
+	"all-rp-smoke": {
+		Profile:         "all-rp",
+		Matrices:        []string{"fapi2-sp-final-plain-fapi-first4", "fapi2-ms-final-plain-fapi-jar4"},
+		Parallel:        true,
+		MaxParallelRuns: 4,
+	},
+	"fapi2-sp-full": {
+		Profile:          "fapi-rp",
+		Matrices:         []string{"fapi2-sp-final-plain-fapi-all16"},
+		IncludePlanRegex: "fapi2-security-profile-final-client-test-plan",
+		Parallel:         true,
+		MaxParallelRuns:  8,
+	},
+	"fapi2-ms-full": {
+		Profile:          "fapi-rp",
+		Matrices:         []string{"fapi2-ms-final-plain-fapi-all32"},
+		IncludePlanRegex: "fapi2-message-signing-final-client-test-plan",
+		Parallel:         true,
+		MaxParallelRuns:  8,
+	},
+}
+
+func resolvePreset(name string) (presetConfig, error) {
+	cfg, ok := builtInPresets[name]
+	if !ok {
+		return presetConfig{}, fmt.Errorf("unknown preset %q (available: all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full)", name)
+	}
+	return cfg, nil
+}
