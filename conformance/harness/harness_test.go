@@ -169,6 +169,15 @@ func parseHarnessConfig() (harnessConfig, error) {
 	if cfg.Profile != "oidc-rp" && cfg.Profile != "fapi-rp" && cfg.Profile != "all-rp" {
 		return harnessConfig{}, fmt.Errorf("invalid -profile %q", cfg.Profile)
 	}
+	for _, m := range cfg.Matrices {
+		m = strings.TrimSpace(m)
+		if m == "" || m == "off" {
+			continue
+		}
+		if _, err := expandMatrixVariants(m, ""); err != nil {
+			return harnessConfig{}, fmt.Errorf("unknown matrix %q in -matrix flag", m)
+		}
+	}
 	if cfg.SuiteURL == "" {
 		return harnessConfig{}, fmt.Errorf("-suite-url cannot be empty")
 	}

@@ -18,6 +18,7 @@ type reportDocument struct {
 	GitSHA        string       `json:"git_sha,omitempty"`
 	SuiteURL      string       `json:"suite_url"`
 	Profile       string       `json:"profile"`
+	Matrices      []string     `json:"matrices,omitempty"`
 	SelectedPlans []string     `json:"selected_plans"`
 	Failed        bool         `json:"failed"`
 	FailureReason string       `json:"failure_reason,omitempty"`
@@ -55,6 +56,7 @@ func writeReport(ctx context.Context, cfg harnessConfig, run runReport) (string,
 		GitSHA:        gitSHA,
 		SuiteURL:      cfg.SuiteURL,
 		Profile:       cfg.Profile,
+		Matrices:      cfg.Matrices,
 		SelectedPlans: append([]string{}, cfg.SelectedPlanNames...),
 		Failed:        run.Failed,
 		FailureReason: run.FailureReason,

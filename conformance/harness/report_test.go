@@ -189,3 +189,43 @@ func TestExportPlanZip_UsesJobScopedArtifactPath(t *testing.T) {
 		t.Fatalf("planZipPath() mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestWriteReport_IncludesMatricesWhenPresent(t *testing.T) {
+	tempDir := t.TempDir()
+	cfg := harnessConfig{
+		SuiteURL:          "https://suite.localhost",
+		Profile:           "all-rp",
+		Matrices:          []string{"fapi2-sp-final-plain-fapi-all16", "fapi2-ms-final-plain-fapi-all32"},
+		ArtifactsDir:      tempDir,
+		ExportZip:         false,
+		Redact:            false,
+		SelectedPlanNames: []string{"plan-a"},
+	}
+
+	run := runReport{
+		RunID:      "20260405-010203",
+		StartedAt:  time.Now().UTC(),
+		FinishedAt: time.Now().UTC(),
+		Plans:      []planResult{},
+	}
+
+	reportPath, err := writeReport(context.Background(), cfg, run)
+	if err != nil {
+		t.Fatalf("writeReport() failed: %v", err)
+	}
+
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatalf("ReadFile(report) failed: %v", err)
+	}
+
+	var doc reportDocument
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("json.Unmarshal(report) failed: %v", err)
+	}
+
+	want := []string{"fapi2-sp-final-plain-fapi-all16", "fapi2-ms-final-plain-fapi-all32"}
+	if diff := cmp.Diff(want, doc.Matrices); diff != "" {
+		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
+	}
+}
