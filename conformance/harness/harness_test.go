@@ -39,6 +39,7 @@ var (
 
 	flagForceVariants repeatableStringFlag
 	flagPreset        = flag.String("preset", "", "Named preset combining profile + matrices + parallel settings")
+	flagDryRun        = flag.Bool("dry-run", false, "Print the test matrix and exit without executing tests")
 )
 
 func init() {
@@ -54,6 +55,28 @@ func TestConformanceHarness(t *testing.T) {
 	cfg, err := parseHarnessConfig()
 	if err != nil {
 		t.Fatalf("invalid harness configuration: %v\n\n%s", err, harnessUsage())
+	}
+
+	if cfg.DryRun {
+		dryCtx, dryCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer dryCancel()
+
+		client := newSuiteClient(cfg.SuiteURL)
+		availablePlans, err := client.ListAvailablePlans(dryCtx)
+		if err != nil {
+			t.Fatalf("dry run: failed to list available plans: %v", err)
+		}
+		selectedPlans, err := selectPlans(cfg, availablePlans)
+		if err != nil {
+			t.Fatalf("dry run: failed to select plans: %v", err)
+		}
+		cfg.SelectedPlanNames = make([]string, 0, len(selectedPlans))
+		for _, plan := range selectedPlans {
+			cfg.SelectedPlanNames = append(cfg.SelectedPlanNames, plan.Name)
+		}
+		jobs := expandRunJobs(time.Now().UTC().Format("20060102-150405"), cfg, selectedPlans)
+		printDryRunMatrix(t.Logf, jobs)
+		t.Skip("dry run: no tests executed")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ProvisionTimeout+cfg.PlanTimeout*time.Duration(max(1, len(cfg.SelectedPlanNames))))
@@ -129,6 +152,7 @@ func parseHarnessConfig() (harnessConfig, error) {
 		SuiteWaitTimeout:     *flagSuiteWaitTimeout,
 		WaitTimeoutSeconds:   durationToWholeSeconds(*flagSuiteWaitTimeout),
 		SkipProvision:        *flagSkipProvision,
+		DryRun:               *flagDryRun,
 		Cleanup:              *flagCleanup,
 		ExportZip:            *flagExportZip,
 		Redact:               *flagRedact,
