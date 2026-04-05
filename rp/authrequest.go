@@ -10,6 +10,40 @@ import (
 	"time"
 )
 
+func (r *RP) saveCorrelation(ctx context.Context, w http.ResponseWriter, req *http.Request, state, nonce, verifier string, parResp *parResponse) error {
+	correlation := CallbackCorrelation{
+		Nonce:                  nonce,
+		CodeVerifier:           verifier,
+		CreatedAt:              r.now(),
+		Issuer:                 r.issuer,
+		UserInfoTokenTransport: string(r.userInfoTokenTransport),
+	}
+	if parResp != nil {
+		correlation.Expiry = r.now().Add(time.Duration(parResp.ExpiresIn) * time.Second)
+		correlation.RequestURI = parResp.RequestURI
+		correlation.UsedPAR = true
+	}
+	if err := r.stateStore.SaveCorrelation(ctx, w, req, state, correlation); err != nil {
+		return fmt.Errorf("failed to save callback correlation state: %w", err)
+	}
+	return nil
+}
+
+func buildAuthorizationRedirect(endpoint string, params url.Values) (string, error) {
+	authURL, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("%w: invalid authorization endpoint URL: %v", ErrInvalidConfiguration, err)
+	}
+	q := authURL.Query()
+	for key, values := range params {
+		for _, value := range values {
+			q.Add(key, value)
+		}
+	}
+	authURL.RawQuery = q.Encode()
+	return authURL.String(), nil
+}
+
 // AuthorizationURL builds an authorization request URL and stores callback state.
 func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request, opts ...AuthorizationURLOption) (string, error) {
 	metadata := r.provider
@@ -70,57 +104,18 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 			return "", err
 		}
 
-		expiry := r.now().Add(time.Duration(parResp.ExpiresIn) * time.Second)
-		if err := r.stateStore.SaveCorrelation(ctx, w, req, state, CallbackCorrelation{
-			Nonce:                  nonce,
-			CodeVerifier:           verifier,
-			CreatedAt:              r.now(),
-			Expiry:                 expiry,
-			Issuer:                 r.issuer,
-			RequestURI:             parResp.RequestURI,
-			UsedPAR:                true,
-			UserInfoTokenTransport: string(r.userInfoTokenTransport),
-		}); err != nil {
-			return "", fmt.Errorf("failed to save callback correlation state: %w", err)
+		if err := r.saveCorrelation(ctx, w, req, state, nonce, verifier, parResp); err != nil {
+			return "", err
 		}
 
-		authURL, err := url.Parse(authorizationEndpoint)
-		if err != nil {
-			return "", fmt.Errorf("%w: invalid authorization endpoint URL: %v", ErrInvalidConfiguration, err)
-		}
-
-		q := authURL.Query()
-		q.Set("client_id", r.clientID)
-		q.Set("request_uri", parResp.RequestURI)
-		authURL.RawQuery = q.Encode()
-
-		return authURL.String(), nil
+		return buildAuthorizationRedirect(authorizationEndpoint, url.Values{"client_id": {r.clientID}, "request_uri": {parResp.RequestURI}})
 	}
 
-	if err := r.stateStore.SaveCorrelation(ctx, w, req, state, CallbackCorrelation{
-		Nonce:                  nonce,
-		CodeVerifier:           verifier,
-		CreatedAt:              r.now(),
-		Issuer:                 r.issuer,
-		UserInfoTokenTransport: string(r.userInfoTokenTransport),
-	}); err != nil {
-		return "", fmt.Errorf("failed to save callback correlation state: %w", err)
+	if err := r.saveCorrelation(ctx, w, req, state, nonce, verifier, nil); err != nil {
+		return "", err
 	}
 
-	authURL, err := url.Parse(authorizationEndpoint)
-	if err != nil {
-		return "", fmt.Errorf("%w: invalid authorization endpoint URL: %v", ErrInvalidConfiguration, err)
-	}
-
-	q := authURL.Query()
-	for key, values := range params {
-		for _, value := range values {
-			q.Add(key, value)
-		}
-	}
-	authURL.RawQuery = q.Encode()
-
-	return authURL.String(), nil
+	return buildAuthorizationRedirect(authorizationEndpoint, params)
 }
 
 func randomToken(reader io.Reader, size int) (string, error) {

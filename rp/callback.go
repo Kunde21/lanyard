@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/Kunde21/lanyard/metadata"
 )
 
 // CallbackResult contains the validated identity data returned from
@@ -18,6 +20,37 @@ type CallbackResult struct {
 	UserInfo map[string]any
 }
 
+func (r *RP) parseAuthorizationResponse(ctx context.Context, params callbackParams) (code, state, iss string, err error) {
+	if r.isJARMResponse(params) {
+		jarmClaims, err := r.parseJARMResponse(ctx, params.Response)
+		if err != nil {
+			return "", "", "", err
+		}
+		if jarmClaims.Error != "" {
+			return "", "", "", fmt.Errorf("%w: JARM error %q: %s", ErrInvalidState, jarmClaims.Error, jarmClaims.ErrorDescription)
+		}
+		return jarmClaims.Code, jarmClaims.State, jarmClaims.Iss, nil
+	}
+	return params.Code, params.State, params.Iss, nil
+}
+
+func (r *RP) providerForCallback(ctx context.Context, issuer string) (metadata.Provider, error) {
+	provider := r.provider
+	if !r.providerSet || provider.Issuer == "" {
+		var err error
+		provider, err = r.discoverProviderMetadata(ctx, issuer)
+		if err != nil {
+			return metadata.Provider{}, fmt.Errorf("%w: discovery failed: %v", ErrTokenExchangeFailed, err)
+		}
+	}
+	if len(provider.TokenEndpointAuthMethodsSupported) > 0 {
+		if err := r.applySupportedAuthMethods(provider.TokenEndpointAuthMethodsSupported); err != nil {
+			return metadata.Provider{}, fmt.Errorf("%w: auth method negotiation failed: %v", ErrTokenExchangeFailed, err)
+		}
+	}
+	return provider, nil
+}
+
 // HandleCallback validates callback state and performs token/userinfo processing.
 func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *http.Request) (*CallbackResult, error) {
 	if req == nil {
@@ -25,22 +58,10 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	}
 
 	params := extractCallbackParams(req)
-	code := params.Code
-	state := params.State
-	authzResponseIss := params.Iss
 
-	if r.isJARMResponse(params) {
-		jarmClaims, err := r.parseJARMResponse(ctx, params.Response)
-		if err != nil {
-			return nil, err
-		}
-		code = jarmClaims.Code
-		state = jarmClaims.State
-		authzResponseIss = jarmClaims.Iss
-
-		if jarmClaims.Error != "" {
-			return nil, fmt.Errorf("%w: JARM error %q: %s", ErrInvalidState, jarmClaims.Error, jarmClaims.ErrorDescription)
-		}
+	code, state, authzResponseIss, err := r.parseAuthorizationResponse(ctx, params)
+	if err != nil {
+		return nil, err
 	}
 
 	if state == "" {
@@ -74,18 +95,9 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	issuer := expectedIssuer
 	r.issuer = issuer
 
-	provider := r.provider
-	if !r.providerSet || provider.Issuer == "" {
-		var err error
-		provider, err = r.discoverProviderMetadata(ctx, issuer)
-		if err != nil {
-			return nil, fmt.Errorf("%w: discovery failed: %v", ErrTokenExchangeFailed, err)
-		}
-	}
-	if len(provider.TokenEndpointAuthMethodsSupported) > 0 {
-		if err := r.applySupportedAuthMethods(provider.TokenEndpointAuthMethodsSupported); err != nil {
-			return nil, fmt.Errorf("%w: auth method negotiation failed: %v", ErrTokenExchangeFailed, err)
-		}
+	provider, err := r.providerForCallback(ctx, issuer)
+	if err != nil {
+		return nil, err
 	}
 
 	tokenEndpoint := r.tokenEndpoint(provider)
