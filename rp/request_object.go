@@ -93,7 +93,7 @@ func isStandardRequestObjectClaim(key string) bool {
 }
 
 func signRequestObjectClaims(keyProvider ClientKeyProvider, claims requestObjectClaims) (string, error) {
-	alg := signingAlgorithm(keyProvider.SigningAlgorithm())
+	alg := signatureAlgorithm(keyProvider.SigningAlgorithm())
 	if alg == "" {
 		return "", fmt.Errorf("unsupported signing algorithm for request object: %s", keyProvider.SigningAlgorithm())
 	}
@@ -173,23 +173,6 @@ func parseAuthorizationDetailsClaim(raw string) (json.RawMessage, error) {
 	}
 
 	return json.RawMessage(canonical), nil
-}
-
-func signingAlgorithm(alg string) jose.SignatureAlgorithm {
-	switch alg {
-	case "PS256":
-		return jose.PS256
-	case "RS256":
-		return jose.RS256
-	case "ES256":
-		return jose.ES256
-	case "PS384":
-		return jose.PS384
-	case "ES384":
-		return jose.ES384
-	default:
-		return ""
-	}
 }
 
 var _ crypto.PrivateKey = (*rsaPrivateKey)(nil)

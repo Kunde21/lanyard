@@ -69,7 +69,7 @@ func buildDPoPProof(keyProvider ClientKeyProvider, randReader io.Reader, now fun
 	}
 
 	alg := keyProvider.SigningAlgorithm()
-	joseAlg := algToJose(alg)
+	joseAlg := signatureAlgorithm(alg)
 	if joseAlg == "" {
 		return "", fmt.Errorf("unsupported algorithm for DPoP: %s", alg)
 	}
@@ -128,31 +128,6 @@ func (r *RP) attachDPoPProof(req *http.Request, accessToken, nonce string) error
 // AttachDPoPProof adds a DPoP proof to req.
 func (r *RP) AttachDPoPProof(req *http.Request, accessToken, nonce string) error {
 	return r.attachDPoPProof(req, accessToken, nonce)
-}
-
-func algToJose(alg string) jose.SignatureAlgorithm {
-	switch alg {
-	case "PS256":
-		return jose.PS256
-	case "PS384":
-		return jose.PS384
-	case "PS512":
-		return jose.PS512
-	case "RS256":
-		return jose.RS256
-	case "RS384":
-		return jose.RS384
-	case "RS512":
-		return jose.RS512
-	case "ES256":
-		return jose.ES256
-	case "ES384":
-		return jose.ES384
-	case "ES512":
-		return jose.ES512
-	default:
-		return ""
-	}
 }
 
 func rsaJWK(key *rsa.PrivateKey) map[string]any {

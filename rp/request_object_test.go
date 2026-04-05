@@ -192,9 +192,9 @@ func TestBuildSignedRequestObject_AuthorizationDetails(t *testing.T) {
 }
 
 func TestSigningAlgorithm_Unsupported(t *testing.T) {
-	got := signingAlgorithm("HS256")
+	got := signatureAlgorithm("HS256")
 	if got != "" {
-		t.Errorf("signingAlgorithm(HS256) = %q, want empty", got)
+		t.Errorf("signatureAlgorithm(HS256) = %q, want empty", got)
 	}
 }
 

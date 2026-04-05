@@ -340,41 +340,6 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 		return nil, 0, "", fmt.Errorf("failed to execute token request: %w", err)
 	}
 
-	if useDPoP && resp != nil {
-		c.extractAndStoreDPoPNonce(resp, c.provider.TokenEndpoint)
-	}
-
-	if useDPoP && isUseDPoPNonce(resp) {
-		nonce, ok := extractDPoPNonce(resp)
-		if ok {
-			retryReq, err := c.buildTokenRequest(ctx, method, form)
-			if err != nil {
-				return nil, 0, "", err
-			}
-			if err := c.attachDPoPProof(retryReq, nonce); err != nil {
-				return nil, 0, "", fmt.Errorf("failed to generate DPoP proof: %w", err)
-			}
-
-			resp, status, preview, err = doJSONStatus(retryReq, c.httpClient, http.StatusOK, func(body io.Reader) error {
-				payload, err := io.ReadAll(body)
-				if err != nil {
-					return fmt.Errorf("failed to read token response: %w", err)
-				}
-				return parseTokenResponse(payload, &token)
-			})
-			if err != nil {
-				var decodeErr *jsonDecodeError
-				if errors.As(err, &decodeErr) {
-					return nil, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
-				}
-				return nil, 0, "", fmt.Errorf("failed to execute token request: %w", err)
-			}
-			if err == nil && resp != nil {
-				c.extractAndStoreDPoPNonce(resp, c.provider.TokenEndpoint)
-			}
-		}
-	}
-
 	if status != http.StatusOK {
 		return nil, status, preview, nil
 	}
