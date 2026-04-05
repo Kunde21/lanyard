@@ -11,123 +11,134 @@ const (
 	oauthASCachePrefix  = "oidc:authz-server:v1:"
 )
 
-type discoveryConfig struct {
-	cachePrefix   string
-	cacheKind     cacheEntryKind
-	buildOpts     func(c *Client) discoveryRefreshOptions
-	metadataEntry func(entry *CacheEntry) interface{}
-}
-
-var providerDiscoveryConfig = discoveryConfig{
-	cachePrefix: providerCachePrefix,
-	cacheKind:   cacheEntryKindProvider,
-	buildOpts: func(c *Client) discoveryRefreshOptions {
-		return discoveryRefreshOptions{
-			wellKnown: OIDCWellKnownURL,
-			fetch: func(ctx context.Context, discoveryURL, etag string) (discoveryFetchResult, error) {
-				return c.fetchDiscoveryMetadata(ctx, discoveryURL, etag, new(Provider))
-			},
-			validate: func(expectedIssuer string, md interface{}) error {
-				p, ok := md.(*Provider)
-				if !ok {
-					return fmt.Errorf("expected *Provider, got %T", md)
-				}
-				return c.validateProvider(expectedIssuer, *p)
-			},
-			newEntry: func(md interface{}, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
-				return newProviderCacheEntry(*md.(*Provider), etag, freshUntil, fetchedAt)
-			},
-			metadataFromExisting: func(entry *CacheEntry) interface{} {
-				p := entry.provider
-				return &p
-			},
-			staleLogMessage: "provider refresh failed; serving stale cache",
-			entryKind:       cacheEntryKindProvider,
-		}
-	},
-	metadataEntry: func(entry *CacheEntry) interface{} {
-		return entry.provider
-	},
-}
-
-var asDiscoveryConfig = discoveryConfig{
-	cachePrefix: oauthASCachePrefix,
-	cacheKind:   cacheEntryKindAS,
-	buildOpts: func(c *Client) discoveryRefreshOptions {
-		return discoveryRefreshOptions{
-			wellKnown: OAuthASWellKnownURL,
-			fetch: func(ctx context.Context, discoveryURL, etag string) (discoveryFetchResult, error) {
-				return c.fetchDiscoveryMetadata(ctx, discoveryURL, etag, new(AuthorizationServer))
-			},
-			validate: func(expectedIssuer string, md interface{}) error {
-				s, ok := md.(*AuthorizationServer)
-				if !ok {
-					return fmt.Errorf("expected *AuthorizationServer, got %T", md)
-				}
-				return c.validateAuthorizationServer(expectedIssuer, *s)
-			},
-			newEntry: func(md interface{}, etag string, freshUntil, fetchedAt time.Time) *CacheEntry {
-				return newAuthorizationServerCacheEntry(*md.(*AuthorizationServer), etag, freshUntil, fetchedAt)
-			},
-			metadataFromExisting: func(entry *CacheEntry) interface{} {
-				s := entry.authorizer
-				return &s
-			},
-			staleLogMessage: "authorization server refresh failed; serving stale cache",
-			entryKind:       cacheEntryKindAS,
-		}
-	},
-	metadataEntry: func(entry *CacheEntry) interface{} {
-		return entry.authorizer
-	},
-}
-
-func (c *Client) discover(ctx context.Context, issuer string, cfg discoveryConfig) (interface{}, error) {
-	if _, err := validateIssuerURL(issuer); err != nil {
-		return nil, err
-	}
-
-	cacheKey := cfg.cachePrefix + issuer
-	if entry, ok := c.discoveryCache.Get(cacheKey); ok && entry != nil && entry.kind == cfg.cacheKind {
-		if c.conformanceFreshDiscovery {
-			refreshed, err := c.refreshDiscovery(ctx, issuer, cacheKey, entry, cfg.buildOpts(c))
+func (c *Client) providerRefreshOpts() discoveryRefreshOptions {
+	return discoveryRefreshOptions{
+		wellKnown: OIDCWellKnownURL,
+		fetchAndValidate: func(ctx context.Context, discoveryURL, etag, issuer string) (discoveryFetchResult, error) {
+			p := new(Provider)
+			result, err := c.fetchDiscoveryMetadata(ctx, discoveryURL, etag, p)
 			if err != nil {
-				return nil, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+				return result, err
 			}
-			return cfg.metadataEntry(refreshed), nil
-		}
-
-		if time.Now().UTC().Before(entry.freshUntil) {
-			return cfg.metadataEntry(entry), nil
-		}
-
-		cached := cfg.metadataEntry(entry)
-		go c.refreshDiscovery(context.Background(), issuer, cacheKey, entry, cfg.buildOpts(c))
-		return cached, nil
+			if result.notModified {
+				return result, nil
+			}
+			if err := c.validateProvider(issuer, *p); err != nil {
+				return discoveryFetchResult{}, err
+			}
+			return result, nil
+		},
+		newEntry: func(result discoveryFetchResult) *CacheEntry {
+			return newProviderCacheEntry(*result.metadata.(*Provider), result.etag, result.freshUntil, result.fetchedAt)
+		},
+		refreshExisting: func(existing *CacheEntry, result discoveryFetchResult) *CacheEntry {
+			etag := existing.etag
+			if result.etag != "" {
+				etag = result.etag
+			}
+			return newProviderCacheEntry(existing.provider, etag, result.freshUntil, result.fetchedAt)
+		},
+		staleLogMessage: "provider refresh failed; serving stale cache",
 	}
+}
 
-	entry, err := c.refreshDiscovery(ctx, issuer, cacheKey, nil, cfg.buildOpts(c))
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+func (c *Client) authorizationServerRefreshOpts() discoveryRefreshOptions {
+	return discoveryRefreshOptions{
+		wellKnown: OAuthASWellKnownURL,
+		fetchAndValidate: func(ctx context.Context, discoveryURL, etag, issuer string) (discoveryFetchResult, error) {
+			s := new(AuthorizationServer)
+			result, err := c.fetchDiscoveryMetadata(ctx, discoveryURL, etag, s)
+			if err != nil {
+				return result, err
+			}
+			if result.notModified {
+				return result, nil
+			}
+			if err := c.validateAuthorizationServer(issuer, *s); err != nil {
+				return discoveryFetchResult{}, err
+			}
+			return result, nil
+		},
+		newEntry: func(result discoveryFetchResult) *CacheEntry {
+			return newAuthorizationServerCacheEntry(*result.metadata.(*AuthorizationServer), result.etag, result.freshUntil, result.fetchedAt)
+		},
+		refreshExisting: func(existing *CacheEntry, result discoveryFetchResult) *CacheEntry {
+			etag := existing.etag
+			if result.etag != "" {
+				etag = result.etag
+			}
+			return newAuthorizationServerCacheEntry(existing.authorizer, etag, result.freshUntil, result.fetchedAt)
+		},
+		staleLogMessage: "authorization server refresh failed; serving stale cache",
 	}
-
-	return cfg.metadataEntry(entry), nil
 }
 
 // DiscoverProvider fetches, validates, and caches OIDC provider information.
 func (c *Client) DiscoverProvider(ctx context.Context, issuer string) (Provider, error) {
-	md, err := c.discover(ctx, issuer, providerDiscoveryConfig)
-	if err != nil {
+	if _, err := validateIssuerURL(issuer); err != nil {
 		return Provider{}, err
 	}
-	return md.(Provider), nil
+
+	cacheKey := providerCachePrefix + issuer
+	opts := c.providerRefreshOpts()
+
+	if entry, ok := c.discoveryCache.Get(cacheKey); ok && entry != nil && entry.kind == cacheEntryKindProvider {
+		if c.conformanceFreshDiscovery {
+			refreshed, err := c.refreshDiscovery(ctx, issuer, cacheKey, entry, opts)
+			if err != nil {
+				return Provider{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+			}
+			return refreshed.provider, nil
+		}
+
+		if time.Now().UTC().Before(entry.freshUntil) {
+			return entry.provider, nil
+		}
+
+		cached := entry.provider
+		go c.refreshDiscovery(context.Background(), issuer, cacheKey, entry, opts)
+		return cached, nil
+	}
+
+	entry, err := c.refreshDiscovery(ctx, issuer, cacheKey, nil, opts)
+	if err != nil {
+		return Provider{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+	}
+
+	return entry.provider, nil
 }
 
 // DiscoverAuthorizationServer fetches, validates, and caches OAuth AS information.
 func (c *Client) DiscoverAuthorizationServer(ctx context.Context, issuer string) (AuthorizationServer, error) {
-	md, err := c.discover(ctx, issuer, asDiscoveryConfig)
-	if err != nil {
+	if _, err := validateIssuerURL(issuer); err != nil {
 		return AuthorizationServer{}, err
 	}
-	return md.(AuthorizationServer), nil
+
+	cacheKey := oauthASCachePrefix + issuer
+	opts := c.authorizationServerRefreshOpts()
+
+	if entry, ok := c.discoveryCache.Get(cacheKey); ok && entry != nil && entry.kind == cacheEntryKindAS {
+		if c.conformanceFreshDiscovery {
+			refreshed, err := c.refreshDiscovery(ctx, issuer, cacheKey, entry, opts)
+			if err != nil {
+				return AuthorizationServer{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+			}
+			return refreshed.authorizer, nil
+		}
+
+		if time.Now().UTC().Before(entry.freshUntil) {
+			return entry.authorizer, nil
+		}
+
+		cached := entry.authorizer
+		go c.refreshDiscovery(context.Background(), issuer, cacheKey, entry, opts)
+		return cached, nil
+	}
+
+	entry, err := c.refreshDiscovery(ctx, issuer, cacheKey, nil, opts)
+	if err != nil {
+		return AuthorizationServer{}, fmt.Errorf("%w: %w", ErrDiscoveryFailed, err)
+	}
+
+	return entry.authorizer, nil
 }

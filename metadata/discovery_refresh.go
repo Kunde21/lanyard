@@ -15,13 +15,11 @@ type discoveryFetchResult struct {
 }
 
 type discoveryRefreshOptions struct {
-	wellKnown            func(string) (string, error)
-	fetch                func(context.Context, string, string) (discoveryFetchResult, error)
-	validate             func(string, interface{}) error
-	newEntry             func(interface{}, string, time.Time, time.Time) *CacheEntry
-	metadataFromExisting func(*CacheEntry) interface{}
-	staleLogMessage      string
-	entryKind            cacheEntryKind
+	wellKnown        func(string) (string, error)
+	fetchAndValidate func(ctx context.Context, discoveryURL, etag, issuer string) (discoveryFetchResult, error)
+	newEntry         func(result discoveryFetchResult) *CacheEntry
+	refreshExisting  func(existing *CacheEntry, result discoveryFetchResult) *CacheEntry
+	staleLogMessage  string
 }
 
 func (c *Client) refreshDiscovery(ctx context.Context, issuer, cacheKey string, existing *CacheEntry, opts discoveryRefreshOptions) (*CacheEntry, error) {
@@ -36,7 +34,7 @@ func (c *Client) refreshDiscovery(ctx context.Context, issuer, cacheKey string, 
 			etag = existing.etag
 		}
 
-		result, err := opts.fetch(ctx, wellKnownURL, etag)
+		result, err := opts.fetchAndValidate(ctx, wellKnownURL, etag, issuer)
 		if err != nil {
 			return nil, err
 		}
@@ -45,21 +43,12 @@ func (c *Client) refreshDiscovery(ctx context.Context, issuer, cacheKey string, 
 			if existing == nil {
 				return nil, fmt.Errorf("received 304 without cached entry")
 			}
-			metadata := opts.metadataFromExisting(existing)
-			entryETag := existing.etag
-			if result.etag != "" {
-				entryETag = result.etag
-			}
-			updated := opts.newEntry(metadata, entryETag, result.freshUntil, result.fetchedAt)
+			updated := opts.refreshExisting(existing, result)
 			c.discoveryCache.Set(cacheKey, updated)
 			return updated, nil
 		}
 
-		if err := opts.validate(issuer, result.metadata); err != nil {
-			return nil, err
-		}
-
-		entry := opts.newEntry(result.metadata, result.etag, result.freshUntil, result.fetchedAt)
+		entry := opts.newEntry(result)
 		c.discoveryCache.Set(cacheKey, entry)
 		return entry, nil
 	})
@@ -72,7 +61,7 @@ func (c *Client) refreshDiscovery(ctx context.Context, issuer, cacheKey string, 
 
 	entry, ok := value.(*CacheEntry)
 	if !ok {
-		return nil, fmt.Errorf("unexpected %s cache entry type %T", opts.entryKind, value)
+		return nil, fmt.Errorf("unexpected cache entry type %T", value)
 	}
 
 	return entry, nil

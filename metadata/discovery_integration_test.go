@@ -62,7 +62,7 @@ func TestDiscoverProviderSWRAndETag(t *testing.T) {
 	}
 
 	// Force a deterministic conditional refresh and assert 304 path.
-	_, err = c.refreshDiscovery(context.Background(), issuer, cacheKey, entry, providerDiscoveryConfig.buildOpts(c))
+	_, err = c.refreshDiscovery(context.Background(), issuer, cacheKey, entry, c.providerRefreshOpts())
 	if err != nil {
 		t.Fatalf("refreshDiscovery() failed: %v", err)
 	}
