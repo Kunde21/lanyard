@@ -7,27 +7,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/Kunde21/lanyard/httputil"
 	jose "github.com/go-jose/go-jose/v4"
 )
 
 type fetchResult struct {
-	keys        []jose.JSONWebKey
-	notModified bool
-	etag        string
-	freshUntil  time.Time
-	fetchedAt   time.Time
-}
-
-func mapFetchResult(r httputil.FetchJSONResult) fetchResult {
-	return fetchResult{
-		notModified: r.NotModified,
-		etag:        r.ETag,
-		freshUntil:  r.FreshUntil,
-		fetchedAt:   r.FetchedAt,
-	}
+	httputil.FetchJSONResult
+	keys []jose.JSONWebKey
 }
 
 func (r *RemoteKeySet) fetchJWKS(ctx context.Context, priorETag string) (fetchResult, error) {
@@ -53,9 +40,9 @@ func (r *RemoteKeySet) fetchJWKS(ctx context.Context, priorETag string) (fetchRe
 		return fetchResult{}, &FetchError{JWKSURL: r.jwksURL, Err: err}
 	}
 
-	result := mapFetchResult(fr)
+	result := fetchResult{FetchJSONResult: fr}
 
-	if result.notModified {
+	if result.NotModified {
 		return result, nil
 	}
 

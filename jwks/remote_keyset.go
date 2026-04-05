@@ -167,20 +167,20 @@ func (r *RemoteKeySet) refresh(ctx context.Context, cacheKey string, existing *C
 			return nil, err
 		}
 
-		if result.notModified {
+		if result.NotModified {
 			if existing == nil {
 				return nil, &FetchError{JWKSURL: r.jwksURL, Err: fmt.Errorf("received 304 without cached entry")}
 			}
-			updated := newCacheEntry(existing.keysCopy(), existing.etag, result.freshUntil, result.fetchedAt)
+			updated := newCacheEntry(existing.keysCopy(), existing.etag, result.FreshUntil, result.FetchedAt)
 			updated.lastRefreshAttempt = existing.lastRefreshAttempt
-			if result.etag != "" {
-				updated.etag = result.etag
+			if result.ETag != "" {
+				updated.etag = result.ETag
 			}
 			r.cache.Set(cacheKey, updated)
 			return updated, nil
 		}
 
-		entry := newCacheEntry(result.keys, result.etag, result.freshUntil, result.fetchedAt)
+		entry := newCacheEntry(result.keys, result.ETag, result.FreshUntil, result.FetchedAt)
 		if existing != nil {
 			entry.lastRefreshAttempt = existing.lastRefreshAttempt
 		}
