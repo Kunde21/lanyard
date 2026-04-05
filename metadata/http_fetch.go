@@ -12,47 +12,14 @@ import (
 	"github.com/Kunde21/lanyard/httputil"
 )
 
-type providerFetchResult struct {
-	provider    Provider
-	notModified bool
-	etag        string
-	freshUntil  time.Time
-	fetchedAt   time.Time
-}
-
-type authorizationServerFetchResult struct {
-	server      AuthorizationServer
-	notModified bool
-	etag        string
-	freshUntil  time.Time
-	fetchedAt   time.Time
-}
-
-func (c *Client) fetchProvider(ctx context.Context, rawURL, priorETag string) (providerFetchResult, error) {
-	var provider Provider
-	result, err := c.fetchRawJSON(ctx, rawURL, priorETag, &provider)
+func (c *Client) fetchDiscoveryMetadata(ctx context.Context, rawURL, priorETag string, out interface{}) (discoveryFetchResult, error) {
+	result, err := c.fetchRawJSON(ctx, rawURL, priorETag, out)
 	if err != nil {
-		return providerFetchResult{}, err
+		return discoveryFetchResult{}, err
 	}
 
-	return providerFetchResult{
-		provider:    provider,
-		notModified: result.notModified,
-		etag:        result.etag,
-		freshUntil:  result.freshUntil,
-		fetchedAt:   result.fetchedAt,
-	}, nil
-}
-
-func (c *Client) fetchAuthorizationServer(ctx context.Context, rawURL, priorETag string) (authorizationServerFetchResult, error) {
-	var server AuthorizationServer
-	result, err := c.fetchRawJSON(ctx, rawURL, priorETag, &server)
-	if err != nil {
-		return authorizationServerFetchResult{}, err
-	}
-
-	return authorizationServerFetchResult{
-		server:      server,
+	return discoveryFetchResult{
+		metadata:    out,
 		notModified: result.notModified,
 		etag:        result.etag,
 		freshUntil:  result.freshUntil,
