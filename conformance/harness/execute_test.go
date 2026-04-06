@@ -256,6 +256,21 @@ func TestRequestTypeForPlanVariant(t *testing.T) {
 			want:    "pushed_authorization_request",
 		},
 		{
+			name:    "fapi_auth_request_method pushed",
+			variant: map[string]string{"fapi_auth_request_method": "pushed"},
+			want:    "pushed_authorization_request",
+		},
+		{
+			name:    "fapi_auth_request_method by_value",
+			variant: map[string]string{"fapi_auth_request_method": "by_value"},
+			want:    "plain_http_request",
+		},
+		{
+			name:    "fapi_auth_request_method takes precedence over authorization_request_type",
+			variant: map[string]string{"fapi_auth_request_method": "pushed", "authorization_request_type": "simple"},
+			want:    "pushed_authorization_request",
+		},
+		{
 			name:    "default is plain http request",
 			variant: map[string]string{},
 			want:    "plain_http_request",
@@ -510,5 +525,36 @@ func TestBuildPlanConfig_RARAddsAuthorizationDetailsTypesSupported(t *testing.T)
 	}
 	if _, ok := resource["authorization_details_types_supported"]; !ok {
 		t.Fatalf("authorization_details_types_supported missing: %#v", resource)
+	}
+}
+
+func TestIsNegativeTestModule(t *testing.T) {
+	fapi1Negatives := []string{
+		"fapi1-advanced-final-client-test-invalid-shash",
+		"fapi1-advanced-final-client-test-invalid-chash",
+		"fapi1-advanced-final-client-test-invalid-nonce",
+		"fapi1-advanced-final-client-test-invalid-missing-exp",
+		"fapi1-advanced-final-client-test-iat-is-week-in-past",
+	}
+	for _, name := range fapi1Negatives {
+		t.Run("negative/"+name, func(t *testing.T) {
+			if !isNegativeTestModule(name) {
+				t.Errorf("isNegativeTestModule(%q) = false, want true", name)
+			}
+		})
+	}
+
+	nonNegatives := []string{
+		"fapi1-advanced-final-client-test-happy-clients",
+		"fapi1-advanced-final-client-test-code-id-token-client1",
+		"fapi2-security-profile-final-client-test-happy-clients",
+		"oidcc-client-test",
+	}
+	for _, name := range nonNegatives {
+		t.Run("non_negative/"+name, func(t *testing.T) {
+			if isNegativeTestModule(name) {
+				t.Errorf("isNegativeTestModule(%q) = true, want false", name)
+			}
+		})
 	}
 }

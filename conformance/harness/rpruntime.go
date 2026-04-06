@@ -133,6 +133,13 @@ func coalesceResponseMode(planMode, variantMode string) string {
 	return planMode
 }
 
+func requirePARForVariant(planVariant map[string]string) bool {
+	if v, ok := planVariant["fapi_auth_request_method"]; ok {
+		return strings.EqualFold(strings.TrimSpace(v), "pushed")
+	}
+	return isFAPI2PlanVariant(planVariant)
+}
+
 func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, suiteURL, alias string) rpRuntimeRequest {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -163,7 +170,7 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 		FAPIClientType:           planVariant["fapi_client_type"],
 		FAPIProfile:              planVariant["fapi_profile"],
 		RequestType:              requestType,
-		RequirePAR:               isFAPI2PlanVariant(planVariant),
+		RequirePAR:               requirePARForVariant(planVariant),
 		ResponseMode:             coalesceResponseMode(responseModeForPlan(job.PlanName), responseModeForVariant(planVariant)),
 		FAPIRequestMethod:        planVariant["fapi_request_method"],
 		FAPIResponseMode:         planVariant["fapi_response_mode"],

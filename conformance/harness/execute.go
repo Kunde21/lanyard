@@ -814,6 +814,13 @@ func requestTypeForPlanVariant(planVariant map[string]string) string {
 		return v
 	}
 
+	switch strings.ToLower(strings.TrimSpace(planVariant["fapi_auth_request_method"])) {
+	case "pushed":
+		return "pushed_authorization_request"
+	case "by_value":
+		return "plain_http_request"
+	}
+
 	switch strings.ToLower(strings.TrimSpace(planVariant["authorization_request_type"])) {
 	case "", "simple":
 		return "plain_http_request"

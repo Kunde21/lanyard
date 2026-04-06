@@ -328,3 +328,62 @@ func TestCoalesceResponseMode(t *testing.T) {
 		})
 	}
 }
+
+func TestRequirePARForVariant(t *testing.T) {
+	tests := []struct {
+		name    string
+		variant map[string]string
+		want    bool
+	}{
+		{name: "fapi1 pushed requires PAR", variant: map[string]string{"fapi_auth_request_method": "pushed"}, want: true},
+		{name: "fapi1 by_value no PAR", variant: map[string]string{"fapi_auth_request_method": "by_value"}, want: false},
+		{name: "fapi2 without fapi_auth_request_method uses heuristic", variant: map[string]string{"client_auth_type": "private_key_jwt", "fapi_profile": "plain_fapi"}, want: true},
+		{name: "oidc no PAR", variant: map[string]string{"client_registration": "static_client"}, want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := requirePARForVariant(tc.variant)
+			if got != tc.want {
+				t.Fatalf("requirePARForVariant() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildRPRuntimeRequest_FAPI1AdvancedByValue(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "fapi1-advanced-final-client-test-plan"}
+	req := buildRPRuntimeRequest(job, map[string]string{
+		"client_auth_type":         "private_key_jwt",
+		"fapi_auth_request_method": "by_value",
+		"fapi_client_type":         "oidc",
+		"fapi_profile":             "plain_fapi",
+		"fapi_response_mode":       "plain_response",
+		"sender_constrain":         "mtls",
+	}, "https://suite.localhost")
+
+	if req.RequirePAR {
+		t.Fatalf("RequirePAR = true, want false for by_value")
+	}
+	if req.RequestType != "plain_http_request" {
+		t.Fatalf("RequestType = %q, want %q", req.RequestType, "plain_http_request")
+	}
+}
+
+func TestBuildRPRuntimeRequest_FAPI1AdvancedPushed(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "fapi1-advanced-final-client-test-plan"}
+	req := buildRPRuntimeRequest(job, map[string]string{
+		"client_auth_type":         "private_key_jwt",
+		"fapi_auth_request_method": "pushed",
+		"fapi_client_type":         "oidc",
+		"fapi_profile":             "plain_fapi",
+		"fapi_response_mode":       "plain_response",
+		"sender_constrain":         "mtls",
+	}, "https://suite.localhost")
+
+	if !req.RequirePAR {
+		t.Fatalf("RequirePAR = false, want true for pushed")
+	}
+	if req.RequestType != "pushed_authorization_request" {
+		t.Fatalf("RequestType = %q, want %q", req.RequestType, "pushed_authorization_request")
+	}
+}

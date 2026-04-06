@@ -78,3 +78,49 @@ func TestResolvePreset_UnknownPresetReturnsError(t *testing.T) {
 		t.Errorf("error should mention preset name, got: %v", err)
 	}
 }
+
+func TestResolvePreset_FAPI1AdvFull(t *testing.T) {
+	cfg, err := resolvePreset("fapi1-adv-full")
+	if err != nil {
+		t.Fatalf("resolvePreset() failed: %v", err)
+	}
+	if cfg.Profile != "fapi-rp" {
+		t.Errorf("Profile = %q, want %q", cfg.Profile, "fapi-rp")
+	}
+	want := []string{"fapi1-adv-final-all16"}
+	if diff := cmp.Diff(want, cfg.Matrices); diff != "" {
+		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
+	}
+	if cfg.IncludePlanRegex != "fapi1-advanced-final-client-test-plan" {
+		t.Errorf("IncludePlanRegex = %q, want %q", cfg.IncludePlanRegex, "fapi1-advanced-final-client-test-plan")
+	}
+	if !cfg.Parallel {
+		t.Errorf("Parallel = false, want true")
+	}
+	if cfg.MaxParallelRuns != 8 {
+		t.Errorf("MaxParallelRuns = %d, want 8", cfg.MaxParallelRuns)
+	}
+}
+
+func TestResolvePreset_FAPI1AdvSmoke(t *testing.T) {
+	cfg, err := resolvePreset("fapi1-adv-smoke")
+	if err != nil {
+		t.Fatalf("resolvePreset() failed: %v", err)
+	}
+	if cfg.Profile != "fapi-rp" {
+		t.Errorf("Profile = %q, want %q", cfg.Profile, "fapi-rp")
+	}
+	want := []string{"fapi1-adv-final-first4"}
+	if diff := cmp.Diff(want, cfg.Matrices); diff != "" {
+		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
+	}
+	if cfg.IncludePlanRegex != "fapi1-advanced-final-client-test-plan" {
+		t.Errorf("IncludePlanRegex = %q, want %q", cfg.IncludePlanRegex, "fapi1-advanced-final-client-test-plan")
+	}
+	if !cfg.Parallel {
+		t.Errorf("Parallel = false, want true")
+	}
+	if cfg.MaxParallelRuns != 4 {
+		t.Errorf("MaxParallelRuns = %d, want 4", cfg.MaxParallelRuns)
+	}
+}
