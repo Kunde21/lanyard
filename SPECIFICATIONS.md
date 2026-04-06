@@ -51,7 +51,7 @@ Provider metadata discovery and validation.
 
 ### JARM (JWT Secured Authorization Response Mode)
 
-**Status**: Not Implemented
+**Status**: Implemented
 
 **Required for**: FAPI 1.0 Advanced, FAPI 2.0 Message Signing
 
@@ -59,11 +59,11 @@ JWT-wrapped authorization responses for integrity protection.
 
 | Feature             | Status | Notes                           |
 |---------------------|--------|---------------------------------|
-| query.jwt mode      | ❌     | JWT in query parameter          |
-| fragment.jwt mode   | ❌     | JWT in fragment                 |
-| form_post.jwt mode  | ❌     | JWT in form POST                |
-| Response JWT Claims | ❌     | iss, aud, exp, iat, code, state |
-| Response Signature  | ❌     | AS-signed response verification |
+| query.jwt mode      | ✅     | JWT in query parameter          |
+| fragment.jwt mode   | ✅     | JWT in fragment                 |
+| form_post.jwt mode  | ✅     | JWT in form POST                |
+| Response JWT Claims | ✅     | iss, aud, exp, iat, code, state |
+| Response Signature  | ✅     | AS-signed response verification |
 
 **Required Claims**:
 
@@ -302,7 +302,7 @@ Defines the `cnf` (confirmation) claim for token binding.
 
 ### RFC 9101: JWT Secured Authorization Request (JAR)
 
-**Status**: Not Implemented
+**Status**: Implemented
 
 **Required for**: FAPI 1.0 Advanced, FAPI 2.0 Message Signing
 
@@ -310,10 +310,10 @@ JWT-secured authorization request parameters.
 
 | Feature                | Status | Notes                          |
 |------------------------|--------|--------------------------------|
-| Request Object JWT     | ❌     | Signed authorization request   |
-| request Parameter      | ❌     | JWT in authorization request   |
-| Request Object Claims  | ❌     | response_type, client_id, etc. |
-| Signature Verification | ❌     | AS validates JWT signature     |
+| Request Object JWT     | ✅     | Signed authorization request   |
+| request Parameter      | ✅     | JWT in authorization request   |
+| Request Object Claims  | ✅     | response_type, client_id, etc. |
+| Signature Verification | ✅     | AS validates JWT signature     |
 
 **Required Claims**:
 
@@ -471,8 +471,8 @@ Financial-grade API Part 2: Advanced security profile.
 | mTLS Sender Constraint      | ✅     | Required for access tokens     |
 | PAR                         | ✅     | Pushed Authorization Requests  |
 | PKCE                        | ✅     | Required with PAR              |
-| JAR                         | ❌     | Signed request object required |
-| JARM                        | ❌     | JWT response mode required     |
+| JAR                         | ✅     | Signed request object required |
+| JARM                        | ✅     | JWT response mode required     |
 | Hybrid Flow (code id_token) | ❌     | response_type=code id_token    |
 | PS256/ES256 Only            | ✅     | RS256 forbidden for signing    |
 | nonce Required              | ✅     | For OIDC flows                 |
@@ -723,13 +723,13 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | JSON Web Key                            | RFC 7517              | ✅     |
 | WebFinger                               | RFC 7033              | ✅     |
 | FAPI 2.0 Security Profile               | OpenID FAPI           | ✅     |
+| JWT Secured Authorization Request (JAR) | RFC 9101              | ✅     |
+| JARM                                    | OpenID                | ✅     |
 
 ### Not Implemented (Required for Target Profiles)
 
 | Specification                           | RFC/Standard | Required For                                |
 |-----------------------------------------|--------------|---------------------------------------------|
-| JWT Secured Authorization Request (JAR) | RFC 9101     | FAPI 1.0 Advanced, FAPI 2.0 Message Signing |
-| JARM                                    | OpenID       | FAPI 1.0 Advanced, FAPI 2.0 Message Signing |
 | Resource Indicators                     | RFC 8707     | FAPI 2.0 Grant Management                   |
 | PoP Key Semantics (cnf claim)           | RFC 7800     | DPoP/mTLS sender constraint                 |
 | JWT Introspection Response              | RFC 9701     | Enhanced introspection                      |
