@@ -55,6 +55,16 @@ func expandMatrixVariants(matrixName, planName string) ([]matrixVariant, error) 
 			return nil, nil
 		}
 		return buildMessageSigningMatrixVariants(true, ""), nil
+	case "fapi1-adv-final-first4":
+		if planName != "fapi1-advanced-final-client-test-plan" {
+			return nil, nil
+		}
+		return buildFAPI1AdvancedMatrixVariants(false), nil
+	case "fapi1-adv-final-all16":
+		if planName != "fapi1-advanced-final-client-test-plan" {
+			return nil, nil
+		}
+		return buildFAPI1AdvancedMatrixVariants(true), nil
 	default:
 		return nil, fmt.Errorf("unknown matrix %q", matrixName)
 	}
@@ -199,6 +209,61 @@ func buildMessageSigningMatrixVariants(includeAll bool, fixedResponseMode string
 						})
 						index++
 					}
+				}
+			}
+		}
+	}
+
+	return variants
+}
+
+func buildFAPI1AdvancedMatrixVariants(includeAll bool) []matrixVariant {
+	authTypes := []string{"private_key_jwt", "mtls"}
+	requestMethods := []string{"by_value"}
+	clientTypes := []string{"oidc"}
+	responseModes := []string{"plain_response", "jarm"}
+	if includeAll {
+		requestMethods = []string{"by_value", "pushed"}
+		clientTypes = []string{"oidc", "plain_oauth"}
+	}
+
+	variants := make([]matrixVariant, 0, len(authTypes)*len(requestMethods)*len(clientTypes)*len(responseModes))
+	index := 1
+	for _, authType := range authTypes {
+		for _, reqMethod := range requestMethods {
+			for _, clientType := range clientTypes {
+				for _, respMode := range responseModes {
+					variant := map[string]string{
+						"client_auth_type":         authType,
+						"fapi_auth_request_method": reqMethod,
+						"fapi_client_type":         clientType,
+						"fapi_profile":             "plain_fapi",
+						"fapi_response_mode":       respMode,
+						"sender_constrain":         "mtls",
+					}
+
+					reqLabel := reqMethod
+					if reqLabel == "by_value" {
+						reqLabel = "byval"
+					}
+					respLabel := respMode
+					if respLabel == "plain_response" {
+						respLabel = "plain"
+					}
+
+					variants = append(variants, matrixVariant{
+						Name:     fmt.Sprintf("fapi1-adv-%s-%s-%02d", reqLabel, respLabel, index),
+						PlanName: "fapi1-advanced-final-client-test-plan",
+						Variant:  variant,
+						RPProfile: RPProfileConfig{
+							ClientAuthType:   authType,
+							SenderConstrain:  "mtls",
+							FAPIClientType:   clientType,
+							FAPIProfile:      "plain_fapi",
+							FAPIResponseMode: respMode,
+						},
+					})
+					index++
 				}
 			}
 		}

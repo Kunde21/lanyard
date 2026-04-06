@@ -209,3 +209,97 @@ func TestSecurityProfileMatrix_IgnoresMessageSigningPlan(t *testing.T) {
 		t.Fatalf("expected 0 variants for security-profile matrix against message-signing plan, got %d", len(variants))
 	}
 }
+
+func TestFAPI1AdvancedMatrix_First4(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi1-adv-final-first4", "fapi1-advanced-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 4 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 4", len(variants))
+	}
+	for _, v := range variants {
+		if v.Variant["sender_constrain"] != "mtls" {
+			t.Errorf("variant %q: sender_constrain = %q, want mtls", v.Name, v.Variant["sender_constrain"])
+		}
+		if v.Variant["fapi_profile"] != "plain_fapi" {
+			t.Errorf("variant %q: fapi_profile = %q, want plain_fapi", v.Name, v.Variant["fapi_profile"])
+		}
+	}
+}
+
+func TestFAPI1AdvancedMatrix_All16(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi1-adv-final-all16", "fapi1-advanced-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 16 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 16", len(variants))
+	}
+	authCounts := map[string]int{}
+	reqMethodCounts := map[string]int{}
+	clientTypeCounts := map[string]int{}
+	responseModeCounts := map[string]int{}
+	seen := map[string]bool{}
+	for _, variant := range variants {
+		v := variant.Variant
+		authCounts[v["client_auth_type"]]++
+		reqMethodCounts[v["fapi_auth_request_method"]]++
+		clientTypeCounts[v["fapi_client_type"]]++
+		responseModeCounts[v["fapi_response_mode"]]++
+		if v["fapi_profile"] != "plain_fapi" {
+			t.Fatalf("fapi_profile = %q, want plain_fapi", v["fapi_profile"])
+		}
+		if v["sender_constrain"] != "mtls" {
+			t.Fatalf("sender_constrain = %q, want mtls", v["sender_constrain"])
+		}
+		key := strings.Join([]string{
+			v["client_auth_type"],
+			v["fapi_auth_request_method"],
+			v["fapi_client_type"],
+			v["fapi_response_mode"],
+		}, "|")
+		seen[key] = true
+	}
+	if diff := cmp.Diff(map[string]int{"private_key_jwt": 8, "mtls": 8}, authCounts); diff != "" {
+		t.Fatalf("client_auth_type distribution mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(map[string]int{"by_value": 8, "pushed": 8}, reqMethodCounts); diff != "" {
+		t.Fatalf("fapi_auth_request_method distribution mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(map[string]int{"oidc": 8, "plain_oauth": 8}, clientTypeCounts); diff != "" {
+		t.Fatalf("fapi_client_type distribution mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(map[string]int{"plain_response": 8, "jarm": 8}, responseModeCounts); diff != "" {
+		t.Fatalf("fapi_response_mode distribution mismatch (-want +got):\n%s", diff)
+	}
+	if len(seen) != 16 {
+		t.Fatalf("unique 4D combinations = %d, want 16", len(seen))
+	}
+}
+
+func TestFAPI1AdvancedMatrix_IgnoresOtherPlans(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi1-adv-final-first4", "fapi2-security-profile-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 0 {
+		t.Fatalf("expected 0 variants for mismatched plan, got %d", len(variants))
+	}
+}
+
+func TestOtherMatrices_IgnoreFAPI1AdvancedPlan(t *testing.T) {
+	testCases := []string{
+		"fapi2-sp-final-plain-fapi-first4",
+		"fapi2-ms-final-plain-fapi-jar4",
+	}
+	for _, matrixName := range testCases {
+		variants, err := expandMatrixVariants(matrixName, "fapi1-advanced-final-client-test-plan")
+		if err != nil {
+			t.Fatalf("expandMatrixVariants(%q) failed: %v", matrixName, err)
+		}
+		if len(variants) != 0 {
+			t.Fatalf("expandMatrixVariants(%q) returned %d variants, want 0", matrixName, len(variants))
+		}
+	}
+}

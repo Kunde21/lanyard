@@ -33,6 +33,8 @@ Matrices expand a single plan into multiple variants with different configuratio
 | `fapi2-ms-final-plain-fapi-jar4` | fapi2-message-signing-final | 4 | JAR only: signed request objects, plain response |
 | `fapi2-ms-final-plain-fapi-jarm4` | fapi2-message-signing-final | 4 | JARM: signed request objects + signed JARM response |
 | `fapi2-ms-final-plain-fapi-all32` | fapi2-message-signing-final | 32 | Full matrix: all auth, constrain, request, client, response modes |
+| `fapi1-adv-final-first4` | fapi1-advanced-final | 4 | Smoke test: first 4 variants only |
+| `fapi1-adv-final-all16` | fapi1-advanced-final | 16 | Full matrix: all auth types, request methods, client types, response modes |
 
 The all16 security-profile matrix covers:
 - Client auth: `private_key_jwt`, `mtls`
@@ -42,6 +44,13 @@ The all16 security-profile matrix covers:
 
 The all32 message-signing matrix adds:
 - Request method: `signed_non_repudiation` (JAR)
+- Response mode: `plain_response`, `jarm`
+
+The all16 FAPI1 Advanced matrix covers:
+- Client auth: `private_key_jwt`, `mtls`
+- Sender constrain: `mtls` (fixed — always assumed in FAPI1 Advanced)
+- Auth request method: `by_value`, `pushed`
+- Client type: `oidc`, `plain_oauth`
 - Response mode: `plain_response`, `jarm`
 
 ### Presets
@@ -54,6 +63,8 @@ Presets bundle profile + matrices + parallel settings for common configurations.
 | `all-rp-smoke` | all-rp | fapi2-sp-first4 + fapi2-ms-jar4 | 4 | 9 (1 OIDC + 4 SP + 4 MS) |
 | `fapi2-sp-full` | fapi-rp | fapi2-sp-all16 | 8 | 16 |
 | `fapi2-ms-full` | fapi-rp | fapi2-ms-all32 | 8 | 32 |
+| `fapi1-adv-full` | fapi-rp | fapi1-adv-all16 | 8 | 16 |
+| `fapi1-adv-smoke` | fapi-rp | fapi1-adv-first4 | 4 | 4 |
 
 ### Common Flags
 
@@ -76,7 +87,7 @@ Presets bundle profile + matrices + parallel settings for common configurations.
 | `-parallel`           | `false`                   | Run expanded jobs in parallel                      |
 | `-max-parallel-runs`  | `1`                       | Maximum concurrent jobs                            |
 | `-matrix`             | `""`                      | Named matrix expansion (repeatable; each matched to its plan automatically) |
-| `-preset`             | `""`                      | Named preset bundling profile + matrices + parallel (all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full) |
+| `-preset`             | `""`                      | Named preset bundling profile + matrices + parallel (all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full, fapi1-adv-full, fapi1-adv-smoke) |
 | `-fail-fast`          | `false`                   | Stop launching queued jobs after the first failure |
 
 ## Setup Requirements
@@ -225,6 +236,35 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
   -args -profile=fapi-rp \
   -include-plan-regex='fapi2-message-signing-final-client-test-plan' \
   -matrix=fapi2-ms-final-plain-fapi-all32 \
+  -parallel \
+  -max-parallel-runs=8
+```
+
+### FAPI1 Advanced Smoke Test (Fast)
+
+Run a quick smoke test with 4 FAPI1 Advanced variants:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=fapi1-adv-smoke
+```
+
+### FAPI1 Advanced Full Matrix
+
+Run all 16 FAPI1 Advanced matrix variants in parallel:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=fapi1-adv-full
+```
+
+Or use explicit flags:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -profile=fapi-rp \
+  -include-plan-regex='fapi1-advanced-final-client-test-plan' \
+  -matrix=fapi1-adv-final-all16 \
   -parallel \
   -max-parallel-runs=8
 ```

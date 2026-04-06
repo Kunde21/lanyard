@@ -37,12 +37,26 @@ var builtInPresets = map[string]presetConfig{
 		Parallel:         true,
 		MaxParallelRuns:  8,
 	},
+	"fapi1-adv-full": {
+		Profile:          "fapi-rp",
+		Matrices:         []string{"fapi1-adv-final-all16"},
+		IncludePlanRegex: "fapi1-advanced-final-client-test-plan",
+		Parallel:         true,
+		MaxParallelRuns:  8,
+	},
+	"fapi1-adv-smoke": {
+		Profile:          "fapi-rp",
+		Matrices:         []string{"fapi1-adv-final-first4"},
+		IncludePlanRegex: "fapi1-advanced-final-client-test-plan",
+		Parallel:         true,
+		MaxParallelRuns:  4,
+	},
 }
 
 func resolvePreset(name string) (presetConfig, error) {
 	cfg, ok := builtInPresets[name]
 	if !ok {
-		return presetConfig{}, fmt.Errorf("unknown preset %q (available: all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full)", name)
+		return presetConfig{}, fmt.Errorf("unknown preset %q (available: all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full, fapi1-adv-full, fapi1-adv-smoke)", name)
 	}
 	return cfg, nil
 }
