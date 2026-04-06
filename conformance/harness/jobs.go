@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Kunde21/markdownfmt/markdown"
 )
 
 type RunJob struct {
@@ -134,30 +136,62 @@ func stableVariantMap(variant map[string]string) map[string]string {
 	return stable
 }
 
-func printDryRunMatrix(logf func(string, ...any), jobs []RunJob) {
-	logf("DRY RUN: %d job(s) would be executed", len(jobs))
+var planGroupPrefixes = []string{
+	"fapi2-security-profile",
+	"fapi2-message-signing",
+	"fapi1-advanced",
+	"oidcc-client",
+	"fapi-ciba",
+}
+
+func splitPlanName(name string) (group, specific string) {
+	for _, prefix := range planGroupPrefixes {
+		if strings.HasPrefix(name, prefix+"-") {
+			return prefix, name[len(prefix)+1:]
+		}
+	}
+	return name, "none"
+}
+
+func printDryRunMatrix(jobs []RunJob) {
 	if len(jobs) == 0 {
+		fmt.Printf("DRY RUN: 0 job(s) would be executed\n")
 		return
 	}
 
+	var b strings.Builder
+	b.WriteString("| no | job_id | plan | matrix_case | variant |\n")
+	b.WriteString("|----|--------|------|-------------|----------|\n")
 	for i, job := range jobs {
-		caseLabel := "-"
+		caseLabel := "none"
 		if job.MatrixCase != "" {
 			caseLabel = job.MatrixCase
 		}
-		variantLabel := "-"
-		if len(job.PlanVariant) > 0 {
-			keys := make([]string, 0, len(job.PlanVariant))
-			for k := range job.PlanVariant {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			parts := make([]string, 0, len(keys))
-			for _, k := range keys {
-				parts = append(parts, k+"="+job.PlanVariant[k])
-			}
-			variantLabel = strings.Join(parts, ", ")
+		planGroup, planSpecific := splitPlanName(job.PlanName)
+
+		if len(job.PlanVariant) == 0 {
+			fmt.Fprintf(&b, "| %d | %s | %s | %s | none |\n", i+1, job.JobID, planGroup, caseLabel)
+			fmt.Fprintf(&b, "| | | %s | | |\n", planSpecific)
+			continue
 		}
-		logf("  %d\t%s\t%s\t%s\t%s", i+1, job.JobID, job.PlanName, caseLabel, variantLabel)
+
+		keys := make([]string, 0, len(job.PlanVariant))
+		for k := range job.PlanVariant {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		fmt.Fprintf(&b, "| %d | %s | %s | %s | %s=%s |\n", i+1, job.JobID, planGroup, caseLabel, keys[0], job.PlanVariant[keys[0]])
+		fmt.Fprintf(&b, "| | | %s | | %s=%s |\n", planSpecific, keys[1], job.PlanVariant[keys[1]])
+		for _, k := range keys[2:] {
+			fmt.Fprintf(&b, "| | | | | %s=%s |\n", k, job.PlanVariant[k])
+		}
 	}
+
+	formatted, err := markdown.Process("", []byte(b.String()))
+	if err != nil {
+		fmt.Printf("DRY RUN: %d job(s) would be executed\n\n%s", len(jobs), b.String())
+		return
+	}
+
+	fmt.Printf("DRY RUN: %d job(s) would be executed\n\n%s", len(jobs), string(formatted))
 }

@@ -75,7 +75,7 @@ func TestConformanceHarness(t *testing.T) {
 			cfg.SelectedPlanNames = append(cfg.SelectedPlanNames, plan.Name)
 		}
 		jobs := expandRunJobs(time.Now().UTC().Format("20060102-150405"), cfg, selectedPlans)
-		printDryRunMatrix(t.Logf, jobs)
+		printDryRunMatrix(jobs)
 		t.Skip("dry run: no tests executed")
 	}
 

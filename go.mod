@@ -11,4 +11,10 @@ require (
 	golang.org/x/sync v0.19.0
 )
 
-require github.com/gorilla/securecookie v1.1.2 // indirect
+require (
+	github.com/Kunde21/markdownfmt v0.1.6 // indirect
+	github.com/gorilla/securecookie v1.1.2 // indirect
+	github.com/mattn/go-runewidth v0.0.3 // indirect
+	github.com/russross/blackfriday/v2 v2.0.1 // indirect
+	github.com/shurcooL/sanitized_anchor_name v0.0.0-20170918181015-86672fcb3f95 // indirect
+)

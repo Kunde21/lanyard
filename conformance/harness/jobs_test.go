@@ -2,7 +2,7 @@ package conformanceharness
 
 import (
 	"bytes"
-	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -208,14 +208,22 @@ func TestPrintDryRunMatrix(t *testing.T) {
 		},
 	}
 
-	var buf bytes.Buffer
-	printDryRunMatrix(func(format string, args ...any) {
-		fmt.Fprintf(&buf, format+"\n", args...)
-	}, jobs)
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	printDryRunMatrix(jobs)
+	w.Close()
+	os.Stdout = old
 
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
 	got := buf.String()
+
 	if !strings.Contains(got, "2 job") {
 		t.Errorf("expected summary line with job count, got:\n%s", got)
+	}
+	if !strings.Contains(got, "| no |") {
+		t.Errorf("expected markdown header, got:\n%s", got)
 	}
 	if !strings.Contains(got, "job-001") {
 		t.Errorf("expected job-001 in output, got:\n%s", got)
@@ -229,15 +237,23 @@ func TestPrintDryRunMatrix(t *testing.T) {
 	if !strings.Contains(got, "client_auth_type=private_key_jwt") {
 		t.Errorf("expected variant key=value in output, got:\n%s", got)
 	}
+	if !strings.Contains(got, "|----|") {
+		t.Errorf("expected markdown separator, got:\n%s", got)
+	}
 }
 
 func TestPrintDryRunMatrixEmpty(t *testing.T) {
-	var buf bytes.Buffer
-	printDryRunMatrix(func(format string, args ...any) {
-		fmt.Fprintf(&buf, format+"\n", args...)
-	}, nil)
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	printDryRunMatrix(nil)
+	w.Close()
+	os.Stdout = old
 
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
 	got := buf.String()
+
 	if !strings.Contains(got, "0 job") {
 		t.Errorf("expected 0 jobs summary, got:\n%s", got)
 	}
