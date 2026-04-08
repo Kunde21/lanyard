@@ -6,14 +6,14 @@ This document provides guidance for working with the OpenID Connect RP conforman
 
 ### One-Command Execution (Recommended)
 
-Run the full conformance suite (OIDC basic + FAPI2 SP all16 + FAPI2 MS all32 + FAPI1 Adv all12) using a preset:
+Run the full conformance suite (OIDC basic + OIDC config all42 + FAPI2 SP all16 + FAPI2 MS all32 + FAPI1 Adv all12) using a preset:
 
 ```bash
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
   -args -preset=all-rp-full
 ```
 
-This runs 61 plans (1 OIDC + 16 FAPI2-SP + 32 FAPI2-MS + 12 FAPI1-Adv matrix variants) with all tests in parallel.
+This runs 103 plans (1 OIDC basic + 42 OIDC config + 16 FAPI2-SP + 32 FAPI2-MS + 12 FAPI1-Adv matrix variants) with all tests in parallel.
 
 ### Available Profiles
 
@@ -35,6 +35,8 @@ Matrices expand a single plan into multiple variants with different configuratio
 | `fapi2-ms-final-plain-fapi-all32` | fapi2-message-signing-final | 32 | Full matrix: all auth, constrain, request, client, response modes |
 | `fapi1-adv-final-first4` | fapi1-advanced-final | 4 | Smoke test: first 4 variants only |
 | `fapi1-adv-final-all12` | fapi1-advanced-final | 12 | Full matrix: all auth types, request methods, client types, response modes (valid combinations only) |
+| `oidcc-config-cert-first2` | oidcc-client-config-certification-test-plan | 2 | Smoke test: client_secret_basic, plain_http_request, static_client, x 2 response modes |
+| `oidcc-config-cert-all42` | oidcc-client-config-certification-test-plan | 42 | Full matrix: all auth types x all request types x static_client x all response modes |
 
 The all16 security-profile matrix covers:
 - Client auth: `private_key_jwt`, `mtls`
@@ -56,18 +58,26 @@ The all12 FAPI1 Advanced matrix covers:
 Note: The FAPI1 Advanced conformance suite rejects `plain_response` with `plain_oauth`
 client type. The matrix builder automatically skips these invalid combinations.
 
+The all42 OIDC Configuration matrix covers:
+- Client auth: `none`, `client_secret_basic`, `client_secret_post`, `client_secret_jwt`, `private_key_jwt`, `tls_client_auth`, `self_signed_tls_client_auth`
+- Request type: `plain_http_request`, `request_object`, `request_uri`
+- Client registration: `static_client` (fixed — dynamic client excluded from matrix)
+- Response mode: `default`, `form_post`
+
 ### Presets
 
 Presets bundle profile + matrices + parallel settings for common configurations. Explicit flags override preset values.
 
 | Preset | Profile | Matrices | Parallel | Total Jobs |
 |--------|---------|----------|----------|------------|
-| `all-rp-full` | all-rp | fapi2-sp-all16 + fapi2-ms-all32 + fapi1-adv-all12 | 8 | 61 (1 OIDC + 16 SP + 32 MS + 12 FAPI1-Adv) |
-| `all-rp-smoke` | all-rp | fapi2-sp-first4 + fapi2-ms-jar4 + fapi1-adv-first4 | 4 | 13 (1 OIDC + 4 SP + 4 MS + 4 FAPI1-Adv) |
+| `all-rp-full` | all-rp | oidcc-config-all42 + fapi2-sp-all16 + fapi2-ms-all32 + fapi1-adv-all12 | 12 | 103 (1 OIDC basic + 42 OIDC config + 16 SP + 32 MS + 12 FAPI1-Adv) |
+| `all-rp-smoke` | all-rp | oidcc-config-first2 + fapi2-sp-first4 + fapi2-ms-jar4 + fapi1-adv-first4 | 4 | 15 (1 OIDC basic + 2 OIDC config + 4 SP + 4 MS + 4 FAPI1-Adv) |
 | `fapi2-sp-full` | fapi-rp | fapi2-sp-all16 | 8 | 16 |
 | `fapi2-ms-full` | fapi-rp | fapi2-ms-all32 | 8 | 32 |
 | `fapi1-adv-full` | fapi-rp | fapi1-adv-all12 | 8 | 12 |
 | `fapi1-adv-smoke` | fapi-rp | fapi1-adv-first4 | 4 | 4 |
+| `oidcc-config-full` | oidc-rp | oidcc-config-all42 | 8 | 42 |
+| `oidcc-config-smoke` | oidc-rp | oidcc-config-first2 | 2 | 2 |
 
 ### Common Flags
 
@@ -90,7 +100,7 @@ Presets bundle profile + matrices + parallel settings for common configurations.
 | `-parallel`           | `false`                   | Run expanded jobs in parallel                      |
 | `-max-parallel-runs`  | `1`                       | Maximum concurrent jobs                            |
 | `-matrix`             | `""`                      | Named matrix expansion (repeatable; each matched to its plan automatically) |
-| `-preset`             | `""`                      | Named preset bundling profile + matrices + parallel (all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full, fapi1-adv-full, fapi1-adv-smoke) |
+| `-preset`             | `""`                      | Named preset bundling profile + matrices + parallel (all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full, fapi1-adv-full, fapi1-adv-smoke, oidcc-config-full, oidcc-config-smoke) |
 | `-fail-fast`          | `false`                   | Stop launching queued jobs after the first failure |
 
 ## Setup Requirements
@@ -189,6 +199,24 @@ Run just the OIDC basic certification tests:
 ```bash
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
   -args -profile=oidc-rp
+```
+
+### OIDC Config Certification Full Matrix
+
+Run all 42 OIDC Configuration certification matrix variants in parallel:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=oidcc-config-full
+```
+
+### OIDC Config Certification Smoke Test
+
+Run 2 OIDC Configuration certification variants:
+
+```bash
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=oidcc-config-smoke
 ```
 
 ### FAPI2 All16 Matrix Only
