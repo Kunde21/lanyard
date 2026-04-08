@@ -107,7 +107,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		expectedIssuer = r.issuer
 	}
 
-	if r.isFAPIProfile() && r.isJARMResponse(params) && authzResponseIss == "" {
+	if r.isFAPIProfile() && authzResponseIss == "" {
 		return nil, fmt.Errorf("%w: authorization response iss is required for FAPI", ErrInvalidState)
 	}
 

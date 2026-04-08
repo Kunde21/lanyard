@@ -384,6 +384,59 @@ func TestHandleCallback_RejectsInvalidAuthorizationResponseIssuer(t *testing.T) 
 	}
 }
 
+func TestHandleCallback_FAPIRejectsMissingIss(t *testing.T) {
+	now := time.Now().UTC()
+	issuer := ""
+	tokenCalls := 0
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/token":
+			tokenCalls++
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithFAPIProfile("plain_fapi"),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{
+		CodeVerifier: "verifier",
+		Nonce:        "nonce-123",
+		CreatedAt:    now,
+		Issuer:       issuer,
+	}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	_, err = r.HandleCallback(context.Background(), rec, req)
+	if !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("HandleCallback() without iss should return ErrInvalidState for FAPI, got %v", err)
+	}
+	if tokenCalls != 0 {
+		t.Fatalf("tokenCalls = %d, want 0", tokenCalls)
+	}
+}
+
 func callbackRequest(code, state string) (*httptest.ResponseRecorder, *http.Request) {
 	return callbackRequestWithIss(code, state, "")
 }
