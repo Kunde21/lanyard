@@ -254,7 +254,7 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
 
 ### FAPI1 Advanced Full Matrix
 
-Run all 16 FAPI1 Advanced matrix variants in parallel:
+Run all 12 FAPI1 Advanced matrix variants in parallel:
 
 ```bash
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
