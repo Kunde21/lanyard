@@ -39,7 +39,7 @@ var builtInPresets = map[string]presetConfig{
 	},
 	"fapi1-adv-full": {
 		Profile:          "fapi-rp",
-		Matrices:         []string{"fapi1-adv-final-all16"},
+		Matrices:         []string{"fapi1-adv-final-all12"},
 		IncludePlanRegex: "fapi1-advanced-final-client-test-plan",
 		Parallel:         true,
 		MaxParallelRuns:  8,

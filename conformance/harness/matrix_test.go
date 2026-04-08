@@ -234,13 +234,13 @@ func TestFAPI1AdvancedMatrix_First4(t *testing.T) {
 	}
 }
 
-func TestFAPI1AdvancedMatrix_All16(t *testing.T) {
-	variants, err := expandMatrixVariants("fapi1-adv-final-all16", "fapi1-advanced-final-client-test-plan")
+func TestFAPI1AdvancedMatrix_All12(t *testing.T) {
+	variants, err := expandMatrixVariants("fapi1-adv-final-all12", "fapi1-advanced-final-client-test-plan")
 	if err != nil {
 		t.Fatalf("expandMatrixVariants() failed: %v", err)
 	}
-	if len(variants) != 16 {
-		t.Fatalf("expandMatrixVariants() returned %d variants, want 16", len(variants))
+	if len(variants) != 12 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 12", len(variants))
 	}
 	authCounts := map[string]int{}
 	reqMethodCounts := map[string]int{}
@@ -265,6 +265,9 @@ func TestFAPI1AdvancedMatrix_All16(t *testing.T) {
 		if variant.RPProfile.FAPIRequestMethod != "signed_non_repudiation" {
 			t.Fatalf("RPProfile.FAPIRequestMethod = %q, want signed_non_repudiation", variant.RPProfile.FAPIRequestMethod)
 		}
+		if v["fapi_client_type"] == "plain_oauth" && v["fapi_response_mode"] == "plain_response" {
+			t.Fatalf("invalid combination: plain_oauth with plain_response is rejected by conformance suite")
+		}
 		key := strings.Join([]string{
 			v["client_auth_type"],
 			v["fapi_auth_request_method"],
@@ -273,20 +276,20 @@ func TestFAPI1AdvancedMatrix_All16(t *testing.T) {
 		}, "|")
 		seen[key] = true
 	}
-	if diff := cmp.Diff(map[string]int{"private_key_jwt": 8, "mtls": 8}, authCounts); diff != "" {
+	if diff := cmp.Diff(map[string]int{"private_key_jwt": 6, "mtls": 6}, authCounts); diff != "" {
 		t.Fatalf("client_auth_type distribution mismatch (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(map[string]int{"by_value": 8, "pushed": 8}, reqMethodCounts); diff != "" {
+	if diff := cmp.Diff(map[string]int{"by_value": 6, "pushed": 6}, reqMethodCounts); diff != "" {
 		t.Fatalf("fapi_auth_request_method distribution mismatch (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(map[string]int{"oidc": 8, "plain_oauth": 8}, clientTypeCounts); diff != "" {
+	if diff := cmp.Diff(map[string]int{"oidc": 8, "plain_oauth": 4}, clientTypeCounts); diff != "" {
 		t.Fatalf("fapi_client_type distribution mismatch (-want +got):\n%s", diff)
 	}
-	if diff := cmp.Diff(map[string]int{"plain_response": 8, "jarm": 8}, responseModeCounts); diff != "" {
+	if diff := cmp.Diff(map[string]int{"plain_response": 4, "jarm": 8}, responseModeCounts); diff != "" {
 		t.Fatalf("fapi_response_mode distribution mismatch (-want +got):\n%s", diff)
 	}
-	if len(seen) != 16 {
-		t.Fatalf("unique 4D combinations = %d, want 16", len(seen))
+	if len(seen) != 12 {
+		t.Fatalf("unique 4D combinations = %d, want 12", len(seen))
 	}
 }
 

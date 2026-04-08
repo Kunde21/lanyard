@@ -60,7 +60,7 @@ func expandMatrixVariants(matrixName, planName string) ([]matrixVariant, error) 
 			return nil, nil
 		}
 		return buildFAPI1AdvancedMatrixVariants(false), nil
-	case "fapi1-adv-final-all16":
+	case "fapi1-adv-final-all12":
 		if planName != "fapi1-advanced-final-client-test-plan" {
 			return nil, nil
 		}
@@ -233,6 +233,10 @@ func buildFAPI1AdvancedMatrixVariants(includeAll bool) []matrixVariant {
 		for _, reqMethod := range requestMethods {
 			for _, clientType := range clientTypes {
 				for _, respMode := range responseModes {
+					if clientType == "plain_oauth" && respMode == "plain_response" {
+						continue
+					}
+
 					variant := map[string]string{
 						"client_auth_type":         authType,
 						"fapi_auth_request_method": reqMethod,

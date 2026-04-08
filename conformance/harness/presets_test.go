@@ -87,7 +87,7 @@ func TestResolvePreset_FAPI1AdvFull(t *testing.T) {
 	if cfg.Profile != "fapi-rp" {
 		t.Errorf("Profile = %q, want %q", cfg.Profile, "fapi-rp")
 	}
-	want := []string{"fapi1-adv-final-all16"}
+	want := []string{"fapi1-adv-final-all12"}
 	if diff := cmp.Diff(want, cfg.Matrices); diff != "" {
 		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
 	}
