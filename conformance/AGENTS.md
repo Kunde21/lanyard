@@ -6,14 +6,14 @@ This document provides guidance for working with the OpenID Connect RP conforman
 
 ### One-Command Execution (Recommended)
 
-Run the full conformance suite (OIDC basic + FAPI2 SP all16 + FAPI2 MS all32) using a preset:
+Run the full conformance suite (OIDC basic + FAPI2 SP all16 + FAPI2 MS all32 + FAPI1 Adv all12) using a preset:
 
 ```bash
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
   -args -preset=all-rp-full
 ```
 
-This runs 49 plans (1 OIDC + 16 FAPI2-SP + 32 FAPI2-MS matrix variants) with all tests in parallel.
+This runs 61 plans (1 OIDC + 16 FAPI2-SP + 32 FAPI2-MS + 12 FAPI1-Adv matrix variants) with all tests in parallel.
 
 ### Available Profiles
 
@@ -62,8 +62,8 @@ Presets bundle profile + matrices + parallel settings for common configurations.
 
 | Preset | Profile | Matrices | Parallel | Total Jobs |
 |--------|---------|----------|----------|------------|
-| `all-rp-full` | all-rp | fapi2-sp-all16 + fapi2-ms-all32 | 8 | 49 (1 OIDC + 16 SP + 32 MS) |
-| `all-rp-smoke` | all-rp | fapi2-sp-first4 + fapi2-ms-jar4 | 4 | 9 (1 OIDC + 4 SP + 4 MS) |
+| `all-rp-full` | all-rp | fapi2-sp-all16 + fapi2-ms-all32 + fapi1-adv-all12 | 8 | 61 (1 OIDC + 16 SP + 32 MS + 12 FAPI1-Adv) |
+| `all-rp-smoke` | all-rp | fapi2-sp-first4 + fapi2-ms-jar4 + fapi1-adv-first4 | 4 | 13 (1 OIDC + 4 SP + 4 MS + 4 FAPI1-Adv) |
 | `fapi2-sp-full` | fapi-rp | fapi2-sp-all16 | 8 | 16 |
 | `fapi2-ms-full` | fapi-rp | fapi2-ms-all32 | 8 | 32 |
 | `fapi1-adv-full` | fapi-rp | fapi1-adv-all12 | 8 | 12 |

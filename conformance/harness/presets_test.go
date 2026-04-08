@@ -15,7 +15,11 @@ func TestResolvePreset_AllRPFull(t *testing.T) {
 	if cfg.Profile != "all-rp" {
 		t.Errorf("Profile = %q, want %q", cfg.Profile, "all-rp")
 	}
-	want := []string{"fapi2-sp-final-plain-fapi-all16", "fapi2-ms-final-plain-fapi-all32"}
+	want := []string{
+		"fapi2-sp-final-plain-fapi-all16",
+		"fapi2-ms-final-plain-fapi-all32",
+		"fapi1-adv-final-all12",
+	}
 	if diff := cmp.Diff(want, cfg.Matrices); diff != "" {
 		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
 	}
@@ -35,8 +39,13 @@ func TestResolvePreset_AllRPSmoke(t *testing.T) {
 	if cfg.Profile != "all-rp" {
 		t.Errorf("Profile = %q, want %q", cfg.Profile, "all-rp")
 	}
-	if len(cfg.Matrices) != 2 {
-		t.Fatalf("Matrices count = %d, want 2", len(cfg.Matrices))
+	want := []string{
+		"fapi2-sp-final-plain-fapi-first4",
+		"fapi2-ms-final-plain-fapi-jar4",
+		"fapi1-adv-final-first4",
+	}
+	if diff := cmp.Diff(want, cfg.Matrices); diff != "" {
+		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
 	}
 	if cfg.MaxParallelRuns != 4 {
 		t.Errorf("MaxParallelRuns = %d, want 4", cfg.MaxParallelRuns)

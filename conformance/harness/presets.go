@@ -12,14 +12,22 @@ type presetConfig struct {
 
 var builtInPresets = map[string]presetConfig{
 	"all-rp-full": {
-		Profile:         "all-rp",
-		Matrices:        []string{"fapi2-sp-final-plain-fapi-all16", "fapi2-ms-final-plain-fapi-all32"},
+		Profile: "all-rp",
+		Matrices: []string{
+			"fapi2-sp-final-plain-fapi-all16",
+			"fapi2-ms-final-plain-fapi-all32",
+			"fapi1-adv-final-all12",
+		},
 		Parallel:        true,
 		MaxParallelRuns: 8,
 	},
 	"all-rp-smoke": {
-		Profile:         "all-rp",
-		Matrices:        []string{"fapi2-sp-final-plain-fapi-first4", "fapi2-ms-final-plain-fapi-jar4"},
+		Profile: "all-rp",
+		Matrices: []string{
+			"fapi2-sp-final-plain-fapi-first4",
+			"fapi2-ms-final-plain-fapi-jar4",
+			"fapi1-adv-final-first4",
+		},
 		Parallel:        true,
 		MaxParallelRuns: 4,
 	},
