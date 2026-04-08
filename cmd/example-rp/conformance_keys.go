@@ -99,11 +99,7 @@ func loadClientKeyProvider(authType, senderConstrain string) (rp.ClientKeyProvid
 		}
 		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, mtlsCert), nil
 	case "mtls":
-		privateKey, ok := keys.mtlsCert.PrivateKey.(*ecdsa.PrivateKey)
-		if !ok {
-			return nil, fmt.Errorf("mtls private key type %T is not ECDSA", keys.mtlsCert.PrivateKey)
-		}
-		return rp.NewStaticClientKeyProvider(privateKey, keys.mtlsKeyID, keys.mtlsAlg, keys.mtlsCert), nil
+		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, keys.mtlsCert), nil
 	default:
 		return nil, nil
 	}
