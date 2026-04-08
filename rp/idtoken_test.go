@@ -232,6 +232,152 @@ func TestValidateIDTokenMissingKIDWithMultipleSigningKeysTriesAllKeys(t *testing
 	}
 }
 
+func TestValidateIDToken_DecryptsEncryptedToken(t *testing.T) {
+	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey(signingKey) failed: %v", err)
+	}
+	decryptionKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey(decryptionKey) failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &signingKey.PublicKey}
+
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	now := time.Now().UTC()
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithClientKeyProvider(NewStaticClientKeyProvider(decryptionKey, "enc-kid", "PS256", nil)),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	claims := map[string]any{
+		"iss":   issuer,
+		"sub":   "subject-123",
+		"aud":   []string{"client-id"},
+		"exp":   now.Add(5 * time.Minute).Unix(),
+		"iat":   now.Add(-1 * time.Minute).Unix(),
+		"nonce": "nonce-123",
+	}
+	signed := signIDToken(t, signingKey, "kid-1", claims)
+
+	encrypter, err := jose.NewEncrypter(jose.A256GCM, jose.Recipient{
+		Algorithm: jose.RSA_OAEP_256,
+		Key:       jose.JSONWebKey{KeyID: "enc-kid", Use: "enc", Key: &decryptionKey.PublicKey},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewEncrypter() failed: %v", err)
+	}
+	obj, err := encrypter.Encrypt([]byte(signed))
+	if err != nil {
+		t.Fatalf("Encrypt() failed: %v", err)
+	}
+	encrypted, err := obj.CompactSerialize()
+	if err != nil {
+		t.Fatalf("CompactSerialize() failed: %v", err)
+	}
+
+	if _, err := r.validateIDToken(context.Background(), encrypted, "nonce-123", issuer+"/jwks", []string{"PS256"}); err != nil {
+		t.Fatalf("validateIDToken() failed for encrypted token: %v", err)
+	}
+}
+
+func TestValidateIDToken_RejectsRSA1_5EncryptedToken(t *testing.T) {
+	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey(signingKey) failed: %v", err)
+	}
+	decryptionKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey(decryptionKey) failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &signingKey.PublicKey}
+
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	now := time.Now().UTC()
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithClientKeyProvider(NewStaticClientKeyProvider(decryptionKey, "enc-kid", "PS256", nil)),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	claims := map[string]any{
+		"iss":   issuer,
+		"sub":   "subject-123",
+		"aud":   []string{"client-id"},
+		"exp":   now.Add(5 * time.Minute).Unix(),
+		"iat":   now.Add(-1 * time.Minute).Unix(),
+		"nonce": "nonce-123",
+	}
+	signed := signIDToken(t, signingKey, "kid-1", claims)
+
+	encrypter, err := jose.NewEncrypter(jose.A256GCM, jose.Recipient{
+		Algorithm: jose.RSA1_5,
+		Key:       jose.JSONWebKey{KeyID: "enc-kid", Use: "enc", Key: &decryptionKey.PublicKey},
+	}, nil)
+	if err != nil {
+		t.Fatalf("NewEncrypter() failed: %v", err)
+	}
+	obj, err := encrypter.Encrypt([]byte(signed))
+	if err != nil {
+		t.Fatalf("Encrypt() failed: %v", err)
+	}
+	encrypted, err := obj.CompactSerialize()
+	if err != nil {
+		t.Fatalf("CompactSerialize() failed: %v", err)
+	}
+
+	if _, err := r.validateIDToken(context.Background(), encrypted, "nonce-123", issuer+"/jwks", nil); err == nil {
+		t.Fatal("validateIDToken() expected error for RSA1_5 encrypted token")
+	}
+}
+
 func signIDToken(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]any) string {
 	t.Helper()
 	return signIDTokenWithAlg(t, key, kid, claims, jose.RS256)

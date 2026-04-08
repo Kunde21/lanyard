@@ -235,6 +235,15 @@ func WithResponseMode(mode string) Option {
 	}
 }
 
+// WithResponseType sets the OAuth 2.0 response_type for authorization requests.
+func WithResponseType(responseType string) Option {
+	return func(r *RP) {
+		if r != nil {
+			r.responseType = strings.TrimSpace(responseType)
+		}
+	}
+}
+
 // WithRequestMethod sets the FAPI request method. Use "signed_non_repudiation"
 // to enable JAR (signed request objects) for message-signing profiles.
 func WithRequestMethod(method string) Option {

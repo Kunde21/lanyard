@@ -106,6 +106,34 @@ func TestBuildSignedRequestObject_OmitsNonceWithoutOpenIDScope(t *testing.T) {
 	}
 }
 
+func TestBuildSignedRequestObject_UsesConfiguredResponseType(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	r := &RP{
+		issuer:            "https://example.com",
+		clientID:          "client-1",
+		redirectURI:       "https://rp.example.com/callback",
+		scopes:            []string{"openid"},
+		clientKeyProvider: NewStaticClientKeyProvider(key, "kid", "PS256", nil),
+		now:               func() time.Time { return time.Now().UTC() },
+		randReader:        strings.NewReader("01234567890123456789012345678901"),
+		responseType:      "code id_token",
+	}
+
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
+	if err != nil {
+		t.Fatalf("buildSignedRequestObject() failed: %v", err)
+	}
+
+	claims := decodeRequestObjectPayload(t, signed)
+	if got := claims["response_type"]; got != "code id_token" {
+		t.Fatalf("response_type = %#v, want %q", got, "code id_token")
+	}
+}
+
 func TestBuildSignedRequestObject_RequiresKeyProvider(t *testing.T) {
 	r := &RP{
 		issuer:      "https://example.com",

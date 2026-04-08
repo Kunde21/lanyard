@@ -9,6 +9,7 @@ type callbackParams struct {
 	Code             string
 	State            string
 	Iss              string
+	IDToken          string
 	Error            string
 	ErrorDescription string
 	Response         string
@@ -22,6 +23,7 @@ func extractCallbackParams(req *http.Request) callbackParams {
 			params.Code = strings.TrimSpace(req.FormValue("code"))
 			params.State = strings.TrimSpace(req.FormValue("state"))
 			params.Iss = strings.TrimSpace(req.FormValue("iss"))
+			params.IDToken = strings.TrimSpace(req.FormValue("id_token"))
 			params.Error = strings.TrimSpace(req.FormValue("error"))
 			params.ErrorDescription = strings.TrimSpace(req.FormValue("error_description"))
 			params.Response = strings.TrimSpace(req.FormValue("response"))
@@ -33,6 +35,7 @@ func extractCallbackParams(req *http.Request) callbackParams {
 	params.Code = strings.TrimSpace(query.Get("code"))
 	params.State = strings.TrimSpace(query.Get("state"))
 	params.Iss = strings.TrimSpace(query.Get("iss"))
+	params.IDToken = strings.TrimSpace(query.Get("id_token"))
 	params.Error = strings.TrimSpace(query.Get("error"))
 	params.ErrorDescription = strings.TrimSpace(query.Get("error_description"))
 	params.Response = strings.TrimSpace(query.Get("response"))

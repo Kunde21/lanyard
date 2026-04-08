@@ -115,6 +115,7 @@ func TestCallbackErrorMappingAndNoSecrets(t *testing.T) {
 	tests := []struct {
 		name       string
 		err        error
+		resolved   resolvedRPRequest
 		wantStatus int
 	}{
 		{name: "token error", err: fmt.Errorf("token failed: %w", rp.ErrTokenExchangeFailed), wantStatus: http.StatusBadRequest},
@@ -125,7 +126,8 @@ func TestCallbackErrorMappingAndNoSecrets(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := newMuxForTest(stubFlow{callbackErr: tt.err})
-			req := httptest.NewRequest(http.MethodGet, "/callback?code=abc&state=s", nil)
+			path := "/callback?code=abc&state=s"
+			req := httptest.NewRequest(http.MethodGet, path, nil)
 			w := httptest.NewRecorder()
 
 			h.ServeHTTP(w, req)
@@ -137,6 +139,13 @@ func TestCallbackErrorMappingAndNoSecrets(t *testing.T) {
 				t.Fatalf("response body should not expose sensitive details")
 			}
 		})
+	}
+}
+
+func TestCallbackStatus_FAPIIDTokenErrorIsBadRequest(t *testing.T) {
+	status := callbackStatus(fmt.Errorf("id token failed: %w", rp.ErrIDTokenValidationFailed), resolvedRPRequest{fapiProfile: "plain_fapi"})
+	if status != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", status, http.StatusBadRequest)
 	}
 }
 
@@ -152,6 +161,8 @@ func TestMaybeFetchConformanceResource_RetriesWithDpopNonce(t *testing.T) {
 	requests := 0
 	var firstAuth string
 	var secondAuth string
+	var firstInteractionID string
+	var secondInteractionID string
 	var firstProof string
 	var secondProof string
 	var gotPath string
@@ -164,6 +175,7 @@ func TestMaybeFetchConformanceResource_RetriesWithDpopNonce(t *testing.T) {
 
 		if requests == 1 {
 			firstAuth = auth
+			firstInteractionID = r.Header.Get("x-fapi-interaction-id")
 			firstProof = proof
 			w.Header().Set("DPoP-Nonce", "nonce-2")
 			w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
@@ -172,6 +184,7 @@ func TestMaybeFetchConformanceResource_RetriesWithDpopNonce(t *testing.T) {
 		}
 
 		secondAuth = auth
+		secondInteractionID = r.Header.Get("x-fapi-interaction-id")
 		secondProof = proof
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -220,6 +233,9 @@ func TestMaybeFetchConformanceResource_RetriesWithDpopNonce(t *testing.T) {
 	if firstProof == secondProof {
 		t.Fatalf("expected second proof to differ from first proof (should include new nonce)")
 	}
+	if firstInteractionID == "" || secondInteractionID == "" {
+		t.Fatalf("expected x-fapi-interaction-id on both requests")
+	}
 	if diff := cmp.Diff("/test/a/alias-a/open-banking/v1.1/accounts", gotPath); diff != "" {
 		t.Fatalf("conformance resource path mismatch (-want +got):\n%s", diff)
 	}
@@ -237,6 +253,8 @@ func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
 	requests := 0
 	var firstAuth string
 	var secondAuth string
+	var firstInteractionID string
+	var secondInteractionID string
 	var firstProof string
 	var secondProof string
 	var gotPath string
@@ -249,6 +267,7 @@ func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
 
 		if requests == 1 {
 			firstAuth = auth
+			firstInteractionID = r.Header.Get("x-fapi-interaction-id")
 			firstProof = proof
 			w.Header().Set("DPoP-Nonce", "nonce-2")
 			w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
@@ -257,6 +276,7 @@ func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
 		}
 
 		secondAuth = auth
+		secondInteractionID = r.Header.Get("x-fapi-interaction-id")
 		secondProof = proof
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -303,6 +323,9 @@ func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
 	}
 	if firstProof == secondProof {
 		t.Fatalf("expected second proof to differ from first proof (should include new nonce)")
+	}
+	if firstInteractionID == "" || secondInteractionID == "" {
+		t.Fatalf("expected x-fapi-interaction-id on both requests")
 	}
 	if diff := cmp.Diff("/test/a/alias-a/open-banking/v1.1/accounts", gotPath); diff != "" {
 		t.Fatalf("conformance resource path mismatch (-want +got):\n%s", diff)
@@ -383,6 +406,33 @@ func TestResolveRPRequest_UsesCallbackAliasRuntime(t *testing.T) {
 	}
 }
 
+func TestResolveRPRequest_EncryptedModuleUsesSecondClient(t *testing.T) {
+	conformanceRuntimes = newRuntimeRegistry()
+	if err := conformanceRuntimes.Register(rpRuntimeConfig{
+		Alias:        "alias-a",
+		Issuer:       "https://suite.localhost/test/a/alias-a/",
+		ClientID:     "client-a",
+		ClientSecret: "secret-a",
+		RedirectURI:  "https://rp.localhost/callback/alias-a",
+		Namespace:    "alias-a",
+		Scopes:       []string{"openid"},
+	}); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/login?issuer=https://suite.localhost/test/a/alias-a/&module_name=fapi1-advanced-final-client-test-encrypted-idtoken", nil)
+	resolved, err := resolveRPRequest(req, "fallback-client", "fallback-secret", "https://rp.localhost/callback", rp.UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("resolveRPRequest() failed: %v", err)
+	}
+	if resolved.clientID != "local-dev-client-2" {
+		t.Fatalf("clientID = %q, want %q", resolved.clientID, "local-dev-client-2")
+	}
+	if resolved.clientSecret != "local-dev-secret-2-32-bytes-min!!" {
+		t.Fatalf("clientSecret = %q, want encrypted test client secret", resolved.clientSecret)
+	}
+}
+
 func TestRuntimeRequiresPAR(t *testing.T) {
 	tests := []struct {
 		name string
@@ -436,6 +486,17 @@ func TestCallback_FormPostError(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status mismatch: got %d, want %d", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestDefaultClientCredentialsForEncryptedModule(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/login?module_name=fapi1-advanced-final-client-test-encrypted-idtoken", nil)
+	clientID, clientSecret := defaultClientCredentialsForRequest(req)
+	if clientID != "local-dev-client-2" {
+		t.Fatalf("clientID = %q, want %q", clientID, "local-dev-client-2")
+	}
+	if clientSecret != "local-dev-secret-2-32-bytes-min!!" {
+		t.Fatalf("clientSecret = %q, want encrypted client secret", clientSecret)
 	}
 }
 

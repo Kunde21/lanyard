@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Kunde21/lanyard/metadata"
+	josejwt "github.com/go-jose/go-jose/v4/jwt"
 )
 
 // CallbackResult contains the validated identity data returned from
@@ -78,13 +80,34 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	if !ok {
 		return nil, fmt.Errorf("%w: unknown or expired state", ErrInvalidState)
 	}
+	if data.ClientID != "" {
+		r.clientID = data.ClientID
+	}
+	if data.ClientSecret != "" {
+		r.clientSecret = data.ClientSecret
+	}
+	if params.IDToken != "" {
+		if strings.Count(params.IDToken, ".") == 4 {
+			if _, _, err := r.decryptIDTokenIfNeeded(params.IDToken); err != nil {
+				return nil, err
+			}
+		} else {
+			authzClaims, err := r.validateAuthorizationResponseIDToken(ctx, params.IDToken, data.Nonce, code, state, r.provider.JWKSURI, r.provider.IDTokenSigningAlgValuesSupported)
+			if err != nil {
+				return nil, err
+			}
+			if authzResponseIss == "" {
+				authzResponseIss = authzClaims.Issuer
+			}
+		}
+	}
 
 	expectedIssuer := data.Issuer
 	if expectedIssuer == "" {
 		expectedIssuer = r.issuer
 	}
 
-	if r.isFAPIProfile() && authzResponseIss == "" {
+	if r.isFAPIProfile() && r.isJARMResponse(params) && authzResponseIss == "" {
 		return nil, fmt.Errorf("%w: authorization response iss is required for FAPI", ErrInvalidState)
 	}
 
@@ -127,6 +150,9 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	if err != nil {
 		return nil, err
 	}
+	if r.isFAPIProfile() {
+		return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken}, nil
+	}
 
 	userInfoEndpoint := r.userInfoEndpoint(provider)
 	if userInfoEndpoint == "" {
@@ -144,6 +170,39 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	}
 
 	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo}, nil
+}
+
+func (r *RP) validateAuthorizationResponseIDToken(ctx context.Context, rawIDToken, expectedNonce, code, state, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
+	claims, err := r.validateIDToken(ctx, rawIDToken, expectedNonce, jwksURL, providerAllowedAlgs)
+	if err != nil {
+		return idTokenClaims{}, err
+	}
+	decrypted, _, err := r.decryptIDTokenIfNeeded(rawIDToken)
+	if err != nil {
+		return idTokenClaims{}, err
+	}
+	parsed, err := josejwt.ParseSigned(decrypted, supportedIDTokenAlgs)
+	if err != nil {
+		return idTokenClaims{}, fmt.Errorf("%w: parse authorization response id_token: %v", ErrIDTokenValidationFailed, err)
+	}
+	var rawClaims idTokenClaims
+	if err := parsed.UnsafeClaimsWithoutVerification(&rawClaims); err != nil {
+		return idTokenClaims{}, fmt.Errorf("%w: parse authorization response id_token claims: %v", ErrIDTokenValidationFailed, err)
+	}
+	alg := parsed.Headers[0].Algorithm
+	if err := validateHashClaim(alg, code, rawClaims.CHash); err != nil {
+		return idTokenClaims{}, fmt.Errorf("%w: c_hash %v", ErrIDTokenValidationFailed, err)
+	}
+	if err := validateHashClaim(alg, state, rawClaims.SHash); err != nil {
+		return idTokenClaims{}, fmt.Errorf("%w: s_hash %v", ErrIDTokenValidationFailed, err)
+	}
+	if rawClaims.Iat != nil {
+		iat := time.Unix(*rawClaims.Iat, 0).UTC()
+		if iat.Before(r.now().Add(-r.clockSkew)) {
+			return idTokenClaims{}, fmt.Errorf("%w: authorization response id_token iat too old", ErrIDTokenValidationFailed)
+		}
+	}
+	return claims, nil
 }
 
 func (r *RP) isFAPIProfile() bool {

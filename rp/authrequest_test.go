@@ -2,6 +2,8 @@ package rp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -261,6 +263,69 @@ func TestAuthorizationURL_SetAuthParamAddsCustomQueryValue(t *testing.T) {
 	}
 	if got := parsed.Query().Get("resource"); got != "urn:example:api" {
 		t.Fatalf("resource mismatch: got %q", got)
+	}
+}
+
+func TestAuthorizationURL_SignedRequestObjectByValueUsesRequestParameter(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:                "https://issuer.test",
+			AuthorizationEndpoint: "https://issuer.test/authorize",
+		}}),
+		WithClientKeyProvider(NewStaticClientKeyProvider(privateKey, "kid-1", "PS256", nil)),
+		WithRequestMethod("signed_non_repudiation"),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+
+	q := parsed.Query()
+	if q.Get("request") == "" {
+		t.Fatal("request must be present for signed request objects")
+	}
+	if q.Get("response_type") != "code" {
+		t.Fatalf("response_type = %q, want %q", q.Get("response_type"), "code")
+	}
+	if q.Get("client_id") != "client-123" {
+		t.Fatalf("client_id = %q, want %q", q.Get("client_id"), "client-123")
+	}
+	if q.Get("scope") != "openid" {
+		t.Fatalf("scope = %q, want %q", q.Get("scope"), "openid")
+	}
+	if q.Get("state") == "" {
+		t.Fatal("state must be sent alongside the request object")
+	}
+	if q.Get("nonce") == "" {
+		t.Fatal("nonce must be sent alongside the request object")
+	}
+	if q.Get("code_challenge") == "" {
+		t.Fatal("code_challenge must be sent alongside the request object")
+	}
+	if q.Get("code_challenge_method") != "S256" {
+		t.Fatalf("code_challenge_method = %q, want %q", q.Get("code_challenge_method"), "S256")
 	}
 }
 

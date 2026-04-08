@@ -40,7 +40,7 @@ func (r *RP) buildPARRequest(ctx context.Context, parEndpoint string, params url
 
 func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge, authorizationDetails string, extra url.Values) url.Values {
 	params := url.Values{}
-	params.Set("response_type", "code")
+	params.Set("response_type", r.authorizationResponseType())
 	params.Set("client_id", r.clientID)
 	params.Set("redirect_uri", r.redirectURI)
 	params.Set("scope", strings.Join(r.scopes, " "))

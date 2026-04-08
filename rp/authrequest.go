@@ -16,6 +16,8 @@ func (r *RP) saveCorrelation(ctx context.Context, w http.ResponseWriter, req *ht
 		CodeVerifier:           verifier,
 		CreatedAt:              r.now(),
 		Issuer:                 r.issuer,
+		ClientID:               r.clientID,
+		ClientSecret:           r.clientSecret,
 		UserInfoTokenTransport: string(r.userInfoTokenTransport),
 	}
 	if parResp != nil {
@@ -111,11 +113,24 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 		return buildAuthorizationRedirect(authorizationEndpoint, url.Values{"client_id": {r.clientID}, "request_uri": {parResp.RequestURI}})
 	}
 
+	redirectParams := params
+	if r.requestMethod.isSigned() {
+		signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, cfg.parameters)
+		if err != nil {
+			return "", err
+		}
+		redirectParams = url.Values{}
+		for key, values := range params {
+			redirectParams[key] = append([]string(nil), values...)
+		}
+		redirectParams.Set("request", signed)
+	}
+
 	if err := r.saveCorrelation(ctx, w, req, state, nonce, verifier, nil); err != nil {
 		return "", err
 	}
 
-	return buildAuthorizationRedirect(authorizationEndpoint, params)
+	return buildAuthorizationRedirect(authorizationEndpoint, redirectParams)
 }
 
 func randomToken(reader io.Reader, size int) (string, error) {

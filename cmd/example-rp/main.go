@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -61,9 +63,10 @@ func handleRoot(w http.ResponseWriter, _ *http.Request) {
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
+	clientID, clientSecret := defaultClientCredentialsForRequest(r)
 	flow, err := rpClientFromRequest(r,
-		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
+		clientID,
+		clientSecret,
 		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportHeader,
 	)
@@ -82,9 +85,10 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
+	clientID, clientSecret := defaultClientCredentialsForRequest(r)
 	flow, err := rpClientFromRequest(r,
-		envOrDefault("RP_CLIENT_ID", "local-dev-client"),
-		envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!"),
+		clientID,
+		clientSecret,
 		envOrDefault("RP_REDIRECT_URI", "https://rp.localhost/callback"),
 		rp.UserInfoTokenTransportBody,
 	)
@@ -145,7 +149,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	result, err := flow.HandleCallback(r.Context(), w, r)
 	if err != nil {
 		slog.Info("callback processing failed", "err", err)
-		status := callbackStatus(err)
+		status := callbackStatus(err, resolved)
 		http.Error(w, "callback processing failed", status)
 		return
 	}
@@ -170,7 +174,7 @@ func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
 		result, err := flow.HandleCallback(r.Context(), w, r)
 		if err != nil {
 			slog.Info("callback processing failed", "err", err)
-			status := callbackStatus(err)
+			status := callbackStatus(err, resolvedRPRequest{})
 			http.Error(w, "callback processing failed", status)
 			return
 		}
@@ -180,11 +184,14 @@ func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
 	}
 }
 
-func callbackStatus(err error) int {
+func callbackStatus(err error, resolved resolvedRPRequest) int {
 	if err == nil {
 		return http.StatusOK
 	}
 	if errors.Is(err, rp.ErrIDTokenValidationFailed) || errors.Is(err, rp.ErrUserInfoValidationFailed) {
+		if isFAPIProfile(resolved) {
+			return http.StatusBadRequest
+		}
 		return http.StatusOK
 	}
 	if errors.Is(err, rp.ErrInvalidState) || errors.Is(err, rp.ErrMissingCode) || errors.Is(err, rp.ErrTokenExchangeFailed) {
@@ -207,6 +214,13 @@ func extractAuthError(r *http.Request) (string, string) {
 	}
 
 	return "", ""
+}
+
+func defaultClientCredentialsForRequest(r *http.Request) (string, string) {
+	if r != nil && shouldUseSecondClient(rpRuntimeConfig{Namespace: "runtime"}, strings.TrimSpace(r.URL.Query().Get("module_name"))) {
+		return "local-dev-client-2", "local-dev-secret-2-32-bytes-min!!"
+	}
+	return envOrDefault("RP_CLIENT_ID", "local-dev-client"), envOrDefault("RP_CLIENT_SECRET", "local-dev-secret-32-bytes-minimum!!")
 }
 
 type dpopProofAttacher interface {
@@ -262,6 +276,7 @@ func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolv
 		} else {
 			req.Header.Set("Authorization", "Bearer "+accessToken)
 		}
+		req.Header.Set("x-fapi-interaction-id", newFAPIInteractionID())
 
 		resp, err := client.Do(req)
 		if err != nil {
@@ -317,6 +332,17 @@ func maybeFetchConformanceResource(ctx context.Context, flow flowHandler, resolv
 	}
 
 	return nil
+}
+
+func newFAPIInteractionID() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "00000000-0000-4000-8000-000000000000"
+	}
+	buf[6] = (buf[6] & 0x0f) | 0x40
+	buf[8] = (buf[8] & 0x3f) | 0x80
+	hexValue := hex.EncodeToString(buf)
+	return fmt.Sprintf("%s-%s-%s-%s-%s", hexValue[0:8], hexValue[8:12], hexValue[12:16], hexValue[16:20], hexValue[20:32])
 }
 
 func isUseDPoPNonceChallenge(resp *http.Response) bool {

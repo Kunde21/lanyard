@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -525,6 +526,70 @@ func TestBuildPlanConfig_RARAddsAuthorizationDetailsTypesSupported(t *testing.T)
 	}
 	if _, ok := resource["authorization_details_types_supported"]; !ok {
 		t.Fatalf("authorization_details_types_supported missing: %#v", resource)
+	}
+}
+
+func TestBuildPlanConfig_FAPI1EncryptedIDTokenClientMetadata(t *testing.T) {
+	cfg := buildPlanConfig(map[string]string{
+		"client_auth_type":         "private_key_jwt",
+		"fapi_auth_request_method": "by_value",
+		"fapi_request_method":      "signed_non_repudiation",
+		"fapi_client_type":         "oidc",
+		"fapi_profile":             "plain_fapi",
+		"fapi_response_mode":       "plain_response",
+		"sender_constrain":         "mtls",
+	}, "alias-a", 5)
+
+	client2, ok := cfg["client2"].(map[string]any)
+	if !ok {
+		t.Fatalf("client2 config missing: %#v", cfg["client2"])
+	}
+	if got := client2["id_token_encrypted_response_alg"]; got != "RSA-OAEP-256" {
+		t.Fatalf("id_token_encrypted_response_alg = %#v, want %q", got, "RSA-OAEP-256")
+	}
+	if got := client2["id_token_encrypted_response_enc"]; got != "A256GCM" {
+		t.Fatalf("id_token_encrypted_response_enc = %#v, want %q", got, "A256GCM")
+	}
+
+	jwks, ok := client2["jwks"].(map[string]any)
+	if !ok {
+		t.Fatalf("client2 jwks missing: %#v", client2["jwks"])
+	}
+	keys, ok := jwks["keys"].([]any)
+	if !ok {
+		t.Fatalf("client2 jwks keys missing: %#v", jwks["keys"])
+	}
+	foundEncKey := false
+	for _, rawKey := range keys {
+		key, ok := rawKey.(map[string]any)
+		if !ok {
+			continue
+		}
+		if key["use"] == "enc" && key["alg"] == "RSA-OAEP-256" {
+			foundEncKey = true
+			break
+		}
+	}
+	if !foundEncKey {
+		t.Fatal("client2 jwks must contain an RSA encryption key")
+	}
+}
+
+func TestMergeFragmentIntoQuery(t *testing.T) {
+	nextURL, err := url.Parse("https://rp.localhost/callback#code=abc&state=xyz")
+	if err != nil {
+		t.Fatalf("url.Parse() failed: %v", err)
+	}
+
+	merged := mergeFragmentIntoQuery(nextURL)
+	if merged == nil {
+		t.Fatal("mergeFragmentIntoQuery() returned nil")
+	}
+	if got := merged.RawQuery; got != "code=abc&state=xyz" {
+		t.Fatalf("RawQuery = %q, want %q", got, "code=abc&state=xyz")
+	}
+	if merged.Fragment != "" {
+		t.Fatalf("Fragment = %q, want empty", merged.Fragment)
 	}
 }
 

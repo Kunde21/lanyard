@@ -16,6 +16,8 @@ type CallbackCorrelation struct {
 	CreatedAt              time.Time
 	Expiry                 time.Time
 	Issuer                 string
+	ClientID               string
+	ClientSecret           string
 	RequestURI             string
 	UsedPAR                bool
 	UserInfoTokenTransport string

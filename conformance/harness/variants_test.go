@@ -73,6 +73,7 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	originalProfile := *flagProfile
 	originalSuiteURL := *flagSuiteURL
 	originalArtifactsDir := *flagArtifactsDir
+	originalPreset := *flagPreset
 	originalIncludePlanRegex := *flagIncludePlanRegex
 	originalExcludePlanRegex := *flagExcludePlanRegex
 	originalModuleRegex := *flagModuleRegex
@@ -84,6 +85,7 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 		*flagProfile = originalProfile
 		*flagSuiteURL = originalSuiteURL
 		*flagArtifactsDir = originalArtifactsDir
+		*flagPreset = originalPreset
 		*flagIncludePlanRegex = originalIncludePlanRegex
 		*flagExcludePlanRegex = originalExcludePlanRegex
 		*flagModuleRegex = originalModuleRegex
@@ -123,5 +125,54 @@ func TestParseHarnessConfig_ParsesForceVariantFlags(t *testing.T) {
 	}
 	if diff := cmp.Diff(6, cfg.WaitTimeoutSeconds); diff != "" {
 		t.Fatalf("wait timeout seconds mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestParseHarnessConfig_PresetKeepsIncludePlanRegex(t *testing.T) {
+	originalProfile := *flagProfile
+	originalSuiteURL := *flagSuiteURL
+	originalArtifactsDir := *flagArtifactsDir
+	originalPreset := *flagPreset
+	originalIncludePlanRegex := *flagIncludePlanRegex
+	originalExcludePlanRegex := *flagExcludePlanRegex
+	originalModuleRegex := *flagModuleRegex
+	originalSkipProvision := *flagSkipProvision
+	originalTestTimeout := *flagTestTimeout
+	originalMatrices := append(repeatableStringFlag(nil), flagMatrices...)
+
+	defer func() {
+		*flagProfile = originalProfile
+		*flagSuiteURL = originalSuiteURL
+		*flagArtifactsDir = originalArtifactsDir
+		*flagPreset = originalPreset
+		*flagIncludePlanRegex = originalIncludePlanRegex
+		*flagExcludePlanRegex = originalExcludePlanRegex
+		*flagModuleRegex = originalModuleRegex
+		*flagSkipProvision = originalSkipProvision
+		*flagTestTimeout = originalTestTimeout
+		flagMatrices = originalMatrices
+	}()
+
+	*flagProfile = ""
+	*flagSuiteURL = "https://suite.localhost"
+	*flagArtifactsDir = t.TempDir()
+	*flagPreset = "fapi1-adv-smoke"
+	*flagIncludePlanRegex = ""
+	*flagExcludePlanRegex = ""
+	*flagModuleRegex = ""
+	*flagSkipProvision = true
+	*flagTestTimeout = 30 * time.Second
+	*flagSuiteWaitTimeout = 5 * time.Second
+	flagMatrices = nil
+
+	cfg, err := parseHarnessConfig()
+	if err != nil {
+		t.Fatalf("parseHarnessConfig() failed: %v", err)
+	}
+	if cfg.IncludePlanRegex == nil {
+		t.Fatal("IncludePlanRegex = nil, want preset regex")
+	}
+	if got := cfg.IncludePlanRegex.String(); got != "fapi1-advanced-final-client-test-plan" {
+		t.Fatalf("IncludePlanRegex = %q, want %q", got, "fapi1-advanced-final-client-test-plan")
 	}
 }

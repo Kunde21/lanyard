@@ -367,6 +367,12 @@ func TestBuildRPRuntimeRequest_FAPI1AdvancedByValue(t *testing.T) {
 	if req.RequestType != "plain_http_request" {
 		t.Fatalf("RequestType = %q, want %q", req.RequestType, "plain_http_request")
 	}
+	if req.ResponseType != "code id_token" {
+		t.Fatalf("ResponseType = %q, want %q", req.ResponseType, "code id_token")
+	}
+	if req.FAPIRequestMethod != "signed_non_repudiation" {
+		t.Fatalf("FAPIRequestMethod = %q, want %q", req.FAPIRequestMethod, "signed_non_repudiation")
+	}
 }
 
 func TestBuildRPRuntimeRequest_FAPI1AdvancedPushed(t *testing.T) {
@@ -385,5 +391,11 @@ func TestBuildRPRuntimeRequest_FAPI1AdvancedPushed(t *testing.T) {
 	}
 	if req.RequestType != "pushed_authorization_request" {
 		t.Fatalf("RequestType = %q, want %q", req.RequestType, "pushed_authorization_request")
+	}
+	if req.ResponseType != "code id_token" {
+		t.Fatalf("ResponseType = %q, want %q", req.ResponseType, "code id_token")
+	}
+	if req.FAPIRequestMethod != "signed_non_repudiation" {
+		t.Fatalf("FAPIRequestMethod = %q, want %q", req.FAPIRequestMethod, "signed_non_repudiation")
 	}
 }

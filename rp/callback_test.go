@@ -406,8 +406,175 @@ func callbackRequestWithIss(code, state, iss string) (*httptest.ResponseRecorder
 	return httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, requestURL, nil)
 }
 
+func callbackRequestWithIDToken(code, state, iss, idToken string) (*httptest.ResponseRecorder, *http.Request) {
+	query := url.Values{}
+	if code != "" {
+		query.Set("code", code)
+	}
+	if state != "" {
+		query.Set("state", state)
+	}
+	if iss != "" {
+		query.Set("iss", iss)
+	}
+	if idToken != "" {
+		query.Set("id_token", idToken)
+	}
+
+	requestURL := "https://rp.test/callback"
+	if encoded := query.Encode(); encoded != "" {
+		requestURL += "?" + encoded
+	}
+
+	return httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, requestURL, nil)
+}
+
 func providerMetadataJSONWithEndpoints(issuer string) string {
 	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}`
+}
+
+func TestHandleCallback_RejectsInvalidAuthorizationResponseIDTokenBeforeTokenExchange(t *testing.T) {
+	now := time.Now().UTC()
+	issuer := ""
+	tokenCalls := 0
+
+	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &signingKey.PublicKey}
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token":
+			tokenCalls++
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithFAPIProfile("plain_fapi"),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{
+		CodeVerifier: "verifier",
+		Nonce:        "nonce-123",
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	authzIDToken := signIDToken(t, signingKey, "kid-1", map[string]any{
+		"iss":    issuer,
+		"sub":    "subject-123",
+		"aud":    []string{"client-id"},
+		"exp":    now.Add(5 * time.Minute).Unix(),
+		"iat":    now.Add(-1 * time.Minute).Unix(),
+		"c_hash": "bogus",
+		"nonce":  "nonce-123",
+		"s_hash": "bogus",
+	})
+
+	rec, req := callbackRequestWithIDToken("code", "state", "", authzIDToken)
+	_, err = r.HandleCallback(context.Background(), rec, req)
+	if !errors.Is(err, ErrIDTokenValidationFailed) {
+		t.Fatalf("HandleCallback() error = %v, want ErrIDTokenValidationFailed", err)
+	}
+	if tokenCalls != 0 {
+		t.Fatalf("tokenCalls = %d, want 0", tokenCalls)
+	}
+}
+
+func TestHandleCallback_RejectsAuthorizationResponseIDTokenWithOldIATBeforeTokenExchange(t *testing.T) {
+	now := time.Now().UTC()
+	issuer := ""
+	tokenCalls := 0
+
+	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &signingKey.PublicKey}
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token":
+			tokenCalls++
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithFAPIProfile("plain_fapi"),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{
+		CodeVerifier: "verifier",
+		Nonce:        "nonce-123",
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	authzIDToken := signIDToken(t, signingKey, "kid-1", map[string]any{
+		"iss":    issuer,
+		"sub":    "subject-123",
+		"aud":    []string{"client-id"},
+		"exp":    now.Add(5 * time.Minute).Unix(),
+		"iat":    now.Add(-7 * 24 * time.Hour).Unix(),
+		"c_hash": "bogus",
+		"nonce":  "nonce-123",
+		"s_hash": "bogus",
+	})
+
+	rec, req := callbackRequestWithIDToken("code", "state", "", authzIDToken)
+	_, err = r.HandleCallback(context.Background(), rec, req)
+	if !errors.Is(err, ErrIDTokenValidationFailed) {
+		t.Fatalf("HandleCallback() error = %v, want ErrIDTokenValidationFailed", err)
+	}
+	if tokenCalls != 0 {
+		t.Fatalf("tokenCalls = %d, want 0", tokenCalls)
+	}
 }
 
 func TestHandleCallback_AllowsOAuthOnlyTokenResponseWithoutIDToken(t *testing.T) {
@@ -504,13 +671,88 @@ func TestHandleCallback_UsesConfiguredProviderMetadataForOAuthOnly(t *testing.T)
 		t.Fatalf("SaveCorrelation() failed: %v", err)
 	}
 
-	rec, req := callbackRequest("code", "state")
+	rec, req := callbackRequestWithIss("code", "state", issuer)
 	got, err := r.HandleCallback(context.Background(), rec, req)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
 	if got.AccessToken != "access" {
 		t.Fatalf("AccessToken = %q, want access", got.AccessToken)
+	}
+}
+
+func TestHandleCallback_FAPISkipsUserInfo(t *testing.T) {
+	now := time.Now().UTC()
+	issuer := ""
+	userinfoCalls := 0
+
+	signingKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &signingKey.PublicKey}
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"access","token_type":"Bearer","id_token":"` + signIDToken(t, signingKey, "kid-1", map[string]any{
+				"iss":   issuer,
+				"sub":   "subject-123",
+				"aud":   []string{"client-id"},
+				"exp":   now.Add(5 * time.Minute).Unix(),
+				"iat":   now.Add(-1 * time.Minute).Unix(),
+				"nonce": "nonce-123",
+			}) + `"}`))
+		case "/userinfo":
+			userinfoCalls++
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"subject-123"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		"client-id",
+		"secret",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithFAPIProfile("plain_fapi"),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{
+		CodeVerifier: "verifier",
+		Nonce:        "nonce-123",
+		CreatedAt:    now,
+	}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequestWithIss("code", "state", issuer)
+	got, err := r.HandleCallback(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+	if got.AccessToken != "access" {
+		t.Fatalf("AccessToken = %q, want access", got.AccessToken)
+	}
+	if userinfoCalls != 0 {
+		t.Fatalf("userinfoCalls = %d, want 0", userinfoCalls)
 	}
 }
 

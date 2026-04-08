@@ -31,6 +31,7 @@ type rpRuntimeRequest struct {
 	RequestType              string                    `json:"request_type,omitempty"`
 	RequirePAR               bool                      `json:"require_par,omitempty"`
 	ResponseMode             string                    `json:"response_mode,omitempty"`
+	ResponseType             string                    `json:"response_type,omitempty"`
 	FAPIRequestMethod        string                    `json:"fapi_request_method,omitempty"`
 	FAPIResponseMode         string                    `json:"fapi_response_mode,omitempty"`
 }
@@ -140,6 +141,24 @@ func requirePARForVariant(planVariant map[string]string) bool {
 	return isFAPI2PlanVariant(planVariant)
 }
 
+func responseTypeForPlanVariant(planName string, planVariant map[string]string) string {
+	if strings.TrimSpace(planName) == "fapi1-advanced-final-client-test-plan" &&
+		!strings.EqualFold(strings.TrimSpace(planVariant["fapi_response_mode"]), "jarm") {
+		return "code id_token"
+	}
+	return ""
+}
+
+func fapiRequestMethodForVariant(planVariant map[string]string) string {
+	if v := strings.TrimSpace(planVariant["fapi_request_method"]); v != "" {
+		return v
+	}
+	if _, ok := planVariant["fapi_auth_request_method"]; ok {
+		return "signed_non_repudiation"
+	}
+	return ""
+}
+
 func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, suiteURL, alias string) rpRuntimeRequest {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -172,7 +191,8 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 		RequestType:              requestType,
 		RequirePAR:               requirePARForVariant(planVariant),
 		ResponseMode:             coalesceResponseMode(responseModeForPlan(job.PlanName), responseModeForVariant(planVariant)),
-		FAPIRequestMethod:        planVariant["fapi_request_method"],
+		ResponseType:             responseTypeForPlanVariant(job.PlanName, planVariant),
+		FAPIRequestMethod:        fapiRequestMethodForVariant(planVariant),
 		FAPIResponseMode:         planVariant["fapi_response_mode"],
 	}
 }

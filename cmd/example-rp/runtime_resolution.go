@@ -48,6 +48,7 @@ type resolvedRPRequest struct {
 	fapiProfile          string
 	authorizationDetails []map[string]any
 	responseMode         string
+	responseType         string
 	requestMethod        string
 }
 
@@ -70,6 +71,7 @@ func newSharedStateStore() rp.StateStore {
 
 func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI string, transport rp.UserInfoTokenTransport) (resolvedRPRequest, error) {
 	explicitIssuer := strings.TrimSpace(r.URL.Query().Get("issuer"))
+	moduleName := strings.TrimSpace(r.URL.Query().Get("module_name"))
 	issuer := issuerFromRequest(r)
 	pathAlias := callbackAliasFromPath(r.URL.Path)
 	resolved := resolvedRPRequest{
@@ -86,7 +88,7 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 	if err == nil {
 		runtimeCfg, ok := conformanceRuntimes.Lookup(alias)
 		if ok {
-			return applyRuntimeConfig(resolved, runtimeCfg)
+			return applyRuntimeConfig(resolved, runtimeCfg, moduleName)
 		}
 		if explicitIssuer != "" {
 			return resolvedRPRequest{}, fmt.Errorf("no registered conformance runtime for issuer alias %q", alias)
@@ -98,13 +100,13 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 		if !ok {
 			return resolvedRPRequest{}, fmt.Errorf("no registered conformance runtime for callback alias %q", pathAlias)
 		}
-		return applyRuntimeConfig(resolved, runtimeCfg)
+		return applyRuntimeConfig(resolved, runtimeCfg, moduleName)
 	}
 
 	return resolved, nil
 }
 
-func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig) (resolvedRPRequest, error) {
+func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, moduleName string) (resolvedRPRequest, error) {
 	if strings.TrimSpace(runtimeCfg.Issuer) != "" {
 		resolved.issuer = runtimeCfg.Issuer
 	}
@@ -125,7 +127,12 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig) 
 	resolved.fapiProfile = runtimeCfg.FAPIProfile
 	resolved.authorizationDetails = authorizationDetailsForRuntime(runtimeCfg)
 	resolved.responseMode = runtimeCfg.ResponseMode
+	resolved.responseType = runtimeCfg.ResponseType
 	resolved.requestMethod = runtimeCfg.FAPIRequestMethod
+	if shouldUseSecondClient(runtimeCfg, moduleName) {
+		resolved.clientID = "local-dev-client-2"
+		resolved.clientSecret = "local-dev-secret-2-32-bytes-min!!"
+	}
 
 	keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
 	if err != nil {
@@ -274,6 +281,9 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	if strings.TrimSpace(resolved.responseMode) != "" {
 		opts = append(opts, rp.WithResponseMode(resolved.responseMode))
 	}
+	if strings.TrimSpace(resolved.responseType) != "" {
+		opts = append(opts, rp.WithResponseType(resolved.responseType))
+	}
 	if strings.TrimSpace(resolved.requestMethod) != "" {
 		opts = append(opts, rp.WithRequestMethod(resolved.requestMethod))
 	}
@@ -281,8 +291,15 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	return rp.New(r.Context(), resolved.issuer, resolved.clientID, resolved.clientSecret, resolved.redirectURI, opts...)
 }
 
+func shouldUseSecondClient(cfg rpRuntimeConfig, moduleName string) bool {
+	if strings.TrimSpace(cfg.Namespace) == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(moduleName)), "encrypted-idtoken")
+}
+
 func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (metadata.Provider, bool) {
-	if scopesContainOpenID(resolved.scopes) {
+	if scopesContainOpenID(resolved.scopes) && resolved.clientID != "local-dev-client-2" {
 		return metadata.Provider{}, false
 	}
 	if _, err := issuerAlias(resolved.issuer); err != nil {
@@ -313,6 +330,7 @@ func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (metadata.Pr
 			},
 		},
 		UserinfoEndpoint:                       base + "/userinfo",
+		IDTokenSigningAlgValuesSupported:       []string{"PS256", "RS256"},
 		PushedAuthorizationRequestEndpoint:     base + "/par",
 		RequestObjectSigningAlgValuesSupported: []string{"PS256", "ES256", "EdDSA"},
 		AuthorizationSigningAlgValuesSupported: []string{"PS256"},

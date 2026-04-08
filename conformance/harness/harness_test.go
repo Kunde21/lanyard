@@ -247,7 +247,9 @@ func parseHarnessConfig() (harnessConfig, error) {
 		return harnessConfig{}, fmt.Errorf("invalid -module-regex: %w", err)
 	}
 
-	cfg.IncludePlanRegex = includeRE
+	if includeRE != nil {
+		cfg.IncludePlanRegex = includeRE
+	}
 	cfg.ExcludePlanRegex = excludeRE
 	cfg.ModuleRegex = moduleRE
 

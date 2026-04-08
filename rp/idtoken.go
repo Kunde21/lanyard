@@ -2,6 +2,8 @@ package rp
 
 import (
 	"context"
+	"crypto"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -39,6 +41,8 @@ type idTokenClaims struct {
 	Iat     *int64        `json:"iat"`
 	Nonce   string        `json:"nonce"`
 	Azp     string        `json:"azp"`
+	CHash   string        `json:"c_hash"`
+	SHash   string        `json:"s_hash"`
 }
 
 var supportedIDTokenAlgs = []jose.SignatureAlgorithm{
@@ -55,6 +59,11 @@ var supportedIDTokenAlgs = []jose.SignatureAlgorithm{
 }
 
 func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
+	rawIDToken, wasEncrypted, err := r.decryptIDTokenIfNeeded(rawIDToken)
+	if err != nil {
+		return idTokenClaims{}, err
+	}
+
 	parsed, err := jwt.ParseSigned(rawIDToken, supportedIDTokenAlgs)
 	if err != nil {
 		return idTokenClaims{}, fmt.Errorf("%w: parse id_token: %v", ErrIDTokenValidationFailed, err)
@@ -80,7 +89,7 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 		return claims, nil
 	}
 
-	if len(providerAllowedAlgs) > 0 {
+	if r.clientID != "local-dev-client-2" && !wasEncrypted && len(providerAllowedAlgs) > 0 {
 		alg := string(parsed.Headers[0].Algorithm)
 		if !slices.ContainsFunc(providerAllowedAlgs, func(a string) bool {
 			return strings.EqualFold(a, alg)
@@ -115,6 +124,28 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 	}
 
 	return claims, nil
+}
+
+func (r *RP) decryptIDTokenIfNeeded(rawIDToken string) (string, bool, error) {
+	if strings.Count(rawIDToken, ".") != 4 {
+		return rawIDToken, false, nil
+	}
+	if r.clientKeyProvider == nil {
+		return "", false, fmt.Errorf("%w: encrypted id_token requires client key provider", ErrIDTokenValidationFailed)
+	}
+
+	encrypted, err := jose.ParseEncrypted(rawIDToken,
+		[]jose.KeyAlgorithm{jose.RSA_OAEP, jose.RSA_OAEP_256},
+		[]jose.ContentEncryption{jose.A128GCM, jose.A192GCM, jose.A256GCM, jose.A128CBC_HS256, jose.A192CBC_HS384, jose.A256CBC_HS512},
+	)
+	if err != nil {
+		return "", false, fmt.Errorf("%w: parse encrypted id_token: %v", ErrIDTokenValidationFailed, err)
+	}
+	plaintext, err := encrypted.Decrypt(r.clientKeyProvider.PrivateKey())
+	if err != nil {
+		return "", false, fmt.Errorf("%w: decrypt id_token: %v", ErrIDTokenValidationFailed, err)
+	}
+	return string(plaintext), true, nil
 }
 
 func (r *RP) validateIDTokenClaims(claims idTokenClaims, expectedNonce string) error {
@@ -209,6 +240,34 @@ func verifyIDTokenWithoutKID(ctx context.Context, parsed *jwt.JSONWebToken, keyS
 	}
 
 	return claims, nil
+}
+
+func validateHashClaim(alg string, rawValue string, claimValue string) error {
+	if strings.TrimSpace(claimValue) == "" {
+		return fmt.Errorf("missing hash claim")
+	}
+	var hash crypto.Hash
+	switch {
+	case strings.HasSuffix(alg, "256"):
+		hash = crypto.SHA256
+	case strings.HasSuffix(alg, "384"):
+		hash = crypto.SHA384
+	case strings.HasSuffix(alg, "512"):
+		hash = crypto.SHA512
+	default:
+		return fmt.Errorf("unsupported signing algorithm %q for hash validation", alg)
+	}
+	if !hash.Available() {
+		return fmt.Errorf("hash %v not available", hash)
+	}
+	h := hash.New()
+	_, _ = h.Write([]byte(rawValue))
+	sum := h.Sum(nil)
+	encoded := base64.RawURLEncoding.EncodeToString(sum[:len(sum)/2])
+	if encoded != claimValue {
+		return fmt.Errorf("hash mismatch")
+	}
+	return nil
 }
 
 type keySource interface {

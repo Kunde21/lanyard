@@ -238,6 +238,7 @@ func buildFAPI1AdvancedMatrixVariants(includeAll bool) []matrixVariant {
 						"fapi_auth_request_method": reqMethod,
 						"fapi_client_type":         clientType,
 						"fapi_profile":             "plain_fapi",
+						"fapi_request_method":      "signed_non_repudiation",
 						"fapi_response_mode":       respMode,
 						"sender_constrain":         "mtls",
 					}
@@ -256,11 +257,12 @@ func buildFAPI1AdvancedMatrixVariants(includeAll bool) []matrixVariant {
 						PlanName: "fapi1-advanced-final-client-test-plan",
 						Variant:  variant,
 						RPProfile: RPProfileConfig{
-							ClientAuthType:   authType,
-							SenderConstrain:  "mtls",
-							FAPIClientType:   clientType,
-							FAPIProfile:      "plain_fapi",
-							FAPIResponseMode: respMode,
+							ClientAuthType:    authType,
+							SenderConstrain:   "mtls",
+							FAPIClientType:    clientType,
+							FAPIProfile:       "plain_fapi",
+							FAPIRequestMethod: "signed_non_repudiation",
+							FAPIResponseMode:  respMode,
 						},
 					})
 					index++

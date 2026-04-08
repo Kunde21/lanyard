@@ -46,7 +46,7 @@ func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDeta
 		Iss:                  r.clientID,
 		Aud:                  r.issuer,
 		ClientID:             r.clientID,
-		ResponseType:         "code",
+		ResponseType:         r.authorizationResponseType(),
 		RedirectURI:          r.redirectURI,
 		Scope:                strings.Join(r.scopes, " "),
 		State:                state,

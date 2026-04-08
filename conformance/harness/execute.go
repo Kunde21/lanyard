@@ -297,6 +297,7 @@ func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer str
 	if issuer != "" {
 		query.Set("issuer", issuer)
 	}
+	query.Set("module_name", moduleName)
 
 	if isFAPI2Variant(variant) {
 		if v, ok := variant["client_auth_type"]; ok {
@@ -346,15 +347,16 @@ func (jr *jobRunner) executeBrowserVisit(ctx context.Context, testID string, ini
 	}
 
 	currentReq := initialReq
+	currentVisitURL := initialReq.URL.String()
 	for redirects := 0; redirects < 10; redirects++ {
 		resp, err := client.Do(currentReq)
 		if err != nil {
 			return nil, "", fmt.Errorf("failed calling rp front-channel endpoint: %w", err)
 		}
 
-		if err := jr.client.VisitBrowserURL(ctx, testID, currentReq.URL.String()); err != nil {
+		if err := jr.client.VisitBrowserURL(ctx, testID, currentVisitURL); err != nil {
 			resp.Body.Close()
-			return nil, "", fmt.Errorf("failed marking browser visit %q: %w", currentReq.URL.String(), err)
+			return nil, "", fmt.Errorf("failed marking browser visit %q: %w", currentVisitURL, err)
 		}
 
 		if resp.StatusCode >= 300 && resp.StatusCode < 400 {
@@ -368,6 +370,8 @@ func (jr *jobRunner) executeBrowserVisit(ctx context.Context, testID string, ini
 			if err != nil {
 				return nil, "", fmt.Errorf("failed resolving redirect location %q: %w", location, err)
 			}
+			currentVisitURL = nextURL.String()
+			nextURL = mergeFragmentIntoQuery(nextURL)
 
 			nextReq, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL.String(), nil)
 			if err != nil {
@@ -417,6 +421,8 @@ func (jr *jobRunner) executeBrowserVisit(ctx context.Context, testID string, ini
 					if err != nil {
 						return nil, "", fmt.Errorf("failed resolving post-form-post redirect %q: %w", location, err)
 					}
+					currentVisitURL = nextURL.String()
+					nextURL = mergeFragmentIntoQuery(nextURL)
 
 					nextReq, err := http.NewRequestWithContext(ctx, http.MethodGet, nextURL.String(), nil)
 					if err != nil {
@@ -441,6 +447,26 @@ func (jr *jobRunner) executeBrowserVisit(ctx context.Context, testID string, ini
 	}
 
 	return nil, "", fmt.Errorf("front-channel trigger exceeded redirect limit")
+}
+
+func mergeFragmentIntoQuery(nextURL *url.URL) *url.URL {
+	if nextURL == nil || strings.TrimSpace(nextURL.Fragment) == "" {
+		return nextURL
+	}
+	fragmentValues, err := url.ParseQuery(nextURL.Fragment)
+	if err != nil || len(fragmentValues) == 0 {
+		return nextURL
+	}
+	merged := *nextURL
+	query := merged.Query()
+	for key, values := range fragmentValues {
+		for _, value := range values {
+			query.Add(key, value)
+		}
+	}
+	merged.RawQuery = query.Encode()
+	merged.Fragment = ""
+	return &merged
 }
 
 func frontChannelTriggerStatusError(statusCode int, body string) error {
@@ -493,6 +519,7 @@ func isNegativeTestModule(moduleName string) bool {
 		"fapi1-advanced-final-client-test-invalid-missing-iss":                                                    true,
 		"fapi1-advanced-final-client-test-invalid-missing-nonce":                                                  true,
 		"fapi1-advanced-final-client-test-invalid-missing-shash":                                                  true,
+		"fapi1-advanced-final-client-test-encrypted-idtoken-usingrsa15":                                           true,
 	}
 	return negativeModules[moduleName]
 }
@@ -777,6 +804,7 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 	if isFAPI2 {
 		cfg["server"] = map[string]any{"jwks": loadJWKS("server.jwks.json")}
 		clientJWKS := loadPublicJWKS("client.jwks.json")
+		clientJWKS = appendRSAEncryptionKeyToJWKS(clientJWKS, "client-encryption-rsa", "RSA-OAEP-256")
 
 		if strings.EqualFold(strings.TrimSpace(planVariant["client_auth_type"]), "mtls") {
 			clientJWKS = appendMTLSPublicKeyToJWKS(clientJWKS)
@@ -784,6 +812,10 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 
 		cfg["client"].(map[string]any)["jwks"] = clientJWKS
 		cfg["client2"].(map[string]any)["jwks"] = clientJWKS
+		cfg["client"].(map[string]any)["id_token_encrypted_response_alg"] = "RSA-OAEP-256"
+		cfg["client"].(map[string]any)["id_token_encrypted_response_enc"] = "A256GCM"
+		cfg["client2"].(map[string]any)["id_token_encrypted_response_alg"] = "RSA-OAEP-256"
+		cfg["client2"].(map[string]any)["id_token_encrypted_response_enc"] = "A256GCM"
 
 		if certPEM, keyPEM, err := loadClientMTLSCert(); err == nil {
 			cfg["client"].(map[string]any)["certificate"] = certPEM
@@ -946,6 +978,42 @@ func appendMTLSPublicKeyToJWKS(jwks map[string]any) map[string]any {
 
 	keys, _ := jwks["keys"].([]any)
 	jwks["keys"] = append(keys, keyJWK)
+	return jwks
+}
+
+func appendRSAEncryptionKeyToJWKS(jwks map[string]any, kid string, alg string) map[string]any {
+	keys, ok := jwks["keys"].([]any)
+	if !ok {
+		return jwks
+	}
+
+	for _, rawKey := range keys {
+		key, ok := rawKey.(map[string]any)
+		if !ok {
+			continue
+		}
+		if key["use"] == "enc" && key["alg"] == alg {
+			return jwks
+		}
+	}
+
+	for _, rawKey := range keys {
+		key, ok := rawKey.(map[string]any)
+		if !ok || key["kty"] != "RSA" {
+			continue
+		}
+		encKey := make(map[string]any, len(key))
+		for k, v := range key {
+			encKey[k] = v
+		}
+		encKey["kid"] = kid
+		encKey["use"] = "enc"
+		encKey["alg"] = alg
+		keys = append(keys, encKey)
+		jwks["keys"] = keys
+		return jwks
+	}
+
 	return jwks
 }
 

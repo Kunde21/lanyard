@@ -77,6 +77,20 @@ func TestProviderMetadataForResolvedRequest_UsesMTLSAliasesForConformanceOAuthOn
 	}
 }
 
+func TestProviderMetadataForResolvedRequest_UsesOverrideForEncryptedClient2(t *testing.T) {
+	got, ok := providerMetadataForResolvedRequest(resolvedRPRequest{
+		issuer:   "https://suite.localhost/test/a/plain-fapi-10/",
+		clientID: "local-dev-client-2",
+		scopes:   []string{"openid"},
+	})
+	if !ok {
+		t.Fatal("providerMetadataForResolvedRequest() = not configured, want configured")
+	}
+	if diff := cmp.Diff([]string{"PS256", "RS256"}, got.IDTokenSigningAlgValuesSupported); diff != "" {
+		t.Fatalf("ID token signing algs mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestNewRPHTTPClient_SendsClientCertificateWhenRequested(t *testing.T) {
 	t.Setenv("RP_INSECURE_TLS", "true")
 

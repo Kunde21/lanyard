@@ -101,6 +101,7 @@ type RP struct {
 
 	authorizationDetails string
 	responseMode         string
+	responseType         string
 	requestMethod        requestMethodType
 }
 
@@ -140,6 +141,13 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 	r.finalizeSecurityDefaults()
 
 	return r, nil
+}
+
+func (r *RP) authorizationResponseType() string {
+	if strings.TrimSpace(r.responseType) != "" {
+		return strings.TrimSpace(r.responseType)
+	}
+	return "code"
 }
 
 func newRP(issuer, clientID, clientSecret, redirectURI string) *RP {

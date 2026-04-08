@@ -225,6 +225,12 @@ func TestFAPI1AdvancedMatrix_First4(t *testing.T) {
 		if v.Variant["fapi_profile"] != "plain_fapi" {
 			t.Errorf("variant %q: fapi_profile = %q, want plain_fapi", v.Name, v.Variant["fapi_profile"])
 		}
+		if v.Variant["fapi_request_method"] != "signed_non_repudiation" {
+			t.Errorf("variant %q: fapi_request_method = %q, want signed_non_repudiation", v.Name, v.Variant["fapi_request_method"])
+		}
+		if v.RPProfile.FAPIRequestMethod != "signed_non_repudiation" {
+			t.Errorf("variant %q: RPProfile.FAPIRequestMethod = %q, want signed_non_repudiation", v.Name, v.RPProfile.FAPIRequestMethod)
+		}
 	}
 }
 
@@ -252,6 +258,12 @@ func TestFAPI1AdvancedMatrix_All16(t *testing.T) {
 		}
 		if v["sender_constrain"] != "mtls" {
 			t.Fatalf("sender_constrain = %q, want mtls", v["sender_constrain"])
+		}
+		if v["fapi_request_method"] != "signed_non_repudiation" {
+			t.Fatalf("fapi_request_method = %q, want signed_non_repudiation", v["fapi_request_method"])
+		}
+		if variant.RPProfile.FAPIRequestMethod != "signed_non_repudiation" {
+			t.Fatalf("RPProfile.FAPIRequestMethod = %q, want signed_non_repudiation", variant.RPProfile.FAPIRequestMethod)
 		}
 		key := strings.Join([]string{
 			v["client_auth_type"],
