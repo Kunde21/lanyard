@@ -47,7 +47,7 @@ func TestWriteReport_RedactsSensitiveFields(t *testing.T) {
 		}},
 	}
 
-	reportPath, err := writeReport(context.Background(), cfg, run)
+	reportPath, _, err := writeReport(context.Background(), cfg, run)
 	if err != nil {
 		t.Fatalf("writeReport() failed: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestWriteReport_CreatesRunReportPath(t *testing.T) {
 		Plans:      []planResult{},
 	}
 
-	reportPath, err := writeReport(context.Background(), cfg, run)
+	reportPath, _, err := writeReport(context.Background(), cfg, run)
 	if err != nil {
 		t.Fatalf("writeReport() failed: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestWriteReport_IncludesJobIdentityFields(t *testing.T) {
 		}},
 	}
 
-	reportPath, err := writeReport(context.Background(), cfg, run)
+	reportPath, _, err := writeReport(context.Background(), cfg, run)
 	if err != nil {
 		t.Fatalf("writeReport() failed: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestWriteReport_IncludesMatricesWhenPresent(t *testing.T) {
 		Plans:      []planResult{},
 	}
 
-	reportPath, err := writeReport(context.Background(), cfg, run)
+	reportPath, _, err := writeReport(context.Background(), cfg, run)
 	if err != nil {
 		t.Fatalf("writeReport() failed: %v", err)
 	}

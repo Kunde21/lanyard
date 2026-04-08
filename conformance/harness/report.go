@@ -25,10 +25,10 @@ type reportDocument struct {
 	Plans         []planResult `json:"plans"`
 }
 
-func writeReport(ctx context.Context, cfg harnessConfig, run runReport) (string, error) {
+func writeReport(ctx context.Context, cfg harnessConfig, run runReport) (string, reportDocument, error) {
 	runDir := filepath.Join(cfg.ArtifactsDir, run.RunID)
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		return "", fmt.Errorf("failed to create run artifact directory: %w", err)
+		return "", reportDocument{}, fmt.Errorf("failed to create run artifact directory: %w", err)
 	}
 
 	gitSHA := currentGitSHA(ctx)
@@ -70,17 +70,17 @@ func writeReport(ctx context.Context, cfg harnessConfig, run runReport) (string,
 	reportPath := filepath.Join(runDir, "report.json")
 	f, err := os.Create(filepath.Clean(reportPath))
 	if err != nil {
-		return "", fmt.Errorf("failed to create report file: %w", err)
+		return "", reportDocument{}, fmt.Errorf("failed to create report file: %w", err)
 	}
 	defer f.Close()
 
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(doc); err != nil {
-		return "", fmt.Errorf("failed to encode report JSON: %w", err)
+		return "", reportDocument{}, fmt.Errorf("failed to encode report JSON: %w", err)
 	}
 
-	return reportPath, nil
+	return reportPath, doc, nil
 }
 
 func exportPlanZip(ctx context.Context, cfg harnessConfig, runDir string, plan planResult) (string, error) {

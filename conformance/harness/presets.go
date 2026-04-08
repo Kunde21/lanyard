@@ -20,7 +20,7 @@ var builtInPresets = map[string]presetConfig{
 			"fapi1-adv-final-all12",
 		},
 		Parallel:         true,
-		MaxParallelRuns:  8,
+		MaxParallelRuns:  12,
 		ExcludePlanRegex: "ciba|brazil|id1-|id2-|client-credentials",
 	},
 	"all-rp-smoke": {

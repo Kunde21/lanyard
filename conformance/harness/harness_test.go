@@ -126,11 +126,13 @@ func TestConformanceHarness(t *testing.T) {
 		t.Fatalf("failed to create artifacts dir: %v", err)
 	}
 
-	reportPath, writeErr := writeReport(ctx, cfg, runReport)
+	reportPath, doc, writeErr := writeReport(ctx, cfg, runReport)
 	if writeErr != nil {
 		t.Fatalf("failed to write report: %v", writeErr)
 	}
 	t.Logf("wrote conformance report to %s", reportPath)
+
+	printRunSummary(doc)
 
 	if runReport.Failed {
 		t.Fatalf("conformance run failed; report: %s", reportPath)
