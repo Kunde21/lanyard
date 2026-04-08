@@ -257,7 +257,9 @@ func parseHarnessConfig() (harnessConfig, error) {
 	if includeRE != nil {
 		cfg.IncludePlanRegex = includeRE
 	}
-	cfg.ExcludePlanRegex = excludeRE
+	if excludeRE != nil {
+		cfg.ExcludePlanRegex = excludeRE
+	}
 	cfg.ModuleRegex = moduleRE
 
 	forcedVariants, err := parseForcedVariants([]string(flagForceVariants))

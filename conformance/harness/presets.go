@@ -21,7 +21,7 @@ var builtInPresets = map[string]presetConfig{
 		},
 		Parallel:         true,
 		MaxParallelRuns:  8,
-		ExcludePlanRegex: "ciba|brazil|-id1-|-id2-|client-credentials",
+		ExcludePlanRegex: "ciba|brazil|id1-|id2-|client-credentials",
 	},
 	"all-rp-smoke": {
 		Profile: "all-rp",

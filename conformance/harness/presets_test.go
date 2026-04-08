@@ -29,8 +29,8 @@ func TestResolvePreset_AllRPFull(t *testing.T) {
 	if cfg.MaxParallelRuns != 8 {
 		t.Errorf("MaxParallelRuns = %d, want 8", cfg.MaxParallelRuns)
 	}
-	if cfg.ExcludePlanRegex != "ciba|brazil|-id1-|-id2-|client-credentials" {
-		t.Errorf("ExcludePlanRegex = %q, want %q", cfg.ExcludePlanRegex, "ciba|brazil|-id1-|-id2-|client-credentials")
+	if cfg.ExcludePlanRegex != "ciba|brazil|id1-|id2-|client-credentials" {
+		t.Errorf("ExcludePlanRegex = %q, want %q", cfg.ExcludePlanRegex, "ciba|brazil|id1-|id2-|client-credentials")
 	}
 }
 
