@@ -34,7 +34,7 @@ Matrices expand a single plan into multiple variants with different configuratio
 | `fapi2-ms-final-plain-fapi-jarm4` | fapi2-message-signing-final | 4 | JARM: signed request objects + signed JARM response |
 | `fapi2-ms-final-plain-fapi-all32` | fapi2-message-signing-final | 32 | Full matrix: all auth, constrain, request, client, response modes |
 | `fapi1-adv-final-first4` | fapi1-advanced-final | 4 | Smoke test: first 4 variants only |
-| `fapi1-adv-final-all16` | fapi1-advanced-final | 16 | Full matrix: all auth types, request methods, client types, response modes |
+| `fapi1-adv-final-all12` | fapi1-advanced-final | 12 | Full matrix: all auth types, request methods, client types, response modes (valid combinations only) |
 
 The all16 security-profile matrix covers:
 - Client auth: `private_key_jwt`, `mtls`
@@ -46,12 +46,15 @@ The all32 message-signing matrix adds:
 - Request method: `signed_non_repudiation` (JAR)
 - Response mode: `plain_response`, `jarm`
 
-The all16 FAPI1 Advanced matrix covers:
+The all12 FAPI1 Advanced matrix covers:
 - Client auth: `private_key_jwt`, `mtls`
 - Sender constrain: `mtls` (fixed — always assumed in FAPI1 Advanced)
 - Auth request method: `by_value`, `pushed`
-- Client type: `oidc`, `plain_oauth`
+- Client type: `oidc`, `plain_oauth` (plain_oauth only valid with jarm response mode)
 - Response mode: `plain_response`, `jarm`
+
+Note: The FAPI1 Advanced conformance suite rejects `plain_response` with `plain_oauth`
+client type. The matrix builder automatically skips these invalid combinations.
 
 ### Presets
 
@@ -63,7 +66,7 @@ Presets bundle profile + matrices + parallel settings for common configurations.
 | `all-rp-smoke` | all-rp | fapi2-sp-first4 + fapi2-ms-jar4 | 4 | 9 (1 OIDC + 4 SP + 4 MS) |
 | `fapi2-sp-full` | fapi-rp | fapi2-sp-all16 | 8 | 16 |
 | `fapi2-ms-full` | fapi-rp | fapi2-ms-all32 | 8 | 32 |
-| `fapi1-adv-full` | fapi-rp | fapi1-adv-all16 | 8 | 16 |
+| `fapi1-adv-full` | fapi-rp | fapi1-adv-all12 | 8 | 12 |
 | `fapi1-adv-smoke` | fapi-rp | fapi1-adv-first4 | 4 | 4 |
 
 ### Common Flags
@@ -264,7 +267,7 @@ Or use explicit flags:
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
   -args -profile=fapi-rp \
   -include-plan-regex='fapi1-advanced-final-client-test-plan' \
-  -matrix=fapi1-adv-final-all16 \
+  -matrix=fapi1-adv-final-all12 \
   -parallel \
   -max-parallel-runs=8
 ```
