@@ -186,6 +186,9 @@ func (r *RP) validateIDTokenClaims(claims idTokenClaims, expectedNonce string) e
 	if iat.After(now.Add(r.clockSkew)) {
 		return fmt.Errorf("%w: iat in the future", ErrIDTokenValidationFailed)
 	}
+	if r.fapiProfile.isFAPI() && iat.Before(now.Add(-r.clockSkew)) {
+		return fmt.Errorf("%w: iat too old", ErrIDTokenValidationFailed)
+	}
 
 	if expectedNonce != "" && claims.Nonce != expectedNonce {
 		return fmt.Errorf("%w: nonce mismatch", ErrIDTokenValidationFailed)

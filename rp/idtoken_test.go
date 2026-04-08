@@ -435,3 +435,60 @@ func signUnsecuredIDToken(t *testing.T, claims map[string]any) string {
 	enc := base64.RawURLEncoding
 	return enc.EncodeToString(headerJSON) + "." + enc.EncodeToString(payloadJSON) + "."
 }
+
+func int64Ptr(v int64) *int64 {
+	return &v
+}
+
+func TestValidateIDTokenClaims_RejectsOldIatForFAPIProfile(t *testing.T) {
+	now := time.Now().UTC()
+	claims := idTokenClaims{
+		Issuer:  "https://example.com",
+		Subject: "sub-1",
+		Aud:     audienceClaim{"client-1"},
+		Exp:     int64Ptr(now.Add(5 * time.Minute).Unix()),
+		Iat:     int64Ptr(now.Add(-7 * 24 * time.Hour).Unix()),
+		Nonce:   "nonce-1",
+	}
+
+	r := &RP{
+		issuer:      "https://example.com",
+		clientID:    "client-1",
+		fapiProfile: fapiProfilePlainFAPI,
+		now:         func() time.Time { return now },
+		clockSkew:   5 * time.Minute,
+	}
+
+	err := r.validateIDTokenClaims(claims, "nonce-1")
+	if err == nil {
+		t.Fatal("validateIDTokenClaims() expected error for week-old iat with FAPI profile")
+	}
+	if !strings.Contains(err.Error(), "iat") {
+		t.Fatalf("expected iat-related error, got: %v", err)
+	}
+}
+
+func TestValidateIDTokenClaims_AllowsOldIatForNonFAPI(t *testing.T) {
+	now := time.Now().UTC()
+	claims := idTokenClaims{
+		Issuer:  "https://example.com",
+		Subject: "sub-1",
+		Aud:     audienceClaim{"client-1"},
+		Exp:     int64Ptr(now.Add(5 * time.Minute).Unix()),
+		Iat:     int64Ptr(now.Add(-7 * 24 * time.Hour).Unix()),
+		Nonce:   "nonce-1",
+	}
+
+	r := &RP{
+		issuer:      "https://example.com",
+		clientID:    "client-1",
+		fapiProfile: fapiProfileNone,
+		now:         func() time.Time { return now },
+		clockSkew:   5 * time.Minute,
+	}
+
+	err := r.validateIDTokenClaims(claims, "nonce-1")
+	if err != nil {
+		t.Fatalf("validateIDTokenClaims() unexpected error for non-FAPI: %v", err)
+	}
+}
