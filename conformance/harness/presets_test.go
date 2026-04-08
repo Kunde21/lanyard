@@ -16,6 +16,7 @@ func TestResolvePreset_AllRPFull(t *testing.T) {
 		t.Errorf("Profile = %q, want %q", cfg.Profile, "all-rp")
 	}
 	want := []string{
+		"oidcc-config-cert-all42",
 		"fapi2-sp-final-plain-fapi-all16",
 		"fapi2-ms-final-plain-fapi-all32",
 		"fapi1-adv-final-all12",
@@ -43,6 +44,7 @@ func TestResolvePreset_AllRPSmoke(t *testing.T) {
 		t.Errorf("Profile = %q, want %q", cfg.Profile, "all-rp")
 	}
 	want := []string{
+		"oidcc-config-cert-first2",
 		"fapi2-sp-final-plain-fapi-first4",
 		"fapi2-ms-final-plain-fapi-jar4",
 		"fapi1-adv-final-first4",
@@ -134,5 +136,37 @@ func TestResolvePreset_FAPI1AdvSmoke(t *testing.T) {
 	}
 	if cfg.MaxParallelRuns != 4 {
 		t.Errorf("MaxParallelRuns = %d, want 4", cfg.MaxParallelRuns)
+	}
+}
+
+func TestResolvePreset_OIDCConfigFull(t *testing.T) {
+	cfg, err := resolvePreset("oidcc-config-full")
+	if err != nil {
+		t.Fatalf("resolvePreset() failed: %v", err)
+	}
+	if cfg.Profile != "oidc-rp" {
+		t.Fatalf("Profile = %q, want oidc-rp", cfg.Profile)
+	}
+	if diff := cmp.Diff([]string{"oidcc-config-cert-all42"}, cfg.Matrices); diff != "" {
+		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
+	}
+	if !cfg.Parallel {
+		t.Fatal("Parallel = false, want true")
+	}
+}
+
+func TestResolvePreset_OIDCConfigSmoke(t *testing.T) {
+	cfg, err := resolvePreset("oidcc-config-smoke")
+	if err != nil {
+		t.Fatalf("resolvePreset() failed: %v", err)
+	}
+	if cfg.Profile != "oidc-rp" {
+		t.Fatalf("Profile = %q, want oidc-rp", cfg.Profile)
+	}
+	if diff := cmp.Diff([]string{"oidcc-config-cert-first2"}, cfg.Matrices); diff != "" {
+		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
+	}
+	if !cfg.Parallel {
+		t.Fatal("Parallel = false, want true")
 	}
 }

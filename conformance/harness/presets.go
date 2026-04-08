@@ -15,6 +15,7 @@ var builtInPresets = map[string]presetConfig{
 	"all-rp-full": {
 		Profile: "all-rp",
 		Matrices: []string{
+			"oidcc-config-cert-all42",
 			"fapi2-sp-final-plain-fapi-all16",
 			"fapi2-ms-final-plain-fapi-all32",
 			"fapi1-adv-final-all12",
@@ -26,6 +27,7 @@ var builtInPresets = map[string]presetConfig{
 	"all-rp-smoke": {
 		Profile: "all-rp",
 		Matrices: []string{
+			"oidcc-config-cert-first2",
 			"fapi2-sp-final-plain-fapi-first4",
 			"fapi2-ms-final-plain-fapi-jar4",
 			"fapi1-adv-final-first4",
@@ -61,12 +63,26 @@ var builtInPresets = map[string]presetConfig{
 		Parallel:         true,
 		MaxParallelRuns:  4,
 	},
+	"oidcc-config-full": {
+		Profile:          "oidc-rp",
+		Matrices:         []string{"oidcc-config-cert-all42"},
+		IncludePlanRegex: "oidcc-client-config-certification-test-plan",
+		Parallel:         true,
+		MaxParallelRuns:  8,
+	},
+	"oidcc-config-smoke": {
+		Profile:          "oidc-rp",
+		Matrices:         []string{"oidcc-config-cert-first2"},
+		IncludePlanRegex: "oidcc-client-config-certification-test-plan",
+		Parallel:         true,
+		MaxParallelRuns:  2,
+	},
 }
 
 func resolvePreset(name string) (presetConfig, error) {
 	cfg, ok := builtInPresets[name]
 	if !ok {
-		return presetConfig{}, fmt.Errorf("unknown preset %q (available: all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full, fapi1-adv-full, fapi1-adv-smoke)", name)
+		return presetConfig{}, fmt.Errorf("unknown preset %q (available: all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full, fapi1-adv-full, fapi1-adv-smoke, oidcc-config-full, oidcc-config-smoke)", name)
 	}
 	return cfg, nil
 }

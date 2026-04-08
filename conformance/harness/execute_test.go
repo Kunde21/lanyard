@@ -623,3 +623,44 @@ func TestIsNegativeTestModule(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildPlanConfig_OIDCConfigPrivateKeyJWT(t *testing.T) {
+	cfg := buildPlanConfig(map[string]string{
+		"client_auth_type":    "private_key_jwt",
+		"request_type":        "plain_http_request",
+		"client_registration": "static_client",
+		"response_mode":       "default",
+	}, "alias-test", 5)
+
+	client, ok := cfg["client"].(map[string]any)
+	if !ok {
+		t.Fatal("client config missing")
+	}
+	if _, hasJWKS := client["jwks"]; !hasJWKS {
+		t.Fatal("client.jwks missing for private_key_jwt auth type")
+	}
+	client2, ok := cfg["client2"].(map[string]any)
+	if !ok {
+		t.Fatal("client2 config missing")
+	}
+	if _, hasJWKS := client2["jwks"]; !hasJWKS {
+		t.Fatal("client2.jwks missing for private_key_jwt auth type")
+	}
+}
+
+func TestBuildPlanConfig_OIDCConfigClientSecretBasic_NoJWKS(t *testing.T) {
+	cfg := buildPlanConfig(map[string]string{
+		"client_auth_type":    "client_secret_basic",
+		"request_type":        "plain_http_request",
+		"client_registration": "static_client",
+		"response_mode":       "default",
+	}, "alias-test", 5)
+
+	client, ok := cfg["client"].(map[string]any)
+	if !ok {
+		t.Fatal("client config missing")
+	}
+	if _, hasJWKS := client["jwks"]; hasJWKS {
+		t.Fatal("client.jwks should not be present for client_secret_basic auth type")
+	}
+}

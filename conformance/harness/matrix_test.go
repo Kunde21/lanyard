@@ -303,6 +303,150 @@ func TestFAPI1AdvancedMatrix_IgnoresOtherPlans(t *testing.T) {
 	}
 }
 
+func TestChooseVariantValue_RequestType(t *testing.T) {
+	got := chooseVariantValue("request_type", []string{"request_object", "plain_http_request", "request_uri"})
+	if got != "plain_http_request" {
+		t.Fatalf("chooseVariantValue(request_type) = %q, want plain_http_request", got)
+	}
+}
+
+func TestChooseVariantValue_ResponseMode(t *testing.T) {
+	got := chooseVariantValue("response_mode", []string{"form_post", "default"})
+	if got != "default" {
+		t.Fatalf("chooseVariantValue(response_mode) = %q, want default", got)
+	}
+}
+
+func TestOIDCConfigMatrix_First2(t *testing.T) {
+	variants, err := expandMatrixVariants("oidcc-config-cert-first2", "oidcc-client-config-certification-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 2 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 2", len(variants))
+	}
+
+	want := []map[string]string{
+		{
+			"client_auth_type":    "client_secret_basic",
+			"request_type":        "plain_http_request",
+			"client_registration": "static_client",
+			"response_mode":       "default",
+		},
+		{
+			"client_auth_type":    "client_secret_basic",
+			"request_type":        "plain_http_request",
+			"client_registration": "static_client",
+			"response_mode":       "form_post",
+		},
+	}
+
+	got := make([]map[string]string, 0, len(variants))
+	for _, v := range variants {
+		got = append(got, v.Variant)
+	}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Fatalf("oidc config first2 mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestOIDCConfigMatrix_All42(t *testing.T) {
+	variants, err := expandMatrixVariants("oidcc-config-cert-all42", "oidcc-client-config-certification-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 42 {
+		t.Fatalf("expandMatrixVariants() returned %d variants, want 42", len(variants))
+	}
+
+	authCounts := map[string]int{}
+	reqTypeCounts := map[string]int{}
+	clientRegCounts := map[string]int{}
+	respModeCounts := map[string]int{}
+	seen := map[string]bool{}
+
+	for _, v := range variants {
+		vv := v.Variant
+		authCounts[vv["client_auth_type"]]++
+		reqTypeCounts[vv["request_type"]]++
+		clientRegCounts[vv["client_registration"]]++
+		respModeCounts[vv["response_mode"]]++
+
+		if vv["client_registration"] != "static_client" {
+			t.Fatalf("client_registration = %q, want static_client", vv["client_registration"])
+		}
+
+		key := strings.Join([]string{
+			vv["client_auth_type"],
+			vv["request_type"],
+			vv["client_registration"],
+			vv["response_mode"],
+		}, "|")
+		seen[key] = true
+	}
+
+	wantAuthCounts := map[string]int{
+		"client_secret_basic":         6,
+		"client_secret_post":          6,
+		"client_secret_jwt":           6,
+		"private_key_jwt":             6,
+		"tls_client_auth":             6,
+		"self_signed_tls_client_auth": 6,
+		"none":                        6,
+	}
+	if diff := cmp.Diff(wantAuthCounts, authCounts); diff != "" {
+		t.Fatalf("client_auth_type distribution mismatch (-want +got):\n%s", diff)
+	}
+
+	wantReqCounts := map[string]int{
+		"plain_http_request": 14,
+		"request_object":     14,
+		"request_uri":        14,
+	}
+	if diff := cmp.Diff(wantReqCounts, reqTypeCounts); diff != "" {
+		t.Fatalf("request_type distribution mismatch (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff(map[string]int{"static_client": 42}, clientRegCounts); diff != "" {
+		t.Fatalf("client_registration distribution mismatch (-want +got):\n%s", diff)
+	}
+
+	if diff := cmp.Diff(map[string]int{"default": 21, "form_post": 21}, respModeCounts); diff != "" {
+		t.Fatalf("response_mode distribution mismatch (-want +got):\n%s", diff)
+	}
+
+	if len(seen) != 42 {
+		t.Fatalf("unique 4D combinations = %d, want 42", len(seen))
+	}
+}
+
+func TestOIDCConfigMatrix_IgnoresOtherPlans(t *testing.T) {
+	variants, err := expandMatrixVariants("oidcc-config-cert-all42", "fapi2-security-profile-final-client-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 0 {
+		t.Fatalf("expected 0 variants for mismatched plan, got %d", len(variants))
+	}
+}
+
+func TestOtherMatrices_IgnoreOIDCConfigPlan(t *testing.T) {
+	testCases := []string{
+		"fapi2-sp-final-plain-fapi-first4",
+		"fapi2-ms-final-plain-fapi-jar4",
+		"fapi1-adv-final-first4",
+	}
+	for _, matrixName := range testCases {
+		variants, err := expandMatrixVariants(matrixName, "oidcc-client-config-certification-test-plan")
+		if err != nil {
+			t.Fatalf("expandMatrixVariants(%q) failed: %v", matrixName, err)
+		}
+		if len(variants) != 0 {
+			t.Fatalf("expandMatrixVariants(%q) returned %d variants, want 0", matrixName, len(variants))
+		}
+	}
+}
+
 func TestOtherMatrices_IgnoreFAPI1AdvancedPlan(t *testing.T) {
 	testCases := []string{
 		"fapi2-sp-final-plain-fapi-first4",
