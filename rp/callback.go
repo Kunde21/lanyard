@@ -87,18 +87,20 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		r.clientSecret = data.ClientSecret
 	}
 	if params.IDToken != "" {
+		idToken := params.IDToken
 		if strings.Count(params.IDToken, ".") == 4 {
-			if _, _, err := r.decryptIDTokenIfNeeded(params.IDToken); err != nil {
-				return nil, err
-			}
-		} else {
-			authzClaims, err := r.validateAuthorizationResponseIDToken(ctx, params.IDToken, data.Nonce, code, state, r.provider.JWKSURI, r.provider.IDTokenSigningAlgValuesSupported)
+			decrypted, _, err := r.decryptIDTokenIfNeeded(params.IDToken)
 			if err != nil {
 				return nil, err
 			}
-			if authzResponseIss == "" {
-				authzResponseIss = authzClaims.Issuer
-			}
+			idToken = decrypted
+		}
+		authzClaims, err := r.validateAuthorizationResponseIDToken(ctx, idToken, data.Nonce, code, state, r.provider.JWKSURI, r.provider.IDTokenSigningAlgValuesSupported)
+		if err != nil {
+			return nil, err
+		}
+		if authzResponseIss == "" {
+			authzResponseIss = authzClaims.Issuer
 		}
 	}
 
