@@ -8,6 +8,7 @@ type presetConfig struct {
 	Parallel         bool
 	MaxParallelRuns  int
 	IncludePlanRegex string
+	ExcludePlanRegex string
 }
 
 var builtInPresets = map[string]presetConfig{
@@ -18,8 +19,9 @@ var builtInPresets = map[string]presetConfig{
 			"fapi2-ms-final-plain-fapi-all32",
 			"fapi1-adv-final-all12",
 		},
-		Parallel:        true,
-		MaxParallelRuns: 8,
+		Parallel:         true,
+		MaxParallelRuns:  8,
+		ExcludePlanRegex: "ciba|brazil|-id1-|-id2-|client-credentials",
 	},
 	"all-rp-smoke": {
 		Profile: "all-rp",
