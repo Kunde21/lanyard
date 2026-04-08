@@ -768,6 +768,22 @@ func chooseVariantValue(key string, values []string) string {
 		}
 	}
 
+	if lowerKey == "request_type" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "plain_http_request") {
+				return value
+			}
+		}
+	}
+
+	if lowerKey == "response_mode" {
+		for _, value := range values {
+			if strings.EqualFold(strings.TrimSpace(value), "default") {
+				return value
+			}
+		}
+	}
+
 	return values[0]
 }
 
@@ -835,6 +851,15 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 		}
 	}
 
+	if !isFAPI2 {
+		authType := strings.ToLower(strings.TrimSpace(planVariant["client_auth_type"]))
+		if authType == "private_key_jwt" || authType == "self_signed_tls_client_auth" {
+			clientJWKS := loadPublicJWKS("client.jwks.json")
+			cfg["client"].(map[string]any)["jwks"] = clientJWKS
+			cfg["client2"].(map[string]any)["jwks"] = clientJWKS
+		}
+	}
+
 	if strings.EqualFold(strings.TrimSpace(planVariant["authorization_request_type"]), "rar") {
 		cfg["resource"] = map[string]any{
 			"authorization_details_types_supported": []string{"account_information"},
@@ -878,7 +903,6 @@ func isFAPI2PlanVariant(planVariant map[string]string) bool {
 	for key := range planVariant {
 		lower := strings.ToLower(key)
 		if strings.HasPrefix(lower, "fapi_") ||
-			strings.HasPrefix(lower, "client_auth") ||
 			strings.HasPrefix(lower, "sender_") {
 			return true
 		}

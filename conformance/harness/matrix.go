@@ -65,6 +65,16 @@ func expandMatrixVariants(matrixName, planName string) ([]matrixVariant, error) 
 			return nil, nil
 		}
 		return buildFAPI1AdvancedMatrixVariants(true), nil
+	case "oidcc-config-cert-first2":
+		if planName != "oidcc-client-config-certification-test-plan" {
+			return nil, nil
+		}
+		return buildOIDCConfigMatrixVariants(false), nil
+	case "oidcc-config-cert-all42":
+		if planName != "oidcc-client-config-certification-test-plan" {
+			return nil, nil
+		}
+		return buildOIDCConfigMatrixVariants(true), nil
 	default:
 		return nil, fmt.Errorf("unknown matrix %q", matrixName)
 	}
@@ -103,6 +113,57 @@ func buildPlainFAPIMatrixVariants(includeAll bool) []matrixVariant {
 							AuthorizationRequestType: requestType,
 							FAPIClientType:           clientType,
 							FAPIProfile:              "plain_fapi",
+						},
+					})
+					index++
+				}
+			}
+		}
+	}
+
+	return variants
+}
+
+func buildOIDCConfigMatrixVariants(includeAll bool) []matrixVariant {
+	authTypes := []string{"client_secret_basic"}
+	requestTypes := []string{"plain_http_request"}
+	clientRegistrations := []string{"static_client"}
+	responseModes := []string{"default", "form_post"}
+
+	if includeAll {
+		authTypes = []string{
+			"client_secret_basic",
+			"client_secret_post",
+			"client_secret_jwt",
+			"private_key_jwt",
+			"tls_client_auth",
+			"self_signed_tls_client_auth",
+			"none",
+		}
+		requestTypes = []string{"plain_http_request", "request_object", "request_uri"}
+		clientRegistrations = []string{"static_client"}
+		responseModes = []string{"default", "form_post"}
+	}
+
+	total := len(authTypes) * len(requestTypes) * len(clientRegistrations) * len(responseModes)
+	variants := make([]matrixVariant, 0, total)
+	index := 1
+	for _, authType := range authTypes {
+		for _, reqType := range requestTypes {
+			for _, clientReg := range clientRegistrations {
+				for _, respMode := range responseModes {
+					variant := map[string]string{
+						"client_auth_type":    authType,
+						"request_type":        reqType,
+						"client_registration": clientReg,
+						"response_mode":       respMode,
+					}
+					variants = append(variants, matrixVariant{
+						Name:     fmt.Sprintf("oidc-config-%02d", index),
+						PlanName: "oidcc-client-config-certification-test-plan",
+						Variant:  variant,
+						RPProfile: RPProfileConfig{
+							ClientAuthType: authType,
 						},
 					})
 					index++
