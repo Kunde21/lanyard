@@ -78,6 +78,10 @@ func (jr *jobRunner) registerRuntimeAlias(ctx context.Context, alias string, mod
 	if strings.TrimSpace(moduleName) != "" {
 		req.StartupAction = startupActionForModule(moduleName)
 		req.StartupAllowError = startupAllowsErrorForModule(moduleName)
+		if moduleUsesSecondClient(moduleName) {
+			req.ClientID = "local-dev-client-2"
+			req.ClientSecret = "local-dev-secret-2-32-bytes-min!!"
+		}
 	}
 	resp, err := jr.runtimeClient.Register(ctx, req)
 	if err != nil {
@@ -86,4 +90,8 @@ func (jr *jobRunner) registerRuntimeAlias(ctx context.Context, alias string, mod
 	jr.runtimeAliases[req.Alias] = struct{}{}
 	jr.startupByAlias[req.Alias] = resp
 	return nil
+}
+
+func moduleUsesSecondClient(moduleName string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(moduleName)), "encrypted-idtoken")
 }

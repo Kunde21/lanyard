@@ -81,7 +81,7 @@ func readConformanceKeySet() (conformanceKeySet, error) {
 
 func loadClientKeyProvider(authType, senderConstrain string) (rp.ClientKeyProvider, error) {
 	switch strings.ToLower(strings.TrimSpace(authType)) {
-	case "private_key_jwt", "mtls":
+	case "private_key_jwt", "mtls", "self_signed_tls_client_auth", "tls_client_auth":
 	default:
 		return nil, nil
 	}
@@ -99,6 +99,10 @@ func loadClientKeyProvider(authType, senderConstrain string) (rp.ClientKeyProvid
 		}
 		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, mtlsCert), nil
 	case "mtls":
+		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, keys.mtlsCert), nil
+	case "self_signed_tls_client_auth":
+		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, keys.mtlsCert), nil
+	case "tls_client_auth":
 		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, keys.mtlsCert), nil
 	default:
 		return nil, nil

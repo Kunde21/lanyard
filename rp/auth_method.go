@@ -17,6 +17,10 @@ const (
 	AuthMethodPrivateKeyJWT AuthMethod = "private_key_jwt"
 	// AuthMethodTLSClientAuth uses mutual TLS client authentication (tls_client_auth).
 	AuthMethodTLSClientAuth AuthMethod = "tls_client_auth"
+	// AuthMethodNone sends only client_id without authentication (none).
+	AuthMethodNone AuthMethod = "none"
+	// AuthMethodClientSecretJWT uses a client secret signed JWT assertion (client_secret_jwt).
+	AuthMethodClientSecretJWT AuthMethod = "client_secret_jwt"
 )
 
 func (r *RP) resolveAuthMethod() error {
@@ -127,6 +131,13 @@ func (r *RP) validateResolvedAuthMethod(method AuthMethod) error {
 	case AuthMethodTLSClientAuth:
 		if r.clientKeyProvider == nil || r.clientKeyProvider.TLSCertificate() == nil {
 			return fmt.Errorf("%w: tls certificate is required for token endpoint auth method %q", ErrInvalidConfiguration, method)
+		}
+		return nil
+	case AuthMethodNone:
+		return nil
+	case AuthMethodClientSecretJWT:
+		if strings.TrimSpace(r.clientSecret) == "" {
+			return fmt.Errorf("%w: client_secret is required for token endpoint auth method %q", ErrInvalidConfiguration, method)
 		}
 		return nil
 	default:

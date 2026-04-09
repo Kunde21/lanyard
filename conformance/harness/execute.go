@@ -876,6 +876,12 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 			cfg["client"].(map[string]any)["jwks"] = clientJWKS
 			cfg["client2"].(map[string]any)["jwks"] = clientJWKS
 		}
+		if authType == "tls_client_auth" || authType == "self_signed_tls_client_auth" {
+			if certPEM, _, err := loadClientMTLSCert(); err == nil {
+				cfg["client"].(map[string]any)["certificate"] = certPEM
+				cfg["client2"].(map[string]any)["certificate"] = certPEM
+			}
+		}
 	}
 
 	if strings.EqualFold(strings.TrimSpace(planVariant["authorization_request_type"]), "rar") {
@@ -899,6 +905,15 @@ func buildStandaloneModuleConfig(alias string, planVariant map[string]string, wa
 	}
 	if secret := strings.TrimSpace("local-dev-secret-32-bytes-minimum!!"); secret != "" && !strings.EqualFold(strings.TrimSpace(planVariant["client_auth_type"]), "none") {
 		client["client_secret"] = secret
+	}
+	authType := strings.ToLower(strings.TrimSpace(planVariant["client_auth_type"]))
+	if authType == "private_key_jwt" || authType == "self_signed_tls_client_auth" {
+		client["jwks"] = loadPublicJWKS("client.jwks.json")
+	}
+	if authType == "tls_client_auth" || authType == "self_signed_tls_client_auth" {
+		if certPEM, _, err := loadClientMTLSCert(); err == nil {
+			client["certificate"] = certPEM
+		}
 	}
 	return map[string]any{
 		"alias":              alias,

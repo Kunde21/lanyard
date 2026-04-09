@@ -77,6 +77,15 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 		params.Set("client_assertion", assertion)
 	}
 
+	if r.resolvedAuthMethod == AuthMethodClientSecretJWT {
+		assertion, err := r.buildClientSecretAssertion(r.issuer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build client secret assertion for PAR: %w", err)
+		}
+		params.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+		params.Set("client_assertion", assertion)
+	}
+
 	parReq, err := r.buildPARRequest(ctx, parEndpoint, params)
 	if err != nil {
 		return nil, err
@@ -200,6 +209,43 @@ func generateJTI(reader io.Reader) string {
 		return ""
 	}
 	return base64.RawURLEncoding.EncodeToString(buf)
+}
+
+func (r *RP) buildClientSecretAssertion(audience string) (string, error) {
+	if strings.TrimSpace(r.clientSecret) == "" {
+		return "", fmt.Errorf("%w: client_secret not configured", ErrInvalidConfiguration)
+	}
+
+	now := time.Now()
+	claims := map[string]any{
+		"iss": r.clientID,
+		"sub": r.clientID,
+		"aud": audience,
+		"iat": now.Unix(),
+		"exp": now.Add(5 * time.Minute).Unix(),
+		"jti": generateJTI(r.randReader),
+	}
+
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal claims: %w", err)
+	}
+
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: []byte(r.clientSecret)}, &jose.SignerOptions{
+		ExtraHeaders: map[jose.HeaderKey]interface{}{
+			"typ": "JWT",
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create signer: %w", err)
+	}
+
+	sig, err := signer.Sign(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign: %w", err)
+	}
+
+	return sig.CompactSerialize()
 }
 
 var (

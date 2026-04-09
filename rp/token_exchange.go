@@ -79,7 +79,21 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		form.Set("client_assertion", assertion)
 		form.Set("client_id", r.clientID)
+	case AuthMethodClientSecretJWT:
+		audience := r.issuer
+		if audience == "" {
+			audience = tokenEndpoint
+		}
+		assertion, err := r.buildClientSecretAssertion(audience)
+		if err != nil {
+			return Token{}, 0, "", fmt.Errorf("failed to build client secret assertion: %w", err)
+		}
+		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+		form.Set("client_assertion", assertion)
+		form.Set("client_id", r.clientID)
 	case AuthMethodTLSClientAuth:
+		form.Set("client_id", r.clientID)
+	case AuthMethodNone:
 		form.Set("client_id", r.clientID)
 	case AuthMethodPost:
 		form.Set("client_id", r.clientID)

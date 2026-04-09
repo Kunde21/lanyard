@@ -32,10 +32,6 @@ type requestObjectClaims struct {
 }
 
 func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDetails string, extra url.Values) (string, error) {
-	if r.clientKeyProvider == nil {
-		return "", fmt.Errorf("%w: client key provider required for signed request object", ErrInvalidConfiguration)
-	}
-
 	now := r.now()
 	parsedAuthorizationDetails, err := parseAuthorizationDetailsClaim(authorizationDetails)
 	if err != nil {
@@ -79,7 +75,10 @@ func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDeta
 		}
 	}
 
-	return signRequestObjectClaims(r.clientKeyProvider, claims)
+	if r.clientKeyProvider != nil {
+		return signRequestObjectClaims(r.clientKeyProvider, claims)
+	}
+	return signRequestObjectWithSecret(r.clientSecret, claims)
 }
 
 func isStandardRequestObjectClaim(key string) bool {
@@ -103,6 +102,31 @@ func signRequestObjectClaims(keyProvider ClientKeyProvider, claims requestObject
 			"kid": keyProvider.KeyID(),
 		},
 	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create request object signer: %w", err)
+	}
+
+	claimMap := claimsToMap(claims)
+
+	payload, err := json.Marshal(claimMap)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request object claims: %w", err)
+	}
+
+	sig, err := signer.Sign(payload)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign request object: %w", err)
+	}
+
+	return sig.CompactSerialize()
+}
+
+func signRequestObjectWithSecret(secret string, claims requestObjectClaims) (string, error) {
+	if strings.TrimSpace(secret) == "" {
+		return "", fmt.Errorf("%w: client secret or key provider required for signed request object", ErrInvalidConfiguration)
+	}
+
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: []byte(secret)}, &jose.SignerOptions{})
 	if err != nil {
 		return "", fmt.Errorf("failed to create request object signer: %w", err)
 	}

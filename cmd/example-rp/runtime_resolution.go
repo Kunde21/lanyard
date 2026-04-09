@@ -132,7 +132,7 @@ func resolveRPRequestFromRuntimeConfig(cfg rpRuntimeConfig) (resolvedRPRequest, 
 	resolved.authorizationDetails = authorizationDetailsForRuntime(cfg)
 	resolved.responseMode = cfg.ResponseMode
 	resolved.responseType = cfg.ResponseType
-	resolved.requestMethod = cfg.FAPIRequestMethod
+	resolved.requestMethod = requestMethodForRuntime(cfg)
 	resolved.profile = cfg.Profile
 	resolved.discoveryMode = cfg.DiscoveryMode
 	resolved.startupAction = cfg.startupAction()
@@ -168,7 +168,7 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, 
 	resolved.authorizationDetails = authorizationDetailsForRuntime(runtimeCfg)
 	resolved.responseMode = runtimeCfg.ResponseMode
 	resolved.responseType = runtimeCfg.ResponseType
-	resolved.requestMethod = runtimeCfg.FAPIRequestMethod
+	resolved.requestMethod = requestMethodForRuntime(runtimeCfg)
 	resolved.profile = runtimeCfg.Profile
 	resolved.discoveryMode = runtimeCfg.DiscoveryMode
 	resolved.startupAction = runtimeCfg.startupAction()
@@ -214,6 +214,8 @@ func runtimeRequiresPAR(cfg rpRuntimeConfig) bool {
 	switch strings.ToLower(strings.TrimSpace(cfg.RequestType)) {
 	case "par", "pushed_authorization_request":
 		return true
+	case "request_uri":
+		return true
 	}
 
 	return false
@@ -240,11 +242,26 @@ func authMethodForRuntime(cfg rpRuntimeConfig) (rp.AuthMethod, bool) {
 	switch strings.ToLower(strings.TrimSpace(cfg.ClientAuthType)) {
 	case "private_key_jwt":
 		return rp.AuthMethodPrivateKeyJWT, true
-	case "mtls":
+	case "mtls", "tls_client_auth", "self_signed_tls_client_auth":
 		return rp.AuthMethodTLSClientAuth, true
+	case "none":
+		return rp.AuthMethodNone, true
+	case "client_secret_jwt":
+		return rp.AuthMethodClientSecretJWT, true
 	default:
 		return "", false
 	}
+}
+
+func requestMethodForRuntime(cfg rpRuntimeConfig) string {
+	if strings.TrimSpace(cfg.FAPIRequestMethod) != "" {
+		return cfg.FAPIRequestMethod
+	}
+	switch strings.ToLower(strings.TrimSpace(cfg.RequestType)) {
+	case "request_object", "request_uri":
+		return "signed_non_repudiation"
+	}
+	return ""
 }
 
 func newRPHTTPClient(keyProvider rp.ClientKeyProvider) *http.Client {
