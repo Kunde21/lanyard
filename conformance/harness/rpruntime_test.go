@@ -38,7 +38,7 @@ func TestRPRuntimeClient_RegisterAndDelete(t *testing.T) {
 
 	client := newRPRuntimeClient(server.URL)
 	cfg := rpRuntimeRequest{Alias: "alias-a", ClientID: "client-a", RedirectURI: "https://rp.localhost/callback"}
-	if err := client.Register(context.Background(), cfg); err != nil {
+	if _, err := client.Register(context.Background(), cfg); err != nil {
 		t.Fatalf("Register() failed: %v", err)
 	}
 	if err := client.Delete(context.Background(), cfg.Alias); err != nil {
@@ -61,11 +61,11 @@ func TestJobRunner_RegistersAndDeletesRuntime(t *testing.T) {
 	deleted := []string{}
 
 	runtimeClient := &stubRuntimeClient{
-		registerFn: func(_ context.Context, req rpRuntimeRequest) error {
+		registerFn: func(_ context.Context, req rpRuntimeRequest) (rpRuntimeResponse, error) {
 			mu.Lock()
 			defer mu.Unlock()
 			registered = append(registered, req.Alias)
-			return nil
+			return rpRuntimeResponse{}, nil
 		},
 		deleteFn: func(_ context.Context, alias string) error {
 			mu.Lock()
@@ -107,9 +107,9 @@ func TestJobRunner_RegisterRuntimeAlias_UsesProvidedAlias(t *testing.T) {
 	var got rpRuntimeRequest
 
 	runtimeClient := &stubRuntimeClient{
-		registerFn: func(_ context.Context, req rpRuntimeRequest) error {
+		registerFn: func(_ context.Context, req rpRuntimeRequest) (rpRuntimeResponse, error) {
 			got = req
-			return nil
+			return rpRuntimeResponse{}, nil
 		},
 		deleteFn: func(_ context.Context, alias string) error {
 			return nil
@@ -131,7 +131,7 @@ func TestJobRunner_RegisterRuntimeAlias_UsesProvidedAlias(t *testing.T) {
 	jr := newJobRunner(newSuiteClient("https://suite.localhost"), harnessConfig{ArtifactsDir: t.TempDir(), SuiteURL: "https://suite.localhost"}, job, t.Logf)
 	jr.runtimeClient = runtimeClient
 
-	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias"); err != nil {
+	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias", ""); err != nil {
 		t.Fatalf("registerRuntimeAlias() failed: %v", err)
 	}
 
@@ -154,8 +154,8 @@ func TestJobRunner_RuntimeCleanupDeletesAllRegisteredAliases(t *testing.T) {
 	deleted := []string{}
 
 	runtimeClient := &stubRuntimeClient{
-		registerFn: func(_ context.Context, req rpRuntimeRequest) error {
-			return nil
+		registerFn: func(_ context.Context, req rpRuntimeRequest) (rpRuntimeResponse, error) {
+			return rpRuntimeResponse{}, nil
 		},
 		deleteFn: func(_ context.Context, alias string) error {
 			mu.Lock()
@@ -173,7 +173,7 @@ func TestJobRunner_RuntimeCleanupDeletesAllRegisteredAliases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registerRuntime() failed: %v", err)
 	}
-	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias"); err != nil {
+	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias", ""); err != nil {
 		t.Fatalf("registerRuntimeAlias() failed: %v", err)
 	}
 	cleanup()
@@ -193,11 +193,11 @@ func TestJobRunner_RuntimeCleanupDeletesAllRegisteredAliases(t *testing.T) {
 }
 
 type stubRuntimeClient struct {
-	registerFn func(context.Context, rpRuntimeRequest) error
+	registerFn func(context.Context, rpRuntimeRequest) (rpRuntimeResponse, error)
 	deleteFn   func(context.Context, string) error
 }
 
-func (s *stubRuntimeClient) Register(ctx context.Context, req rpRuntimeRequest) error {
+func (s *stubRuntimeClient) Register(ctx context.Context, req rpRuntimeRequest) (rpRuntimeResponse, error) {
 	return s.registerFn(ctx, req)
 }
 
@@ -397,5 +397,73 @@ func TestBuildRPRuntimeRequest_FAPI1AdvancedPushed(t *testing.T) {
 	}
 	if req.FAPIRequestMethod != "signed_non_repudiation" {
 		t.Fatalf("FAPIRequestMethod = %q, want %q", req.FAPIRequestMethod, "signed_non_repudiation")
+	}
+}
+
+func TestStartupActionForModule(t *testing.T) {
+	tests := []struct {
+		moduleName string
+		want       string
+	}{
+		{"oidcc-client-test-discovery-openid-config", "discovery_only"},
+		{"oidcc-client-test-discovery-webfinger-acct", "discovery_only"},
+		{"oidcc-client-test-discovery-webfinger-url", "discovery_only"},
+		{"oidcc-client-test-discovery-issuer-mismatch", "discovery_only"},
+		{"oidcc-client-test-discovery-jwks-uri-keys", "discovery_and_jwks"},
+		{"oidcc-client-test-client-secret-basic", "full_flow"},
+		{"oidcc-client-test", "full_flow"},
+		{"some-other-module", "full_flow"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.moduleName, func(t *testing.T) {
+			got := startupActionForModule(tt.moduleName)
+			if got != tt.want {
+				t.Fatalf("startupActionForModule(%q) = %q, want %q", tt.moduleName, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildRPRuntimeRequest_DiscoveryOnlyStartupAction(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "oidcc-client-config-certification-test-plan"}
+	planVariant := map[string]string{
+		"client_registration": "static_client",
+		"client_auth_type":    "client_secret_basic",
+		"request_type":        "plain_http_request",
+		"response_mode":       "default",
+	}
+	req := buildRPRuntimeRequest(job, planVariant, "https://suite.localhost")
+	moduleName := "oidcc-client-test-discovery-openid-config"
+	req.StartupAction = startupActionForModule(moduleName)
+	if req.StartupAction != "discovery_only" {
+		t.Fatalf("StartupAction = %q, want %q", req.StartupAction, "discovery_only")
+	}
+}
+
+func TestBuildRPRuntimeRequest_JWKSModuleUsesDiscoveryAndJWKS(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "oidcc-client-config-certification-test-plan"}
+	planVariant := map[string]string{
+		"client_registration": "static_client",
+		"client_auth_type":    "client_secret_basic",
+		"request_type":        "plain_http_request",
+		"response_mode":       "default",
+	}
+	req := buildRPRuntimeRequest(job, planVariant, "https://suite.localhost")
+	moduleName := "oidcc-client-test-discovery-jwks-uri-keys"
+	req.StartupAction = startupActionForModule(moduleName)
+	if req.StartupAction != "discovery_and_jwks" {
+		t.Fatalf("StartupAction = %q, want %q", req.StartupAction, "discovery_and_jwks")
+	}
+}
+
+func TestBuildRPRuntimeRequest_DefaultUsesFullFlow(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "oidcc-client-basic-certification-test-plan"}
+	planVariant := map[string]string{
+		"client_registration": "static_client",
+	}
+	req := buildRPRuntimeRequest(job, planVariant, "https://suite.localhost")
+	req.StartupAction = startupActionForModule("oidcc-client-test")
+	if req.StartupAction != "full_flow" {
+		t.Fatalf("StartupAction = %q, want %q", req.StartupAction, "full_flow")
 	}
 }

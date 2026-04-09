@@ -211,3 +211,178 @@ func generateUnrelatedCAPool() (*x509.CertPool, error) {
 	pool.AddCert(cert)
 	return pool, nil
 }
+
+func TestRpProfileForResolvedRequest(t *testing.T) {
+	tests := []struct {
+		name     string
+		profile  string
+		want     rp.Profile
+		wantBool bool
+	}{
+		{"oauth2", "oauth2", rp.OAuth2, true},
+		{"fapi1_adv", "fapi1_adv", rp.FAPI1Adv, true},
+		{"fapi1-advanced", "fapi1-advanced", rp.FAPI1Adv, true},
+		{"fapi2-sp", "fapi2-sp", rp.FAPI2SecurityProfile, true},
+		{"fapi2-ms", "fapi2-ms", rp.FAPI2MessageSigning, true},
+		{"oidc", "oidc", rp.OIDC, true},
+		{"empty", "", rp.OIDC, false},
+		{"unknown", "unknown", rp.OIDC, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := rpProfileForResolvedRequest(resolvedRPRequest{profile: tt.profile})
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("profile mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantBool, ok); diff != "" {
+				t.Fatalf("ok mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRpDiscoveryModeForResolvedRequest(t *testing.T) {
+	tests := []struct {
+		name          string
+		discoveryMode string
+		want          rp.DiscoveryMode
+		wantBool      bool
+	}{
+		{"oidc", "oidc", rp.DiscoveryOIDC, true},
+		{"oauth2", "oauth2", rp.DiscoveryOAuth2, true},
+		{"disabled", "disabled", rp.DiscoveryDisabled, true},
+		{"auto", "auto", rp.DiscoveryAuto, true},
+		{"empty", "", rp.DiscoveryAuto, false},
+		{"unknown", "unknown", rp.DiscoveryAuto, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok := rpDiscoveryModeForResolvedRequest(resolvedRPRequest{discoveryMode: tt.discoveryMode})
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("discovery mode mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantBool, ok); diff != "" {
+				t.Fatalf("ok mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestParseStartupAction(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  startupAction
+	}{
+		{"full_flow", "full_flow", startupActionFullFlow},
+		{"discovery_only", "discovery_only", startupActionDiscoveryOnly},
+		{"discovery_and_jwks", "discovery_and_jwks", startupActionDiscoveryAndJWKS},
+		{"empty_defaults_to_full_flow", "", startupActionFullFlow},
+		{"unknown_defaults_to_full_flow", "unknown", startupActionFullFlow},
+		{"case insensitive", "Discovery_Only", startupActionDiscoveryOnly},
+		{"whitespace trimmed", "  full_flow  ", startupActionFullFlow},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseStartupAction(tt.input)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("parseStartupAction() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestRPRuntimeConfigStartupAction(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  rpRuntimeConfig
+		want startupAction
+	}{
+		{"empty defaults to full_flow", rpRuntimeConfig{}, startupActionFullFlow},
+		{"full_flow explicit", rpRuntimeConfig{StartupAction: "full_flow"}, startupActionFullFlow},
+		{"discovery_only", rpRuntimeConfig{StartupAction: "discovery_only"}, startupActionDiscoveryOnly},
+		{"discovery_and_jwks", rpRuntimeConfig{StartupAction: "discovery_and_jwks"}, startupActionDiscoveryAndJWKS},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.startupAction()
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("startupAction() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestResolveRPRequest_DefaultStartupActionIsFullFlow(t *testing.T) {
+	reg := newRuntimeRegistry()
+	if err := reg.Register(rpRuntimeConfig{
+		Alias:       "test-alias",
+		ClientID:    "client-id",
+		RedirectURI: "https://rp.localhost/callback/test-alias",
+		Issuer:      "https://suite.localhost/test/a/test-alias/",
+	}); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+	oldRegistry := conformanceRuntimes
+	conformanceRuntimes = reg
+	defer func() { conformanceRuntimes = oldRegistry }()
+
+	r := httptest.NewRequest(http.MethodGet, "/login?issuer=https://suite.localhost/test/a/test-alias/", nil)
+	resolved, err := resolveRPRequest(r, "client", "secret", "https://rp.localhost/callback", rp.UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("resolveRPRequest() failed: %v", err)
+	}
+	if resolved.startupAction != startupActionFullFlow {
+		t.Fatalf("startupAction = %q, want %q", resolved.startupAction, startupActionFullFlow)
+	}
+}
+
+func TestResolveRPRequest_ParsesDiscoveryOnlyStartupAction(t *testing.T) {
+	reg := newRuntimeRegistry()
+	if err := reg.Register(rpRuntimeConfig{
+		Alias:         "test-alias",
+		ClientID:      "client-id",
+		RedirectURI:   "https://rp.localhost/callback/test-alias",
+		Issuer:        "https://suite.localhost/test/a/test-alias/",
+		StartupAction: "discovery_only",
+	}); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+	oldRegistry := conformanceRuntimes
+	conformanceRuntimes = reg
+	defer func() { conformanceRuntimes = oldRegistry }()
+
+	r := httptest.NewRequest(http.MethodGet, "/login?issuer=https://suite.localhost/test/a/test-alias/", nil)
+	resolved, err := resolveRPRequest(r, "client", "secret", "https://rp.localhost/callback", rp.UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("resolveRPRequest() failed: %v", err)
+	}
+	if resolved.startupAction != startupActionDiscoveryOnly {
+		t.Fatalf("startupAction = %q, want %q", resolved.startupAction, startupActionDiscoveryOnly)
+	}
+}
+
+func TestResolveRPRequest_ParsesDiscoveryAndJWKSStartupAction(t *testing.T) {
+	reg := newRuntimeRegistry()
+	if err := reg.Register(rpRuntimeConfig{
+		Alias:         "test-alias",
+		ClientID:      "client-id",
+		RedirectURI:   "https://rp.localhost/callback/test-alias",
+		Issuer:        "https://suite.localhost/test/a/test-alias/",
+		StartupAction: "discovery_and_jwks",
+	}); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+	oldRegistry := conformanceRuntimes
+	conformanceRuntimes = reg
+	defer func() { conformanceRuntimes = oldRegistry }()
+
+	r := httptest.NewRequest(http.MethodGet, "/login?issuer=https://suite.localhost/test/a/test-alias/", nil)
+	resolved, err := resolveRPRequest(r, "client", "secret", "https://rp.localhost/callback", rp.UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("resolveRPRequest() failed: %v", err)
+	}
+	if resolved.startupAction != startupActionDiscoveryAndJWKS {
+		t.Fatalf("startupAction = %q, want %q", resolved.startupAction, startupActionDiscoveryAndJWKS)
+	}
+}

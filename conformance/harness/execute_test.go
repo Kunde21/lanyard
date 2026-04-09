@@ -288,55 +288,6 @@ func TestRequestTypeForPlanVariant(t *testing.T) {
 	}
 }
 
-func TestModuleTriggerEndpoint(t *testing.T) {
-	tests := []struct {
-		moduleName string
-		want       string
-	}{
-		{
-			moduleName: "oidcc-client-test-discovery-openid-config",
-			want:       "/discovery",
-		},
-		{
-			moduleName: "oidcc-client-test-discovery-jwks-uri-keys",
-			want:       "/discovery-jwks",
-		},
-		{
-			moduleName: "oidcc-client-test-discovery-issuer-mismatch",
-			want:       "/discovery",
-		},
-		{
-			moduleName: "oidcc-client-test-discovery-webfinger-acct",
-			want:       "/webfinger-acct",
-		},
-		{
-			moduleName: "oidcc-client-test-discovery-webfinger-url",
-			want:       "/webfinger-url",
-		},
-		{
-			moduleName: "oidcc-client-test-client-secret-basic",
-			want:       "/login",
-		},
-		{
-			moduleName: "oidcc-client-test-userinfo-bearer-body",
-			want:       "/login-userinfo-body",
-		},
-		{
-			moduleName: "some-other-module",
-			want:       "/login",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.moduleName, func(t *testing.T) {
-			got := moduleTriggerEndpoint(tc.moduleName)
-			if got != tc.want {
-				t.Errorf("moduleTriggerEndpoint(%q) = %q, want %q", tc.moduleName, got, tc.want)
-			}
-		})
-	}
-}
-
 func TestEffectiveSuiteAlias_FallsBackToJobAlias(t *testing.T) {
 	if got := effectiveSuiteAlias("", "job-alias"); got != "job-alias" {
 		t.Fatalf("effectiveSuiteAlias() = %q, want %q", got, "job-alias")
@@ -662,5 +613,93 @@ func TestBuildPlanConfig_OIDCConfigClientSecretBasic_NoJWKS(t *testing.T) {
 	}
 	if _, hasJWKS := client["jwks"]; hasJWKS {
 		t.Fatal("client.jwks should not be present for client_secret_basic auth type")
+	}
+}
+
+func TestBuildStandaloneModuleConfig_UsesMinimalClientConfig(t *testing.T) {
+	cfg := buildStandaloneModuleConfig("alias-test", map[string]string{
+		"client_auth_type": "client_secret_basic",
+		"request_type":     "plain_http_request",
+	}, 5)
+
+	client, ok := cfg["client"].(map[string]any)
+	if !ok {
+		t.Fatal("client config missing")
+	}
+	if _, ok := client["client_id"]; !ok {
+		t.Fatal("client_id missing")
+	}
+	if _, ok := client["client_secret"]; !ok {
+		t.Fatal("client_secret missing")
+	}
+	if _, ok := cfg["client2"]; ok {
+		t.Fatal("client2 must not be present in standalone module config")
+	}
+	if got := cfg["waitTimeoutSeconds"]; got != 5 {
+		t.Fatalf("waitTimeoutSeconds = %#v, want 5", got)
+	}
+}
+
+func TestBuildStandaloneModuleConfig_OmitsSecretForPublicClient(t *testing.T) {
+	cfg := buildStandaloneModuleConfig("alias-test", map[string]string{
+		"client_auth_type": "none",
+	}, 5)
+
+	client, ok := cfg["client"].(map[string]any)
+	if !ok {
+		t.Fatal("client config missing")
+	}
+	if _, ok := client["client_secret"]; ok {
+		t.Fatal("client_secret must not be present for public client")
+	}
+}
+
+func TestFrontChannelTriggerNotUsedForDiscoveryModule(t *testing.T) {
+	modules := []struct {
+		name   string
+		action string
+	}{
+		{"oidcc-client-test-discovery-openid-config", "discovery_only"},
+		{"oidcc-client-test-discovery-webfinger-acct", "discovery_only"},
+		{"oidcc-client-test-discovery-webfinger-url", "discovery_only"},
+		{"oidcc-client-test-discovery-issuer-mismatch", "discovery_only"},
+		{"oidcc-client-test-discovery-jwks-uri-keys", "discovery_and_jwks"},
+	}
+	for _, m := range modules {
+		t.Run(m.name, func(t *testing.T) {
+			action := startupActionForModule(m.name)
+			if action != m.action {
+				t.Fatalf("startupActionForModule(%q) = %q, want %q", m.name, action, m.action)
+			}
+			if action == "full_flow" {
+				t.Fatalf("discovery module %q should not use full_flow", m.name)
+			}
+		})
+	}
+}
+
+func TestExecuteModule_DiscoveryModulesSkipFrontChannelTrigger(t *testing.T) {
+	tests := []struct {
+		name            string
+		moduleName      string
+		expectNoTrigger bool
+	}{
+		{"discovery-openid-config skips trigger", "oidcc-client-test-discovery-openid-config", true},
+		{"discovery-webfinger-acct skips trigger", "oidcc-client-test-discovery-webfinger-acct", true},
+		{"discovery-webfinger-url skips trigger", "oidcc-client-test-discovery-webfinger-url", true},
+		{"discovery-issuer-mismatch skips trigger", "oidcc-client-test-discovery-issuer-mismatch", true},
+		{"discovery-jwks-uri-keys skips trigger", "oidcc-client-test-discovery-jwks-uri-keys", true},
+		{"client-secret-basic uses trigger", "oidcc-client-test-client-secret-basic", false},
+		{"userinfo-bearer-body uses trigger", "oidcc-client-test-userinfo-bearer-body", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			action := startupActionForModule(tt.moduleName)
+			skipsTrigger := action != "full_flow"
+			if skipsTrigger != tt.expectNoTrigger {
+				t.Fatalf("startupActionForModule(%q) = %q, skipsTrigger=%v, want skipsTrigger=%v",
+					tt.moduleName, action, skipsTrigger, tt.expectNoTrigger)
+			}
+		})
 	}
 }

@@ -34,11 +34,20 @@ type rpRuntimeRequest struct {
 	ResponseType             string                    `json:"response_type,omitempty"`
 	FAPIRequestMethod        string                    `json:"fapi_request_method,omitempty"`
 	FAPIResponseMode         string                    `json:"fapi_response_mode,omitempty"`
+	Profile                  string                    `json:"profile,omitempty"`
+	DiscoveryMode            string                    `json:"discovery_mode,omitempty"`
+	StartupAction            string                    `json:"startup_action,omitempty"`
+	StartupAllowError        bool                      `json:"startup_allow_error,omitempty"`
 }
 
 type rpRuntimeClient interface {
-	Register(ctx context.Context, req rpRuntimeRequest) error
+	Register(ctx context.Context, req rpRuntimeRequest) (rpRuntimeResponse, error)
 	Delete(ctx context.Context, alias string) error
+}
+
+type rpRuntimeResponse struct {
+	AuthorizationURL string   `json:"authorization_url,omitempty"`
+	Cookies          []string `json:"cookies,omitempty"`
 }
 
 type httpRPRuntimeClient struct {
@@ -55,27 +64,31 @@ func newRPRuntimeClient(rawURL string) *httpRPRuntimeClient {
 	}
 }
 
-func (c *httpRPRuntimeClient) Register(ctx context.Context, req rpRuntimeRequest) error {
+func (c *httpRPRuntimeClient) Register(ctx context.Context, req rpRuntimeRequest) (rpRuntimeResponse, error) {
 	endpoint := c.baseURL + "/conformance/runtime"
 	body, err := json.Marshal(req)
 	if err != nil {
-		return fmt.Errorf("marshal runtime request: %w", err)
+		return rpRuntimeResponse{}, fmt.Errorf("marshal runtime request: %w", err)
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("build runtime register request: %w", err)
+		return rpRuntimeResponse{}, fmt.Errorf("build runtime register request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
-		return fmt.Errorf("register runtime request failed: %w", err)
+		return rpRuntimeResponse{}, fmt.Errorf("register runtime request failed: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
-		return fmt.Errorf("register runtime failed: status=%d body=%q", resp.StatusCode, strings.TrimSpace(string(body)))
+		return rpRuntimeResponse{}, fmt.Errorf("register runtime failed: status=%d body=%q", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return nil
+	var payload rpRuntimeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil && err != io.EOF {
+		return rpRuntimeResponse{}, fmt.Errorf("decode runtime register response: %w", err)
+	}
+	return payload, nil
 }
 
 func (c *httpRPRuntimeClient) Delete(ctx context.Context, alias string) error {
@@ -159,6 +172,35 @@ func fapiRequestMethodForVariant(planVariant map[string]string) string {
 	return ""
 }
 
+func profileForPlanVariant(planName string, planVariant map[string]string) string {
+	if isFAPI2PlanVariant(planVariant) {
+		if strings.Contains(strings.ToLower(planName), "message-signing") {
+			return "fapi2_message_signing"
+		}
+		return "fapi2_security_profile"
+	}
+	if strings.Contains(strings.ToLower(planName), "fapi1") {
+		return "fapi1_adv"
+	}
+	if strings.EqualFold(strings.TrimSpace(planVariant["fapi_client_type"]), "plain_oauth") {
+		return "oauth2"
+	}
+	return "oidc"
+}
+
+func discoveryModeForPlanVariant(planName string, planVariant map[string]string) string {
+	if isFAPI2PlanVariant(planVariant) {
+		return "auto"
+	}
+	if strings.Contains(strings.ToLower(planName), "fapi1") {
+		return "auto"
+	}
+	if strings.EqualFold(strings.TrimSpace(planVariant["fapi_client_type"]), "plain_oauth") {
+		return "oauth2"
+	}
+	return "auto"
+}
+
 func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, suiteURL, alias string) rpRuntimeRequest {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -194,5 +236,32 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 		ResponseType:             responseTypeForPlanVariant(job.PlanName, planVariant),
 		FAPIRequestMethod:        fapiRequestMethodForVariant(planVariant),
 		FAPIResponseMode:         planVariant["fapi_response_mode"],
+		Profile:                  profileForPlanVariant(job.PlanName, planVariant),
+		DiscoveryMode:            discoveryModeForPlanVariant(job.PlanName, planVariant),
 	}
+}
+
+func startupActionForModule(moduleName string) string {
+	name := strings.ToLower(strings.TrimSpace(moduleName))
+	if strings.Contains(name, "discovery-openid-config") {
+		return "discovery_only"
+	}
+	if strings.Contains(name, "discovery-webfinger-acct") {
+		return "discovery_only"
+	}
+	if strings.Contains(name, "discovery-webfinger-url") {
+		return "discovery_only"
+	}
+	if strings.Contains(name, "discovery-issuer-mismatch") {
+		return "discovery_only"
+	}
+	if strings.Contains(name, "discovery-jwks-uri") {
+		return "discovery_and_jwks"
+	}
+	return "full_flow"
+}
+
+func startupAllowsErrorForModule(moduleName string) bool {
+	name := strings.ToLower(strings.TrimSpace(moduleName))
+	return strings.Contains(name, "discovery-issuer-mismatch")
 }

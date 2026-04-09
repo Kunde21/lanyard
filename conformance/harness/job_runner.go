@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type jobRunner struct {
 	artifactDir    string
 	runtimeClient  rpRuntimeClient
 	runtimeAliases map[string]struct{}
+	startupByAlias map[string]rpRuntimeResponse
 }
 
 func newJobRunner(client *suiteClient, cfg harnessConfig, job RunJob, logf func(format string, args ...any)) *jobRunner {
@@ -48,11 +50,12 @@ func newJobRunner(client *suiteClient, cfg harnessConfig, job RunJob, logf func(
 		artifactDir:    artifactDir,
 		runtimeClient:  newRPRuntimeClient("https://rp.localhost"),
 		runtimeAliases: map[string]struct{}{},
+		startupByAlias: map[string]rpRuntimeResponse{},
 	}
 }
 
 func (jr *jobRunner) registerRuntime(ctx context.Context) (func(), error) {
-	if err := jr.registerRuntimeAlias(ctx, jr.job.Alias); err != nil {
+	if err := jr.registerRuntimeAlias(ctx, jr.job.Alias, ""); err != nil {
 		return nil, err
 	}
 	return func() {
@@ -66,15 +69,21 @@ func (jr *jobRunner) registerRuntime(ctx context.Context) (func(), error) {
 	}, nil
 }
 
-func (jr *jobRunner) registerRuntimeAlias(ctx context.Context, alias string) error {
+func (jr *jobRunner) registerRuntimeAlias(ctx context.Context, alias string, moduleName string) error {
 	if jr.runtimeClient == nil {
 		return nil
 	}
 	planVariant := mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants)
 	req := buildRPRuntimeRequestForAlias(jr.job, planVariant, jr.cfg.SuiteURL, alias)
-	if err := jr.runtimeClient.Register(ctx, req); err != nil {
+	if strings.TrimSpace(moduleName) != "" {
+		req.StartupAction = startupActionForModule(moduleName)
+		req.StartupAllowError = startupAllowsErrorForModule(moduleName)
+	}
+	resp, err := jr.runtimeClient.Register(ctx, req)
+	if err != nil {
 		return err
 	}
 	jr.runtimeAliases[req.Alias] = struct{}{}
+	jr.startupByAlias[req.Alias] = resp
 	return nil
 }

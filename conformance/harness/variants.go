@@ -103,3 +103,28 @@ func mergeModuleVariant(base map[string]any, overrides map[string]string) map[st
 
 	return merged
 }
+
+func stringMapToAnyMap(base map[string]string) map[string]any {
+	if len(base) == 0 {
+		return nil
+	}
+	converted := make(map[string]any, len(base))
+	for k, v := range base {
+		converted[k] = v
+	}
+	return converted
+}
+
+func mergeVariantMaps(base, overrides map[string]any) map[string]any {
+	if len(base) == 0 && len(overrides) == 0 {
+		return nil
+	}
+	merged := make(map[string]any, len(base)+len(overrides))
+	for k, v := range base {
+		merged[k] = v
+	}
+	for k, v := range overrides {
+		merged[k] = v
+	}
+	return merged
+}

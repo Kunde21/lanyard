@@ -28,7 +28,7 @@ var (
 	flagPlanTimeout       = flag.Duration("plan-timeout", 1*time.Hour, "Max time for a single plan execution")
 	flagTestTimeout       = flag.Duration("test-timeout", 60*time.Second, "Max time for harness to wait for a test to complete before calling stop API")
 	flagSuiteWaitTimeout  = flag.Duration("suite-wait-timeout", 5*time.Second, "Suite waitTimeoutSeconds sent to test configuration")
-	flagWaitingMaxRetries = flag.Int("waiting-max-retries", 0, "Max front-channel trigger retries while test status is WAITING")
+	flagWaitingMaxRetries = flag.Int("waiting-max-retries", 2, "Max front-channel trigger retries while test status is WAITING")
 	flagWaitingInterval   = flag.Duration("waiting-retry-interval", 10*time.Second, "Interval between WAITING front-channel trigger retries")
 	flagSkipProvision     = flag.Bool("skip-provision", false, "Skip docker compose provisioning and use an already-running stack")
 

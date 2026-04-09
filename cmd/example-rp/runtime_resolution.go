@@ -50,6 +50,9 @@ type resolvedRPRequest struct {
 	responseMode         string
 	responseType         string
 	requestMethod        string
+	profile              string
+	discoveryMode        string
+	startupAction        startupAction
 }
 
 func newSharedStateStore() rp.StateStore {
@@ -106,6 +109,43 @@ func resolveRPRequest(r *http.Request, clientID, clientSecret, redirectURI strin
 	return resolved, nil
 }
 
+func resolveRPRequestFromRuntimeConfig(cfg rpRuntimeConfig) (resolvedRPRequest, error) {
+	resolved := resolvedRPRequest{
+		issuer:            cfg.Issuer,
+		clientID:          cfg.ClientID,
+		clientSecret:      cfg.ClientSecret,
+		redirectURI:       cfg.RedirectURI,
+		scopes:            append([]string(nil), cfg.Scopes...),
+		stateStore:        stateStoreForRuntime(cfg),
+		userInfoTransport: rp.UserInfoTokenTransportHeader,
+	}
+	if cfg.UserInfoTokenTransport != "" {
+		resolved.userInfoTransport = cfg.UserInfoTokenTransport
+	}
+	if method, ok := authMethodForRuntime(cfg); ok {
+		resolved.authMethod = method
+		resolved.hasAuthMethod = true
+	}
+	resolved.requirePAR = runtimeRequiresPAR(cfg)
+	resolved.senderConstrain = cfg.SenderConstrain
+	resolved.fapiProfile = cfg.FAPIProfile
+	resolved.authorizationDetails = authorizationDetailsForRuntime(cfg)
+	resolved.responseMode = cfg.ResponseMode
+	resolved.responseType = cfg.ResponseType
+	resolved.requestMethod = cfg.FAPIRequestMethod
+	resolved.profile = cfg.Profile
+	resolved.discoveryMode = cfg.DiscoveryMode
+	resolved.startupAction = cfg.startupAction()
+
+	keyProvider, err := loadClientKeyProvider(cfg.ClientAuthType, cfg.SenderConstrain)
+	if err != nil {
+		return resolvedRPRequest{}, err
+	}
+	resolved.keyProvider = keyProvider
+
+	return resolved, nil
+}
+
 func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, moduleName string) (resolvedRPRequest, error) {
 	if strings.TrimSpace(runtimeCfg.Issuer) != "" {
 		resolved.issuer = runtimeCfg.Issuer
@@ -129,6 +169,9 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, 
 	resolved.responseMode = runtimeCfg.ResponseMode
 	resolved.responseType = runtimeCfg.ResponseType
 	resolved.requestMethod = runtimeCfg.FAPIRequestMethod
+	resolved.profile = runtimeCfg.Profile
+	resolved.discoveryMode = runtimeCfg.DiscoveryMode
+	resolved.startupAction = runtimeCfg.startupAction()
 	if shouldUseSecondClient(runtimeCfg, moduleName) {
 		resolved.clientID = "local-dev-client-2"
 		resolved.clientSecret = "local-dev-secret-2-32-bytes-min!!"
@@ -287,6 +330,12 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	if strings.TrimSpace(resolved.requestMethod) != "" {
 		opts = append(opts, rp.WithRequestMethod(resolved.requestMethod))
 	}
+	if profile, ok := rpProfileForResolvedRequest(resolved); ok {
+		opts = append(opts, rp.WithProfile(profile))
+	}
+	if mode, ok := rpDiscoveryModeForResolvedRequest(resolved); ok {
+		opts = append(opts, rp.WithDiscoveryMode(mode))
+	}
 
 	return rp.New(r.Context(), resolved.issuer, resolved.clientID, resolved.clientSecret, resolved.redirectURI, opts...)
 }
@@ -356,4 +405,36 @@ func conformanceMTLSBaseURL(issuer string) (string, error) {
 	parsed.Path = strings.Replace(trimmedPath, "/test/a/", "/test-mtls/a/", 1)
 	parsed.RawPath = ""
 	return parsed.String(), nil
+}
+
+func rpProfileForResolvedRequest(resolved resolvedRPRequest) (rp.Profile, bool) {
+	switch strings.ToLower(strings.TrimSpace(resolved.profile)) {
+	case "oauth2":
+		return rp.OAuth2, true
+	case "fapi1_adv", "fapi1-advanced":
+		return rp.FAPI1Adv, true
+	case "fapi2_security_profile", "fapi2-sp":
+		return rp.FAPI2SecurityProfile, true
+	case "fapi2_message_signing", "fapi2-ms":
+		return rp.FAPI2MessageSigning, true
+	case "oidc":
+		return rp.OIDC, true
+	default:
+		return rp.OIDC, false
+	}
+}
+
+func rpDiscoveryModeForResolvedRequest(resolved resolvedRPRequest) (rp.DiscoveryMode, bool) {
+	switch strings.ToLower(strings.TrimSpace(resolved.discoveryMode)) {
+	case "oidc":
+		return rp.DiscoveryOIDC, true
+	case "oauth2":
+		return rp.DiscoveryOAuth2, true
+	case "disabled":
+		return rp.DiscoveryDisabled, true
+	case "auto":
+		return rp.DiscoveryAuto, true
+	default:
+		return rp.DiscoveryAuto, false
+	}
 }

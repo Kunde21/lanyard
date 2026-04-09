@@ -9,6 +9,27 @@ import (
 	"github.com/Kunde21/lanyard/rp"
 )
 
+type startupAction string
+
+const (
+	startupActionFullFlow         startupAction = "full_flow"
+	startupActionDiscoveryOnly    startupAction = "discovery_only"
+	startupActionDiscoveryAndJWKS startupAction = "discovery_and_jwks"
+)
+
+func parseStartupAction(s string) startupAction {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case string(startupActionDiscoveryOnly):
+		return startupActionDiscoveryOnly
+	case string(startupActionDiscoveryAndJWKS):
+		return startupActionDiscoveryAndJWKS
+	case string(startupActionFullFlow):
+		return startupActionFullFlow
+	default:
+		return startupActionFullFlow
+	}
+}
+
 type rpRuntimeConfig struct {
 	Alias                    string                    `json:"alias"`
 	Issuer                   string                    `json:"issuer,omitempty"`
@@ -28,6 +49,19 @@ type rpRuntimeConfig struct {
 	ResponseMode             string                    `json:"response_mode,omitempty"`
 	ResponseType             string                    `json:"response_type,omitempty"`
 	FAPIRequestMethod        string                    `json:"fapi_request_method,omitempty"`
+	Profile                  string                    `json:"profile,omitempty"`
+	DiscoveryMode            string                    `json:"discovery_mode,omitempty"`
+	StartupAction            string                    `json:"startup_action,omitempty"`
+	StartupAllowError        bool                      `json:"startup_allow_error,omitempty"`
+}
+
+type runtimeStartupResponse struct {
+	AuthorizationURL string   `json:"authorization_url,omitempty"`
+	Cookies          []string `json:"cookies,omitempty"`
+}
+
+func (c rpRuntimeConfig) startupAction() startupAction {
+	return parseStartupAction(c.StartupAction)
 }
 
 type runtimeRegistry struct {

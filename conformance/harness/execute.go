@@ -189,12 +189,22 @@ func (jr *jobRunner) execute(ctx context.Context) planResult {
 func (jr *jobRunner) executeModule(ctx context.Context, module PlanModule, planID string, moduleIndex int) testResult {
 	startedAt := time.Now().UTC()
 	alias := fmt.Sprintf("%s-%d", jr.job.Alias, moduleIndex+1)
+	action := startupActionForModule(module.Name)
 
 	res := testResult{JobID: jr.job.JobID, ModuleName: module.Name, Alias: alias, Variant: stableVariantMap(jr.job.PlanVariant), StartedAt: startedAt}
 	jr.logf("  test start: job=%s plan=%s module=%s alias=%s", jr.job.JobID, jr.job.PlanName, module.Name, alias)
 
 	moduleVariant := mergeModuleVariant(module.Variant, jr.cfg.ForcedVariants)
-	instance, err := jr.client.CreateTestInstance(ctx, module.Name, planID, moduleVariant, nil)
+	planVariant := mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants)
+	createVariant := moduleVariant
+	testPlanID := planID
+	var testConfig map[string]any
+	if action != "full_flow" {
+		testPlanID = ""
+		testConfig = buildStandaloneModuleConfig(alias, planVariant, jr.cfg.WaitTimeoutSeconds)
+		createVariant = mergeVariantMaps(stringMapToAnyMap(planVariant), moduleVariant)
+	}
+	instance, err := jr.client.CreateTestInstance(ctx, module.Name, testPlanID, createVariant, testConfig)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("create test instance failed: %v", err))
 		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, instance.ID, err)
@@ -203,24 +213,28 @@ func (jr *jobRunner) executeModule(ctx context.Context, module PlanModule, planI
 	res.TestID = instance.ID
 	testID := instance.ID
 
-	info, err := jr.client.GetTestInfo(ctx, testID)
+	info, err := waitForTestReady(ctx, jr.client, testID)
 	if err != nil {
-		jr.logf("  warning: failed to get test info: %v", err)
+		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("wait for test readiness failed: %v", err))
+		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, testID, err)
+		return res
 	}
 	suiteAlias := effectiveSuiteAlias(info.Alias, jr.job.Alias)
 	jr.logf("  test context: job=%s plan=%s module=%s test_id=%s local_alias=%s suite_alias=%s", jr.job.JobID, jr.job.PlanName, module.Name, testID, alias, suiteAlias)
 
-	issuer := constructIssuer(jr.cfg.SuiteURL, info.PlanID, suiteAlias)
-
 	pollCtx, cancel := context.WithTimeout(ctx, jr.cfg.TestTimeout)
 	defer cancel()
-	if err := jr.registerRuntimeAlias(pollCtx, suiteAlias); err != nil {
+	if err := jr.registerRuntimeAlias(pollCtx, suiteAlias, module.Name); err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("register runtime alias failed: %v", err))
 		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s suite_alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, suiteAlias, testID, err)
 		return res
 	}
 
-	trigger := jr.frontChannelTriggerForModule(module.Name, issuer, moduleVariant)
+	var trigger func(context.Context, string) error
+	if action == "full_flow" {
+		trigger = jr.frontChannelTriggerForAlias(suiteAlias, module.Name)
+	}
+
 	pollInfo, err := pollTestResultWithConfig(pollCtx, jr.client, testID, trigger, jr.cfg.WaitingMaxRetries, jr.cfg.WaitingRetryInterval)
 	if err != nil {
 		cleanupErr := jr.cancelTestAndWaitTerminal(testID, jr.job.PlanName, module.Name, alias, suiteAlias)
@@ -277,53 +291,41 @@ func effectiveSuiteAlias(infoAlias, jobAlias string) string {
 	return strings.TrimSpace(jobAlias)
 }
 
-func (jr *jobRunner) triggerFrontChannelStep(ctx context.Context, testID string) error {
-	return jr.doTrigger(ctx, testID, "/login", "", nil, "")
-}
-
-func (jr *jobRunner) frontChannelTriggerForModule(moduleName, issuer string, variant map[string]any) func(context.Context, string) error {
+func (jr *jobRunner) frontChannelTriggerForAlias(alias string, moduleName string) func(context.Context, string) error {
 	return func(ctx context.Context, testID string) error {
-		endpoint := moduleTriggerEndpoint(moduleName)
-		return jr.doTrigger(ctx, testID, endpoint, issuer, variant, moduleName)
+		return jr.executeStartupBrowserVisit(ctx, testID, alias, moduleName)
 	}
 }
 
-func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer string, variant map[string]any, moduleName string) error {
+func (jr *jobRunner) executeStartupBrowserVisit(ctx context.Context, testID, alias, moduleName string) error {
 	triggerCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
 
-	triggerURL := "https://rp.localhost" + endpoint
-	query := url.Values{}
-	if issuer != "" {
-		query.Set("issuer", issuer)
+	startup, ok := jr.startupByAlias[alias]
+	if !ok || strings.TrimSpace(startup.AuthorizationURL) == "" {
+		return fmt.Errorf("startup browser visit missing authorization url for alias %q", alias)
 	}
-	query.Set("module_name", moduleName)
-
-	if isFAPI2Variant(variant) {
-		if v, ok := variant["client_auth_type"]; ok {
-			query.Set("client_auth_type", fmt.Sprintf("%v", v))
-		}
-		if v, ok := variant["sender_constrain"]; ok {
-			query.Set("sender_constrain", fmt.Sprintf("%v", v))
-		}
-		if v, ok := variant["fapi_profile"]; ok {
-			query.Set("fapi_profile", fmt.Sprintf("%v", v))
-		}
-		if v, ok := variant["fapi_request_method"]; ok {
-			query.Set("fapi_request_method", fmt.Sprintf("%v", v))
-		}
-		if v, ok := variant["fapi_response_mode"]; ok {
-			query.Set("fapi_response_mode", fmt.Sprintf("%v", v))
-		}
-	}
-
-	if len(query) > 0 {
-		triggerURL += "?" + query.Encode()
-	}
-
-	req, err := http.NewRequestWithContext(triggerCtx, http.MethodGet, triggerURL, nil)
+	req, err := http.NewRequestWithContext(triggerCtx, http.MethodGet, startup.AuthorizationURL, nil)
 	if err != nil {
-		return fmt.Errorf("failed to build front-channel request: %w", err)
+		return fmt.Errorf("failed to build authorization request: %w", err)
+	}
+	if len(startup.Cookies) > 0 && jr.frontClient.Jar != nil {
+		rpURL, err := url.Parse("https://rp.localhost/")
+		if err != nil {
+			return fmt.Errorf("failed to parse rp cookie url: %w", err)
+		}
+		cookies := make([]*http.Cookie, 0, len(startup.Cookies))
+		for _, rawCookie := range startup.Cookies {
+			if strings.TrimSpace(rawCookie) == "" {
+				continue
+			}
+			cookie, err := http.ParseSetCookie(rawCookie)
+			if err != nil {
+				return fmt.Errorf("failed to parse startup cookie: %w", err)
+			}
+			cookies = append(cookies, cookie)
+		}
+		jr.frontClient.Jar.SetCookies(rpURL, cookies)
 	}
 
 	resp, finalURL, err := jr.executeBrowserVisit(triggerCtx, testID, req)
@@ -333,7 +335,7 @@ func (jr *jobRunner) doTrigger(ctx context.Context, testID, endpoint, issuer str
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 8*1024))
 
-	jr.logf("    front-channel trigger: job=%s test_id=%s endpoint=%s issuer=%q final_url=%q status=%d", jr.job.JobID, testID, endpoint, issuer, finalURL, resp.StatusCode)
+	jr.logf("    startup browser visit: job=%s test_id=%s alias=%s auth_url=%q final_url=%q status=%d", jr.job.JobID, testID, alias, startup.AuthorizationURL, finalURL, resp.StatusCode)
 	if err := frontChannelTriggerStatusErrorForModule(resp.StatusCode, string(body), moduleName); err != nil {
 		return err
 	}
@@ -535,23 +537,39 @@ func isNegativeTestModule(moduleName string) bool {
 	return negativeModules[moduleName]
 }
 
-func moduleTriggerEndpoint(moduleName string) string {
-	discoveryModules := map[string]string{
-		"oidcc-client-test-discovery-openid-config":   "/discovery",
-		"oidcc-client-test-discovery-jwks-uri-keys":   "/discovery-jwks",
-		"oidcc-client-test-discovery-issuer-mismatch": "/discovery",
-		"oidcc-client-test-discovery-webfinger-acct":  "/webfinger-acct",
-		"oidcc-client-test-discovery-webfinger-url":   "/webfinger-url",
-		"oidcc-client-test-userinfo-bearer-body":      "/login-userinfo-body",
-	}
-	if endpoint, ok := discoveryModules[moduleName]; ok {
-		return endpoint
-	}
-	return "/login"
-}
-
 func pollTestResult(ctx context.Context, client testInfoGetter, testID string, onWaiting func(context.Context, string) error) (testInfo, error) {
 	return pollTestResultWithConfig(ctx, client, testID, onWaiting, 3, 2*time.Second)
+}
+
+func waitForTestReady(ctx context.Context, client testInfoGetter, testID string) (testInfo, error) {
+	ticker := time.NewTicker(200 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		info, err := client.GetTestInfo(ctx, testID)
+		if err != nil {
+			return testInfo{}, err
+		}
+		switch strings.ToUpper(strings.TrimSpace(info.Status)) {
+		case "WAITING", "RUNNING":
+			return info, nil
+		case "CONFIGURED":
+			if err := client.StartTest(ctx, testID); err != nil {
+				return testInfo{}, fmt.Errorf("start configured test: %w", err)
+			}
+		case "CREATED", "PENDING", "QUEUED", "":
+			// keep waiting until the suite exposes the module for interaction.
+		default:
+			if isTerminalStatus(info) {
+				return info, nil
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return testInfo{}, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func pollTestResultWithConfig(ctx context.Context, client testInfoGetter, testID string, onWaiting func(context.Context, string) error, maxRetries int, retryInterval time.Duration) (testInfo, error) {
@@ -867,6 +885,27 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 	}
 
 	return cfg
+}
+
+func buildStandaloneModuleConfig(alias string, planVariant map[string]string, waitTimeoutSeconds int) map[string]any {
+	if waitTimeoutSeconds <= 0 {
+		waitTimeoutSeconds = 5
+	}
+	client := map[string]any{
+		"client_id":    "local-dev-client",
+		"redirect_uri": runtimeRedirectURI(alias),
+		"request_type": requestTypeForPlanVariant(planVariant),
+		"scope":        strings.Join(scopesForPlanVariant(planVariant), " "),
+	}
+	if secret := strings.TrimSpace("local-dev-secret-32-bytes-minimum!!"); secret != "" && !strings.EqualFold(strings.TrimSpace(planVariant["client_auth_type"]), "none") {
+		client["client_secret"] = secret
+	}
+	return map[string]any{
+		"alias":              alias,
+		"client":             client,
+		"description":        "Lanyard automated local conformance run",
+		"waitTimeoutSeconds": waitTimeoutSeconds,
+	}
 }
 
 func runtimeRedirectURI(alias string) string {
