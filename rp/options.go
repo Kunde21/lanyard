@@ -57,6 +57,7 @@ func WithScopes(scopes ...string) Option {
 			return
 		}
 		r.scopes = append([]string(nil), scopes...)
+		r.scopesExplicit = true
 	}
 }
 
@@ -69,12 +70,111 @@ func WithClockSkew(skew time.Duration) Option {
 	}
 }
 
-// WithProviderMetadata supplies provider metadata up front so [New] can skip
-// discovery and use the provided endpoints immediately.
+// WithProviderMetadata supplies provider metadata. Values are stored as partial
+// configuration and merged with discovered metadata; caller-supplied values
+// take precedence over discovered values.
 func WithProviderMetadata(provider metadata.Provider) Option {
 	return func(r *RP) {
-		r.provider = provider
-		r.providerSet = true
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, provider)
+		r.configuredProviderSet = true
+	}
+}
+
+// WithAuthorizationEndpoint sets the authorization endpoint URL.
+// The value is stored as partial metadata and merged with discovered metadata.
+func WithAuthorizationEndpoint(endpoint string) Option {
+	return func(r *RP) {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			return
+		}
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
+			AuthorizationServer: metadata.AuthorizationServer{AuthorizationEndpoint: endpoint},
+		})
+		r.configuredProviderSet = true
+	}
+}
+
+// WithTokenEndpoint sets the token endpoint URL.
+// The value is stored as partial metadata and merged with discovered metadata.
+func WithTokenEndpoint(endpoint string) Option {
+	return func(r *RP) {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			return
+		}
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
+			AuthorizationServer: metadata.AuthorizationServer{TokenEndpoint: endpoint},
+		})
+		r.configuredProviderSet = true
+	}
+}
+
+// WithUserInfoEndpoint sets the userinfo endpoint URL.
+// The value is stored as partial metadata and merged with discovered metadata.
+func WithUserInfoEndpoint(endpoint string) Option {
+	return func(r *RP) {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			return
+		}
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{UserinfoEndpoint: endpoint})
+		r.configuredProviderSet = true
+	}
+}
+
+// WithJWKSURI sets the JWKS URI.
+// The value is stored as partial metadata and merged with discovered metadata.
+func WithJWKSURI(uri string) Option {
+	return func(r *RP) {
+		uri = strings.TrimSpace(uri)
+		if uri == "" {
+			return
+		}
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
+			AuthorizationServer: metadata.AuthorizationServer{JWKSURI: uri},
+		})
+		r.configuredProviderSet = true
+	}
+}
+
+// WithPushedAuthorizationRequestEndpoint sets the PAR endpoint URL.
+// The value is stored as partial metadata and merged with discovered metadata.
+func WithPushedAuthorizationRequestEndpoint(endpoint string) Option {
+	return func(r *RP) {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
+			return
+		}
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
+			PushedAuthorizationRequestEndpoint: endpoint,
+		})
+		r.configuredProviderSet = true
+	}
+}
+
+// WithMTLSEndpointAliases sets the mTLS endpoint aliases.
+// The value is stored as partial metadata and merged with discovered metadata.
+func WithMTLSEndpointAliases(aliases metadata.MTLSEndpointAliases) Option {
+	return func(r *RP) {
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
+			AuthorizationServer: metadata.AuthorizationServer{MTLSEndpointAliases: aliases},
+		})
+		r.configuredProviderSet = true
+	}
+}
+
+// WithProviderIssuer sets the provider issuer in the configured metadata.
+func WithProviderIssuer(issuer string) Option {
+	return func(r *RP) {
+		issuer = strings.TrimSpace(issuer)
+		if issuer == "" {
+			return
+		}
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
+			AuthorizationServer: metadata.AuthorizationServer{Issuer: issuer},
+		})
+		r.configuredProviderSet = true
 	}
 }
 
@@ -116,6 +216,7 @@ func WithClientKeyProvider(provider ClientKeyProvider) Option {
 func WithRequirePAR(require bool) Option {
 	return func(r *RP) {
 		r.requirePAR = require
+		r.requirePARExplicit = true
 	}
 }
 
@@ -124,6 +225,7 @@ func WithRequirePAR(require bool) Option {
 func WithSenderConstrain(mode string) Option {
 	return func(r *RP) {
 		r.senderConstrain = normalizeSenderConstrain(mode)
+		r.senderConstrainExplicit = true
 	}
 }
 
@@ -231,6 +333,7 @@ func WithResponseMode(mode string) Option {
 	return func(r *RP) {
 		if r != nil {
 			r.responseMode = strings.TrimSpace(mode)
+			r.responseModeExplicit = true
 		}
 	}
 }
@@ -240,6 +343,7 @@ func WithResponseType(responseType string) Option {
 	return func(r *RP) {
 		if r != nil {
 			r.responseType = strings.TrimSpace(responseType)
+			r.responseTypeExplicit = true
 		}
 	}
 }
@@ -250,6 +354,83 @@ func WithRequestMethod(method string) Option {
 	return func(r *RP) {
 		if r != nil {
 			r.requestMethod = normalizeRequestMethod(method)
+			r.requestMethodExplicit = true
 		}
+	}
+}
+
+// Profile selects an RP behavior profile that applies sensible defaults.
+type Profile int
+
+const (
+	// OIDC selects standard OpenID Connect defaults.
+	OIDC Profile = iota
+	// OAuth2 selects OAuth 2.0-only defaults (no forced openid scope).
+	OAuth2
+	// FAPI1Adv selects FAPI 1.0 Advanced profile defaults.
+	FAPI1Adv
+	// FAPI2SecurityProfile selects FAPI 2.0 Security Profile defaults.
+	FAPI2SecurityProfile
+	// FAPI2MessageSigning selects FAPI 2.0 Message Signing defaults.
+	FAPI2MessageSigning
+)
+
+func profileFromPublic(p Profile) profileType {
+	switch p {
+	case OAuth2:
+		return profileOAuth2
+	case FAPI1Adv:
+		return profileFAPI1Adv
+	case FAPI2SecurityProfile:
+		return profileFAPI2SecurityProfile
+	case FAPI2MessageSigning:
+		return profileFAPI2MessageSigning
+	default:
+		return profileOIDC
+	}
+}
+
+// WithProfile sets an RP behavior profile that applies sensible defaults
+// for scopes, discovery mode, and security settings. Profile defaults only
+// fill fields that the caller has not already set via explicit options.
+func WithProfile(profile Profile) Option {
+	return func(r *RP) {
+		r.profile = profileFromPublic(profile)
+		r.profileExplicit = true
+	}
+}
+
+// DiscoveryMode controls whether and how provider metadata is discovered.
+type DiscoveryMode int
+
+const (
+	// DiscoveryAuto selects discovery type from profile and current RP needs.
+	DiscoveryAuto DiscoveryMode = iota
+	// DiscoveryOIDC forces OIDC provider metadata discovery.
+	DiscoveryOIDC
+	// DiscoveryOAuth2 forces OAuth 2.0 authorization server metadata discovery.
+	DiscoveryOAuth2
+	// DiscoveryDisabled never discovers; fails if required metadata is missing.
+	DiscoveryDisabled
+)
+
+func discoveryModeFromPublic(m DiscoveryMode) discoveryModeType {
+	switch m {
+	case DiscoveryOIDC:
+		return discoveryModeOIDC
+	case DiscoveryOAuth2:
+		return discoveryModeOAuth2
+	case DiscoveryDisabled:
+		return discoveryModeDisabled
+	default:
+		return discoveryModeAuto
+	}
+}
+
+// WithDiscoveryMode sets the discovery policy for provider metadata resolution.
+func WithDiscoveryMode(mode DiscoveryMode) Option {
+	return func(r *RP) {
+		r.discoveryMode = discoveryModeFromPublic(mode)
+		r.discoveryModeExplicit = true
 	}
 }

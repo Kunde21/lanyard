@@ -18,6 +18,15 @@ func TestPublicAPIOptionNames(t *testing.T) {
 	_ = rp.WithDiscoveryPreloadJWKS(true)
 	_ = rp.SetAuthorizationDetails([]map[string]any{{"type": "account_information"}})
 	_ = rp.SetAuthParam("resource", "urn:example:api")
+	_ = rp.WithProfile(rp.OIDC)
+	_ = rp.WithProfile(rp.OAuth2)
+	_ = rp.WithProfile(rp.FAPI1Adv)
+	_ = rp.WithProfile(rp.FAPI2SecurityProfile)
+	_ = rp.WithProfile(rp.FAPI2MessageSigning)
+	_ = rp.WithDiscoveryMode(rp.DiscoveryAuto)
+	_ = rp.WithDiscoveryMode(rp.DiscoveryOIDC)
+	_ = rp.WithDiscoveryMode(rp.DiscoveryOAuth2)
+	_ = rp.WithDiscoveryMode(rp.DiscoveryDisabled)
 
 	tok := rp.Token{
 		AccessToken:  "at",

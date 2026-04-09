@@ -54,6 +54,25 @@ const (
 	requestMethodSignedNonRepudiation
 )
 
+type profileType int
+
+const (
+	profileOIDC profileType = iota
+	profileOAuth2
+	profileFAPI1Adv
+	profileFAPI2SecurityProfile
+	profileFAPI2MessageSigning
+)
+
+type discoveryModeType int
+
+const (
+	discoveryModeAuto discoveryModeType = iota
+	discoveryModeOIDC
+	discoveryModeOAuth2
+	discoveryModeDisabled
+)
+
 func normalizeRequestMethod(raw string) requestMethodType {
 	if strings.EqualFold(strings.TrimSpace(raw), "signed_non_repudiation") {
 		return requestMethodSignedNonRepudiation
@@ -66,12 +85,13 @@ func (r requestMethodType) isSigned() bool {
 }
 
 type RP struct {
-	issuer       string
-	clientID     string
-	clientSecret string
-	redirectURI  string
-	scopes       []string
-	authMethod   AuthMethod
+	issuer         string
+	clientID       string
+	clientSecret   string
+	redirectURI    string
+	scopes         []string
+	scopesExplicit bool
+	authMethod     AuthMethod
 
 	httpClient     *http.Client
 	logger         *slog.Logger
@@ -81,14 +101,31 @@ type RP struct {
 	provider    metadata.Provider
 	providerSet bool
 
+	configuredProvider    metadata.Provider
+	configuredProviderSet bool
+
 	userInfoTokenTransport UserInfoTokenTransport
 
 	clientKeyProvider ClientKeyProvider
 
-	requirePAR             bool
-	senderConstrain        senderConstrainType
-	fapiProfile            fapiProfileType
-	allowUnsecuredIDTokens bool
+	requirePAR              bool
+	requirePARExplicit      bool
+	senderConstrain         senderConstrainType
+	senderConstrainExplicit bool
+	fapiProfile             fapiProfileType
+	allowUnsecuredIDTokens  bool
+
+	responseMode          string
+	responseModeExplicit  bool
+	responseType          string
+	responseTypeExplicit  bool
+	requestMethod         requestMethodType
+	requestMethodExplicit bool
+
+	profile               profileType
+	profileExplicit       bool
+	discoveryMode         discoveryModeType
+	discoveryModeExplicit bool
 
 	resolvedAuthMethod  AuthMethod
 	allowMethodFallback bool
@@ -100,9 +137,6 @@ type RP struct {
 	dpopNonces *dpopNonceStore
 
 	authorizationDetails string
-	responseMode         string
-	responseType         string
-	requestMethod        requestMethodType
 }
 
 // New creates a browser-flow relying party that is ready to generate an
@@ -118,6 +152,7 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 		opt(r)
 	}
 
+	r.applyProfileDefaults()
 	r.initDefaults()
 
 	if err := r.validate(); err != nil {
@@ -126,7 +161,7 @@ func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string
 
 	r.initMetadataClient()
 
-	if err := r.initProvider(ctx); err != nil {
+	if err := r.resolveProvider(ctx); err != nil {
 		return nil, err
 	}
 
@@ -148,6 +183,162 @@ func (r *RP) authorizationResponseType() string {
 		return strings.TrimSpace(r.responseType)
 	}
 	return "code"
+}
+
+func mergeProviderMissing(dst, src metadata.Provider) metadata.Provider {
+	merged := dst
+	if merged.AuthorizationEndpoint == "" {
+		merged.AuthorizationEndpoint = src.AuthorizationEndpoint
+	}
+	if merged.TokenEndpoint == "" {
+		merged.TokenEndpoint = src.TokenEndpoint
+	}
+	if merged.JWKSURI == "" {
+		merged.JWKSURI = src.JWKSURI
+	}
+	if merged.UserinfoEndpoint == "" {
+		merged.UserinfoEndpoint = src.UserinfoEndpoint
+	}
+	if merged.PushedAuthorizationRequestEndpoint == "" {
+		merged.PushedAuthorizationRequestEndpoint = src.PushedAuthorizationRequestEndpoint
+	}
+	if merged.Issuer == "" {
+		merged.Issuer = src.Issuer
+	}
+	if len(merged.ResponseTypesSupported) == 0 {
+		merged.ResponseTypesSupported = src.ResponseTypesSupported
+	}
+	if len(merged.IDTokenSigningAlgValuesSupported) == 0 {
+		merged.IDTokenSigningAlgValuesSupported = src.IDTokenSigningAlgValuesSupported
+	}
+	if len(merged.SubjectTypesSupported) == 0 {
+		merged.SubjectTypesSupported = src.SubjectTypesSupported
+	}
+	if len(merged.TokenEndpointAuthMethodsSupported) == 0 {
+		merged.TokenEndpointAuthMethodsSupported = src.TokenEndpointAuthMethodsSupported
+	}
+	if len(merged.RequestObjectSigningAlgValuesSupported) == 0 {
+		merged.RequestObjectSigningAlgValuesSupported = src.RequestObjectSigningAlgValuesSupported
+	}
+	if len(merged.AuthorizationSigningAlgValuesSupported) == 0 {
+		merged.AuthorizationSigningAlgValuesSupported = src.AuthorizationSigningAlgValuesSupported
+	}
+	if merged.MTLSEndpointAliases.TokenEndpoint == "" {
+		merged.MTLSEndpointAliases.TokenEndpoint = src.MTLSEndpointAliases.TokenEndpoint
+	}
+	if merged.MTLSEndpointAliases.UserinfoEndpoint == "" {
+		merged.MTLSEndpointAliases.UserinfoEndpoint = src.MTLSEndpointAliases.UserinfoEndpoint
+	}
+	if merged.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint == "" {
+		merged.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint = src.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint
+	}
+	if len(merged.CodeChallengeMethodsSupported) == 0 {
+		merged.CodeChallengeMethodsSupported = src.CodeChallengeMethodsSupported
+	}
+	if len(merged.ResponseModesSupported) == 0 {
+		merged.ResponseModesSupported = src.ResponseModesSupported
+	}
+	if len(merged.TokenEndpointAuthSigningAlgValuesSupported) == 0 {
+		merged.TokenEndpointAuthSigningAlgValuesSupported = src.TokenEndpointAuthSigningAlgValuesSupported
+	}
+	if len(merged.IDTokenEncryptionAlgValuesSupported) == 0 {
+		merged.IDTokenEncryptionAlgValuesSupported = src.IDTokenEncryptionAlgValuesSupported
+	}
+	if len(merged.IDTokenEncryptionEncValuesSupported) == 0 {
+		merged.IDTokenEncryptionEncValuesSupported = src.IDTokenEncryptionEncValuesSupported
+	}
+	if merged.Raw == nil {
+		merged.Raw = src.Raw
+	}
+	merged.AuthorizationServer.Raw = merged.Raw
+	return merged
+}
+
+func mergeConfiguredProvider(dst, src metadata.Provider) metadata.Provider {
+	merged := dst
+	if strings.TrimSpace(src.AuthorizationEndpoint) != "" {
+		merged.AuthorizationEndpoint = src.AuthorizationEndpoint
+	}
+	if strings.TrimSpace(src.TokenEndpoint) != "" {
+		merged.TokenEndpoint = src.TokenEndpoint
+	}
+	if strings.TrimSpace(src.JWKSURI) != "" {
+		merged.JWKSURI = src.JWKSURI
+	}
+	if strings.TrimSpace(src.UserinfoEndpoint) != "" {
+		merged.UserinfoEndpoint = src.UserinfoEndpoint
+	}
+	if strings.TrimSpace(src.PushedAuthorizationRequestEndpoint) != "" {
+		merged.PushedAuthorizationRequestEndpoint = src.PushedAuthorizationRequestEndpoint
+	}
+	if strings.TrimSpace(src.Issuer) != "" {
+		merged.Issuer = src.Issuer
+	}
+	if len(src.ResponseTypesSupported) > 0 {
+		merged.ResponseTypesSupported = append([]string(nil), src.ResponseTypesSupported...)
+	}
+	if len(src.IDTokenSigningAlgValuesSupported) > 0 {
+		merged.IDTokenSigningAlgValuesSupported = append([]string(nil), src.IDTokenSigningAlgValuesSupported...)
+	}
+	if len(src.SubjectTypesSupported) > 0 {
+		merged.SubjectTypesSupported = append([]string(nil), src.SubjectTypesSupported...)
+	}
+	if len(src.TokenEndpointAuthMethodsSupported) > 0 {
+		merged.TokenEndpointAuthMethodsSupported = append([]string(nil), src.TokenEndpointAuthMethodsSupported...)
+	}
+	if len(src.RequestObjectSigningAlgValuesSupported) > 0 {
+		merged.RequestObjectSigningAlgValuesSupported = append([]string(nil), src.RequestObjectSigningAlgValuesSupported...)
+	}
+	if len(src.AuthorizationSigningAlgValuesSupported) > 0 {
+		merged.AuthorizationSigningAlgValuesSupported = append([]string(nil), src.AuthorizationSigningAlgValuesSupported...)
+	}
+	if strings.TrimSpace(src.MTLSEndpointAliases.TokenEndpoint) != "" {
+		merged.MTLSEndpointAliases.TokenEndpoint = src.MTLSEndpointAliases.TokenEndpoint
+	}
+	if strings.TrimSpace(src.MTLSEndpointAliases.UserinfoEndpoint) != "" {
+		merged.MTLSEndpointAliases.UserinfoEndpoint = src.MTLSEndpointAliases.UserinfoEndpoint
+	}
+	if strings.TrimSpace(src.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint) != "" {
+		merged.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint = src.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint
+	}
+	if len(src.CodeChallengeMethodsSupported) > 0 {
+		merged.CodeChallengeMethodsSupported = append([]string(nil), src.CodeChallengeMethodsSupported...)
+	}
+	if len(src.ResponseModesSupported) > 0 {
+		merged.ResponseModesSupported = append([]string(nil), src.ResponseModesSupported...)
+	}
+	if len(src.TokenEndpointAuthSigningAlgValuesSupported) > 0 {
+		merged.TokenEndpointAuthSigningAlgValuesSupported = append([]string(nil), src.TokenEndpointAuthSigningAlgValuesSupported...)
+	}
+	if len(src.IDTokenEncryptionAlgValuesSupported) > 0 {
+		merged.IDTokenEncryptionAlgValuesSupported = append([]string(nil), src.IDTokenEncryptionAlgValuesSupported...)
+	}
+	if len(src.IDTokenEncryptionEncValuesSupported) > 0 {
+		merged.IDTokenEncryptionEncValuesSupported = append([]string(nil), src.IDTokenEncryptionEncValuesSupported...)
+	}
+	if src.Raw != nil {
+		merged.Raw = src.Raw
+	}
+	merged.AuthorizationServer.Raw = merged.Raw
+	return merged
+}
+
+func providerHasAuthorizationEndpoint(p metadata.Provider) bool {
+	return strings.TrimSpace(p.AuthorizationEndpoint) != ""
+}
+
+func providerHasTokenEndpoint(p metadata.Provider) bool {
+	return strings.TrimSpace(p.TokenEndpoint) != ""
+}
+
+func providerHasJWKSURI(p metadata.Provider) bool {
+	return strings.TrimSpace(p.JWKSURI) != ""
+}
+
+func providerIsComplete(p metadata.Provider) bool {
+	return providerHasAuthorizationEndpoint(p) &&
+		providerHasTokenEndpoint(p) &&
+		providerHasJWKSURI(p)
 }
 
 func newRP(issuer, clientID, clientSecret, redirectURI string) *RP {
@@ -184,16 +375,116 @@ func (r *RP) initMetadataClient() {
 	}
 }
 
-func (r *RP) initProvider(ctx context.Context) error {
-	if !r.providerSet {
-		provider, err := r.discoverProviderMetadata(ctx, r.issuer)
-		if err != nil {
-			return fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
-		}
-		r.provider = provider
+func (r *RP) resolveProvider(ctx context.Context) error {
+	if r.configuredProviderSet && providerIsComplete(r.configuredProvider) {
+		r.provider = r.configuredProvider
 		r.providerSet = true
+		return nil
 	}
+
+	mode := r.effectiveDiscoveryMode()
+
+	if mode == discoveryModeDisabled {
+		if r.configuredProviderSet {
+			r.provider = r.configuredProvider
+			r.providerSet = true
+			return nil
+		}
+		return fmt.Errorf("%w: discovery is disabled and no provider metadata was configured", ErrInvalidConfiguration)
+	}
+
+	discovered, err := r.discoverProviderMetadataForMode(ctx, r.issuer, mode)
+	if err != nil {
+		return fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
+	}
+
+	if r.configuredProviderSet {
+		r.provider = mergeProviderMissing(r.configuredProvider, discovered)
+	} else {
+		r.provider = discovered
+	}
+	r.providerSet = true
 	return nil
+}
+
+func (r *RP) effectiveDiscoveryMode() discoveryModeType {
+	if r.discoveryModeExplicit {
+		return r.discoveryMode
+	}
+
+	switch r.profile {
+	case profileOAuth2:
+		return discoveryModeOAuth2
+	default:
+		if r.usesOpenIDScope() {
+			return discoveryModeOIDC
+		}
+		return discoveryModeAuto
+	}
+}
+
+func (r *RP) discoverProviderMetadataForMode(ctx context.Context, issuer string, mode discoveryModeType) (metadata.Provider, error) {
+	switch mode {
+	case discoveryModeOIDC:
+		return DiscoverProvider(ctx, issuer,
+			WithDiscoveryOIDCClient(r.metadataClient),
+		)
+	case discoveryModeOAuth2:
+		as, err := r.metadataClient.DiscoverAuthorizationServer(ctx, issuer)
+		if err != nil {
+			return metadata.Provider{}, err
+		}
+		return metadata.Provider{AuthorizationServer: as}, nil
+	default:
+		return r.discoverProviderMetadata(ctx, issuer)
+	}
+}
+
+func (r *RP) applyProfileDefaults() {
+	if !r.profileExplicit {
+		return
+	}
+
+	switch r.profile {
+	case profileOAuth2:
+		if !r.scopesExplicit {
+			r.scopes = removeScope(r.scopes, "openid")
+			if len(r.scopes) == 0 {
+				r.scopes = []string{}
+			}
+		}
+	case profileFAPI1Adv:
+		if !r.scopesExplicit {
+			r.scopes = []string{"openid"}
+		}
+		if !r.requestMethodExplicit {
+			r.requestMethod = requestMethodSignedNonRepudiation
+		}
+	case profileFAPI2SecurityProfile:
+		if !r.scopesExplicit {
+			r.scopes = []string{"openid"}
+		}
+		if !r.requestMethodExplicit {
+			r.requestMethod = requestMethodSignedNonRepudiation
+		}
+	case profileFAPI2MessageSigning:
+		if !r.scopesExplicit {
+			r.scopes = []string{"openid"}
+		}
+		if !r.requestMethodExplicit {
+			r.requestMethod = requestMethodSignedNonRepudiation
+		}
+	}
+}
+
+func removeScope(scopes []string, target string) []string {
+	filtered := make([]string, 0, len(scopes))
+	for _, s := range scopes {
+		if !strings.EqualFold(strings.TrimSpace(s), target) {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
 }
 
 func (r *RP) finalizeSecurityDefaults() {

@@ -279,8 +279,11 @@ func TestAuthorizationURL_SignedRequestObjectByValueUsesRequestParameter(t *test
 		"secret",
 		"https://rp.test/callback",
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
-			Issuer:                "https://issuer.test",
-			AuthorizationEndpoint: "https://issuer.test/authorize",
+			Issuer:                 "https://issuer.test",
+			AuthorizationEndpoint:  "https://issuer.test/authorize",
+			TokenEndpoint:          "https://issuer.test/token",
+			JWKSURI:                "https://issuer.test/jwks",
+			ResponseTypesSupported: []string{"code"},
 		}}),
 		WithClientKeyProvider(NewStaticClientKeyProvider(privateKey, "kid-1", "PS256", nil)),
 		WithRequestMethod("signed_non_repudiation"),
