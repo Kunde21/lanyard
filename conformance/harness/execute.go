@@ -924,7 +924,7 @@ func buildStandaloneModuleConfig(alias string, planVariant map[string]string, wa
 		}
 	}
 	if requestTypeUsesSignedRequestObject(requestTypeForPlanVariant(planVariant)) {
-		client["jwks_uri"] = runtimeClientJWKSURI(alias)
+		client["jwks"] = loadPublicJWKS("client.jwks.json")
 		client["request_object_signing_alg"] = "PS256"
 	}
 	return map[string]any{
