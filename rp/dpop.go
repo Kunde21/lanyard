@@ -250,10 +250,9 @@ func normalizeSenderConstrain(raw string) senderConstrainType {
 }
 
 func (r *RP) shouldUseDPoP() bool {
-	if r.senderConstrain != SenderConstrainNone {
-		return r.senderConstrain == SenderConstrainDPoP && r.clientKeyProvider != nil && isDPoPSupported(r.resolvedAuthMethod)
-	}
-	return r.clientKeyProvider != nil && isDPoPSupported(r.resolvedAuthMethod)
+	return r.senderConstrain == SenderConstrainDPoP &&
+		r.clientKeyProvider != nil &&
+		isDPoPSupported(r.resolvedAuthMethod)
 }
 
 // ShouldUseDPoP reports whether the RP is configured to use DPoP.

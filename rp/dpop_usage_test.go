@@ -12,7 +12,7 @@ func TestShouldUseDPoP_RespectsExplicitSenderConstraint(t *testing.T) {
 		clientKeyProvider:  &staticClientKeyProvider{},
 	}
 
-	if diff := cmp.Diff(true, r.shouldUseDPoP()); diff != "" {
+	if diff := cmp.Diff(false, r.shouldUseDPoP()); diff != "" {
 		t.Fatalf("default shouldUseDPoP() mismatch (-want +got):\n%s", diff)
 	}
 

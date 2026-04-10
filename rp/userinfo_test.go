@@ -171,6 +171,45 @@ func TestFetchUserInfoErrors(t *testing.T) {
 	}
 }
 
+func TestFetchUserInfo_PrivateKeyJWTBearerWithoutSenderConstraint(t *testing.T) {
+	key := testRSAKey(t)
+	var gotAuth string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"sub":"sub-123","name":"Alice"}`)
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods("private_key_jwt")
+	provider.UserinfoEndpoint = ts.URL
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client",
+		"",
+		"https://rp.test/callback",
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("fetchUserInfo() failed: %v", err)
+	}
+
+	if diff := cmp.Diff("Bearer access-token", gotAuth); diff != "" {
+		t.Fatalf("Authorization header mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestFetchUserInfo_DPoPAuthorization(t *testing.T) {
 	key := testRSAKey(t)
 	var gotAuth string

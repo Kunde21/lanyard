@@ -272,7 +272,7 @@ func TestMaybeFetchConformanceResource_RetriesWithDpopNonce(t *testing.T) {
 	}
 }
 
-func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
+func TestMaybeFetchConformanceResource_UsesBearerWhenNoSenderConstraint(t *testing.T) {
 	t.Setenv("RP_INSECURE_TLS", "true")
 
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -281,34 +281,13 @@ func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
 	}
 	keyProvider := rp.NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)
 
-	requests := 0
-	var firstAuth string
-	var secondAuth string
-	var firstInteractionID string
-	var secondInteractionID string
-	var firstProof string
-	var secondProof string
+	var gotAuth string
 	var gotPath string
 
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
 		gotPath = r.URL.Path
-		auth := r.Header.Get("Authorization")
-		proof := r.Header.Get("DPoP")
+		gotAuth = r.Header.Get("Authorization")
 
-		if requests == 1 {
-			firstAuth = auth
-			firstInteractionID = r.Header.Get("x-fapi-interaction-id")
-			firstProof = proof
-			w.Header().Set("DPoP-Nonce", "nonce-2")
-			w.Header().Set("WWW-Authenticate", `DPoP error="use_dpop_nonce"`)
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-
-		secondAuth = auth
-		secondInteractionID = r.Header.Get("x-fapi-interaction-id")
-		secondProof = proof
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprint(w, `{}`)
@@ -324,7 +303,6 @@ func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
 		rp.WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{AuthorizationEndpoint: "https://issuer.test/authorize", TokenEndpoint: "https://issuer.test/token", JWKSURI: "https://issuer.test/jwks"}}),
 		rp.WithAuthMethod(rp.AuthMethodPrivateKeyJWT),
 		rp.WithClientKeyProvider(keyProvider),
-		rp.WithSenderConstrain(""),
 	)
 	if err != nil {
 		t.Fatalf("rp.New() failed: %v", err)
@@ -340,23 +318,8 @@ func TestMaybeFetchConformanceResource_UsesImplicitDpop(t *testing.T) {
 		t.Fatalf("maybeFetchConformanceResource() failed: %v", err)
 	}
 
-	if diff := cmp.Diff(2, requests); diff != "" {
-		t.Fatalf("request count mismatch (-want +got):\n%s", diff)
-	}
-	if diff := cmp.Diff("DPoP access-token", firstAuth); diff != "" {
-		t.Fatalf("first Authorization header mismatch (-want +got):\n%s", diff)
-	}
-	if diff := cmp.Diff("DPoP access-token", secondAuth); diff != "" {
-		t.Fatalf("second Authorization header mismatch (-want +got):\n%s", diff)
-	}
-	if firstProof == "" || secondProof == "" {
-		t.Fatalf("expected DPoP proofs on both requests")
-	}
-	if firstProof == secondProof {
-		t.Fatalf("expected second proof to differ from first proof (should include new nonce)")
-	}
-	if firstInteractionID == "" || secondInteractionID == "" {
-		t.Fatalf("expected x-fapi-interaction-id on both requests")
+	if diff := cmp.Diff("Bearer access-token", gotAuth); diff != "" {
+		t.Fatalf("Authorization header mismatch (-want +got):\n%s", diff)
 	}
 	if diff := cmp.Diff("/test/a/alias-a/open-banking/v1.1/accounts", gotPath); diff != "" {
 		t.Fatalf("conformance resource path mismatch (-want +got):\n%s", diff)
