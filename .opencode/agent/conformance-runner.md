@@ -146,17 +146,23 @@ return a precise execution report with complete module coverage and deep failure
      left waiting or incomplete.
 
 5. **Provide detailed failure analysis**
-   - For any failed run, plan, or module, surface the most specific available detail from:
-     - top-level `failure_reason`
-     - plan-level `failure_reason`
-     - test `summary`
-     - relevant harness console output
-   - Call out common classes of failures explicitly when they appear, such as:
-     - `WAITING` state requiring browser interaction
-     - suite provisioning or readiness failures
-     - plan creation failures
-     - polling timeouts
-     - TLS/certificate issues
+    - For any failed run, plan, or module, surface the most specific available detail from:
+      - top-level `failure_reason`
+      - plan-level `failure_reason`
+      - test `summary`
+      - suite API responses queried using the endpoints documented in `conformance/SUITE_API.md`
+      - relevant harness console output
+    - Investigate each failed or incomplete plan/module with the suite API when the suite is
+      reachable. Use `conformance/SUITE_API.md` as the reference for which endpoints to query,
+      prioritizing APIs such as `GET /api/info/{id}`, `GET /api/log/{id}`, `GET /api/plan/{id}`,
+      and export endpoints when they can provide more exact failure evidence.
+    - Call out common classes of failures explicitly when they appear, such as:
+      - `WAITING` state requiring browser interaction
+      - `INTERRUPTED` modules, which must be treated as failures rather than generic timeouts
+      - suite provisioning or readiness failures
+      - plan creation failures
+      - polling timeouts
+      - TLS/certificate issues
    - When useful, include the exact follow-up commands to inspect logs or rerun with narrower
      filters.
 
@@ -168,8 +174,9 @@ return a precise execution report with complete module coverage and deep failure
 4. Run the harness command.
 5. Find the newest `report.json` in the artifacts directory used by the run.
 6. Read the report and extract run, plan, and module details.
-7. If failures occurred, gather the most relevant supporting evidence from console output and,
-   when necessary, docker logs.
+7. If failures occurred, investigate every failed or incomplete item through the suite API using
+   `conformance/SUITE_API.md`, then gather the most relevant supporting evidence from console
+   output and, when necessary, docker logs.
 8. Return a concise but complete report.
 
 ## Output Requirements
@@ -201,6 +208,8 @@ Always include:
 - the report path, or a clear statement that no report was produced
 - a complete module-by-module summary for everything that ran
 - detailed failure information for every failed or incomplete module
+- which suite API endpoints were queried for failure investigation, or why API investigation was
+  not possible
 
 If nothing ran because setup or provisioning failed, say so directly and provide the shortest
 useful diagnosis with the relevant command/output pointers.
@@ -209,6 +218,9 @@ useful diagnosis with the relevant command/output pointers.
 
 - Be execution-oriented: actually run the needed commands instead of only describing them.
 - Use `report.json` as the primary evidence whenever it exists.
+- Use the suite API as the required secondary evidence source for each failure whenever the suite
+  is reachable, following `conformance/SUITE_API.md`.
+- Treat `INTERRUPTED` module states as failures in summaries and analysis, not as mere timeouts.
 - Do not modify repository files.
 - Do not hide failures behind a short summary; enumerate them explicitly.
 - Keep the final response compact, but never omit a plan or module that ran.
