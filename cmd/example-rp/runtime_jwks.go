@@ -22,12 +22,13 @@ func handleConformanceJWKS(w http.ResponseWriter, r *http.Request) {
 	if decodedAlias, err := url.PathUnescape(alias); err == nil {
 		alias = strings.TrimSpace(decodedAlias)
 	}
-	if _, ok := conformanceRuntimes.Lookup(alias); !ok {
+	runtimeCfg, ok := conformanceRuntimes.Lookup(alias)
+	if !ok {
 		http.NotFound(w, r)
 		return
 	}
 
-	jwks, err := conformancePublicJWKS()
+	jwks, err := conformancePublicJWKS(runtimeCfg.ClientAuthType)
 	if err != nil {
 		http.Error(w, "failed to load jwks", http.StatusInternalServerError)
 		return

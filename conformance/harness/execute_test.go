@@ -703,3 +703,189 @@ func TestExecuteModule_DiscoveryModulesSkipFrontChannelTrigger(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_ContainsX5C(t *testing.T) {
+	cfg := buildPlanConfig(map[string]string{
+		"client_auth_type":    "self_signed_tls_client_auth",
+		"request_type":        "plain_http_request",
+		"client_registration": "static_client",
+		"response_mode":       "default",
+	}, "alias-test", 5)
+
+	client, ok := cfg["client"].(map[string]any)
+	if !ok {
+		t.Fatal("client config missing")
+	}
+	jwks, ok := client["jwks"].(map[string]any)
+	if !ok {
+		t.Fatal("client.jwks missing")
+	}
+	keys, ok := jwks["keys"].([]any)
+	if !ok {
+		t.Fatal("jwks keys missing")
+	}
+
+	foundX5C := false
+	for _, rawKey := range keys {
+		key, ok := rawKey.(map[string]any)
+		if !ok {
+			continue
+		}
+		if x5cRaw, ok := key["x5c"]; ok {
+			var x5c []string
+			switch v := x5cRaw.(type) {
+			case []string:
+				x5c = v
+			case []any:
+				for _, item := range v {
+					if s, ok := item.(string); ok {
+						x5c = append(x5c, s)
+					}
+				}
+			}
+			if len(x5c) > 0 {
+				foundX5C = true
+				if key["kid"] != "client-mtls" {
+					t.Errorf("x5c key kid = %q, want %q", key["kid"], "client-mtls")
+				}
+				if key["kty"] != "EC" {
+					t.Errorf("x5c key kty = %q, want %q", key["kty"], "EC")
+				}
+				break
+			}
+		}
+	}
+	if !foundX5C {
+		t.Fatal("no JWK with x5c found in client.jwks")
+	}
+}
+
+func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_RequestObject_ContainsX5C(t *testing.T) {
+	cfg := buildPlanConfig(map[string]string{
+		"client_auth_type":    "self_signed_tls_client_auth",
+		"request_type":        "request_object",
+		"client_registration": "static_client",
+		"response_mode":       "default",
+	}, "alias-test", 5)
+
+	client, ok := cfg["client"].(map[string]any)
+	if !ok {
+		t.Fatal("client config missing")
+	}
+	jwks, ok := client["jwks"].(map[string]any)
+	if !ok {
+		t.Fatal("client.jwks missing")
+	}
+	keys, ok := jwks["keys"].([]any)
+	if !ok {
+		t.Fatal("jwks keys missing")
+	}
+
+	foundX5C := false
+	for _, rawKey := range keys {
+		key, ok := rawKey.(map[string]any)
+		if !ok {
+			continue
+		}
+		if x5cRaw, ok := key["x5c"]; ok {
+			var x5c []string
+			switch v := x5cRaw.(type) {
+			case []string:
+				x5c = v
+			case []any:
+				for _, item := range v {
+					if s, ok := item.(string); ok {
+						x5c = append(x5c, s)
+					}
+				}
+			}
+			if len(x5c) > 0 {
+				foundX5C = true
+				break
+			}
+		}
+	}
+	if !foundX5C {
+		t.Fatal("no JWK with x5c found in client.jwks for request_object variant")
+	}
+}
+
+func TestBuildPlanConfig_OIDCConfigPrivateKeyJWT_NoX5C(t *testing.T) {
+	cfg := buildPlanConfig(map[string]string{
+		"client_auth_type":    "private_key_jwt",
+		"request_type":        "plain_http_request",
+		"client_registration": "static_client",
+		"response_mode":       "default",
+	}, "alias-test", 5)
+
+	client, ok := cfg["client"].(map[string]any)
+	if !ok {
+		t.Fatal("client config missing")
+	}
+	jwks, ok := client["jwks"].(map[string]any)
+	if !ok {
+		t.Fatal("client.jwks missing")
+	}
+	keys, ok := jwks["keys"].([]any)
+	if !ok {
+		t.Fatal("jwks keys missing")
+	}
+
+	for _, rawKey := range keys {
+		key, ok := rawKey.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, ok := key["x5c"]; ok {
+			t.Fatal("x5c should not be present for private_key_jwt auth type")
+		}
+	}
+}
+
+func TestBuildStandaloneModuleConfig_SelfSignedTlsClientAuth_ContainsX5C(t *testing.T) {
+	cfg := buildStandaloneModuleConfig("alias-test", map[string]string{
+		"client_auth_type": "self_signed_tls_client_auth",
+		"request_type":     "plain_http_request",
+	}, 5)
+
+	client, ok := cfg["client"].(map[string]any)
+	if !ok {
+		t.Fatal("client config missing")
+	}
+	jwks, ok := client["jwks"].(map[string]any)
+	if !ok {
+		t.Fatal("client.jwks missing")
+	}
+	keys, ok := jwks["keys"].([]any)
+	if !ok {
+		t.Fatal("jwks keys missing")
+	}
+
+	foundX5C := false
+	for _, rawKey := range keys {
+		key, ok := rawKey.(map[string]any)
+		if !ok {
+			continue
+		}
+		if x5cRaw, ok := key["x5c"]; ok {
+			var x5c []string
+			switch v := x5cRaw.(type) {
+			case []string:
+				x5c = v
+			case []any:
+				for _, item := range v {
+					if s, ok := item.(string); ok {
+						x5c = append(x5c, s)
+					}
+				}
+			}
+			if len(x5c) > 0 {
+				foundX5C = true
+				break
+			}
+		}
+	}
+	if !foundX5C {
+		t.Fatal("no JWK with x5c found in client.jwks")
+	}
+}

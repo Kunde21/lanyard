@@ -2,7 +2,7 @@
 type: bug
 priority: high
 created: 2026-04-10T00:00:00Z
-status: created
+status: implemented
 tags: [conformance, oidcc-config, self-signed-tls-client-auth, mtls, certificate, interrupted]
 keywords: [self_signed_tls_client_auth, invalid certificate, interrupted, oidcc-client-test-idtoken-sig-none, signing-key-rotation]
 patterns: [suite api log inspection, self-signed mtls validation, static client certificate debugging]
@@ -66,9 +66,9 @@ The RP should present and register a certificate chain/metadata combination that
 ## Success Criteria
 
 ### Automated Verification
-- [ ] `self_signed_tls_client_auth` OIDCC config variants no longer fail with `ValidateClientCertificateForSelfSignedTlsClientAuth: Invalid certificate`.
-- [ ] The three affected modules progress past interruption for those variants.
-- [ ] `go test ./...` remains green.
+- [x] `self_signed_tls_client_auth` OIDCC config variants no longer fail with `ValidateClientCertificateForSelfSignedTlsClientAuth: Invalid certificate`.
+- [x] The three affected modules progress past interruption for those variants.
+- [x] `go test ./...` remains green.
 
 ### Manual Verification
 - [ ] Suite logs show successful self-signed TLS client auth certificate validation for affected variants.

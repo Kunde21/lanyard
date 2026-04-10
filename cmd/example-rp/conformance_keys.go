@@ -172,21 +172,60 @@ func loadRequestObjectKeyProvider(authType, senderConstrain, requestType string)
 	return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, mtlsCert), nil
 }
 
-func conformancePublicJWKS() (map[string]any, error) {
+func conformancePublicJWKS(authType string) (map[string]any, error) {
 	keys, err := loadConformanceKeySet()
 	if err != nil {
 		return nil, err
 	}
 
+	jwksKeys := []map[string]any{{
+		"kty": "RSA",
+		"use": "sig",
+		"kid": keys.rsaKeyID,
+		"alg": keys.rsaAlg,
+		"n":   base64.RawURLEncoding.EncodeToString(keys.rsaPrivateKey.PublicKey.N.Bytes()),
+		"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(keys.rsaPrivateKey.PublicKey.E)).Bytes()),
+	}}
+
+	if strings.EqualFold(strings.TrimSpace(authType), "self_signed_tls_client_auth") {
+		certJWK, err := selfSignedCertJWK(keys)
+		if err == nil {
+			jwksKeys = append(jwksKeys, certJWK)
+		}
+	}
+
 	return map[string]any{
-		"keys": []map[string]any{{
-			"kty": "RSA",
-			"use": "sig",
-			"kid": keys.rsaKeyID,
-			"alg": keys.rsaAlg,
-			"n":   base64.RawURLEncoding.EncodeToString(keys.rsaPrivateKey.PublicKey.N.Bytes()),
-			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(keys.rsaPrivateKey.PublicKey.E)).Bytes()),
-		}},
+		"keys": jwksKeys,
+	}, nil
+}
+
+func selfSignedCertJWK(keys conformanceKeySet) (map[string]any, error) {
+	if keys.mtlsCert == nil || len(keys.mtlsCert.Certificate) == 0 {
+		return nil, fmt.Errorf("no mTLS certificate available")
+	}
+	cert, err := x509.ParseCertificate(keys.mtlsCert.Certificate[0])
+	if err != nil {
+		return nil, fmt.Errorf("parse mTLS cert: %w", err)
+	}
+	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("mTLS cert public key is not ECDSA")
+	}
+	byteLen := (pubKey.Curve.Params().BitSize + 7) / 8
+	xBytes := make([]byte, byteLen)
+	yBytes := make([]byte, byteLen)
+	pubKey.X.FillBytes(xBytes)
+	pubKey.Y.FillBytes(yBytes)
+
+	return map[string]any{
+		"kty": "EC",
+		"crv": "P-256",
+		"kid": "client-mtls",
+		"alg": "ES256",
+		"use": "sig",
+		"x":   base64.RawURLEncoding.EncodeToString(xBytes),
+		"y":   base64.RawURLEncoding.EncodeToString(yBytes),
+		"x5c": []string{base64.StdEncoding.EncodeToString(cert.Raw)},
 	}, nil
 }
 

@@ -869,8 +869,9 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 		}
 	}
 
+	authType := strings.ToLower(strings.TrimSpace(planVariant["client_auth_type"]))
+
 	if !isFAPI2 {
-		authType := strings.ToLower(strings.TrimSpace(planVariant["client_auth_type"]))
 		if authType == "private_key_jwt" || authType == "self_signed_tls_client_auth" {
 			clientJWKS := loadPublicJWKS("client.jwks.json")
 			cfg["client"].(map[string]any)["jwks"] = clientJWKS
@@ -881,6 +882,10 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 				cfg["client"].(map[string]any)["certificate"] = certPEM
 				cfg["client2"].(map[string]any)["certificate"] = certPEM
 			}
+			if authType == "tls_client_auth" {
+				cfg["client"].(map[string]any)["tls_client_auth_san_dns"] = "client-mtls.localhost"
+				cfg["client2"].(map[string]any)["tls_client_auth_san_dns"] = "client-mtls.localhost"
+			}
 		}
 	}
 
@@ -890,6 +895,17 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 		cfg["client2"].(map[string]any)["jwks"] = clientJWKS
 		cfg["client"].(map[string]any)["request_object_signing_alg"] = "PS256"
 		cfg["client2"].(map[string]any)["request_object_signing_alg"] = "PS256"
+	}
+
+	if authType == "self_signed_tls_client_auth" {
+		for _, c := range []map[string]any{
+			cfg["client"].(map[string]any),
+			cfg["client2"].(map[string]any),
+		} {
+			if jwks, ok := c["jwks"].(map[string]any); ok {
+				c["jwks"] = appendSelfSignedCertToJWKS(jwks)
+			}
+		}
 	}
 
 	if strings.EqualFold(strings.TrimSpace(requestType), "request_uri") {
@@ -927,10 +943,18 @@ func buildStandaloneModuleConfig(alias string, planVariant map[string]string, wa
 		if certPEM, _, err := loadClientMTLSCert(); err == nil {
 			client["certificate"] = certPEM
 		}
+		if authType == "tls_client_auth" {
+			client["tls_client_auth_san_dns"] = "client-mtls.localhost"
+		}
 	}
 	if requestTypeUsesSignedRequestObject(requestTypeForPlanVariant(planVariant)) {
 		client["jwks"] = loadPublicJWKS("client.jwks.json")
 		client["request_object_signing_alg"] = "PS256"
+	}
+	if authType == "self_signed_tls_client_auth" {
+		if jwks, ok := client["jwks"].(map[string]any); ok {
+			client["jwks"] = appendSelfSignedCertToJWKS(jwks)
+		}
 	}
 	if strings.EqualFold(strings.TrimSpace(requestTypeForPlanVariant(planVariant)), "request_uri") {
 		client["request_uris"] = []string{"https://rp.localhost/request/"}
@@ -1102,6 +1126,47 @@ func appendMTLSPublicKeyToJWKS(jwks map[string]any) map[string]any {
 		"y":   base64.RawURLEncoding.EncodeToString(yBytes),
 	}
 
+	keys, _ := jwks["keys"].([]any)
+	jwks["keys"] = append(keys, keyJWK)
+	return jwks
+}
+
+func appendSelfSignedCertToJWKS(jwks map[string]any) map[string]any {
+	certPEM, _, err := loadClientMTLSCert()
+	if err != nil {
+		return jwks
+	}
+	block, _ := pem.Decode([]byte(certPEM))
+	if block == nil {
+		return jwks
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return jwks
+	}
+	pubKey, ok := cert.PublicKey.(*ecdsa.PublicKey)
+	if !ok {
+		return jwks
+	}
+	curve := pubKey.Curve
+	byteLen := (curve.Params().BitSize + 7) / 8
+	xBytes := make([]byte, byteLen)
+	yBytes := make([]byte, byteLen)
+	pubKey.X.FillBytes(xBytes)
+	pubKey.Y.FillBytes(yBytes)
+
+	x5cEntry := base64.StdEncoding.EncodeToString(cert.Raw)
+
+	keyJWK := map[string]any{
+		"kty": "EC",
+		"crv": "P-256",
+		"kid": "client-mtls",
+		"alg": "ES256",
+		"use": "sig",
+		"x":   base64.RawURLEncoding.EncodeToString(xBytes),
+		"y":   base64.RawURLEncoding.EncodeToString(yBytes),
+		"x5c": []string{x5cEntry},
+	}
 	keys, _ := jwks["keys"].([]any)
 	jwks["keys"] = append(keys, keyJWK)
 	return jwks
