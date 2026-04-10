@@ -884,6 +884,14 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 		}
 	}
 
+	if requestTypeUsesSignedRequestObject(requestType) {
+		clientJWKS := loadPublicJWKS("client.jwks.json")
+		cfg["client"].(map[string]any)["jwks"] = clientJWKS
+		cfg["client2"].(map[string]any)["jwks"] = clientJWKS
+		cfg["client"].(map[string]any)["request_object_signing_alg"] = "PS256"
+		cfg["client2"].(map[string]any)["request_object_signing_alg"] = "PS256"
+	}
+
 	if strings.EqualFold(strings.TrimSpace(planVariant["authorization_request_type"]), "rar") {
 		cfg["resource"] = map[string]any{
 			"authorization_details_types_supported": []string{"account_information"},
@@ -915,6 +923,10 @@ func buildStandaloneModuleConfig(alias string, planVariant map[string]string, wa
 			client["certificate"] = certPEM
 		}
 	}
+	if requestTypeUsesSignedRequestObject(requestTypeForPlanVariant(planVariant)) {
+		client["jwks_uri"] = runtimeClientJWKSURI(alias)
+		client["request_object_signing_alg"] = "PS256"
+	}
 	return map[string]any{
 		"alias":              alias,
 		"client":             client,
@@ -929,6 +941,23 @@ func runtimeRedirectURI(alias string) string {
 		return "https://rp.localhost/callback"
 	}
 	return "https://rp.localhost/callback/" + url.PathEscape(trimmed)
+}
+
+func runtimeClientJWKSURI(alias string) string {
+	trimmed := strings.TrimSpace(alias)
+	if trimmed == "" {
+		return "https://rp.localhost/conformance/jwks/default"
+	}
+	return "https://rp.localhost/conformance/jwks/" + url.PathEscape(trimmed)
+}
+
+func requestTypeUsesSignedRequestObject(requestType string) bool {
+	switch strings.ToLower(strings.TrimSpace(requestType)) {
+	case "request_object", "request_uri":
+		return true
+	default:
+		return false
+	}
 }
 
 func requestTypeForPlanVariant(planVariant map[string]string) string {

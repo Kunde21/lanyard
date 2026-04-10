@@ -30,6 +30,7 @@ func main() {
 	mux.HandleFunc("/callback", handleCallback)
 	mux.HandleFunc("/callback/", handleCallback)
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
+	mux.HandleFunc("/conformance/jwks/", handleConformanceJWKS)
 
 	const addr = ":8080"
 	slog.Info("example RP listening", "addr", addr)
@@ -46,6 +47,7 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 	mux.HandleFunc("/callback", handleCallbackWithFlow(flow))
 	mux.HandleFunc("/callback/", handleCallbackWithFlow(flow))
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
+	mux.HandleFunc("/conformance/jwks/", handleConformanceJWKS)
 	return mux
 }
 

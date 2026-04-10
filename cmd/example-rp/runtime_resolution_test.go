@@ -241,6 +241,43 @@ func TestRpProfileForResolvedRequest(t *testing.T) {
 	}
 }
 
+func TestRequestMethodForRuntime_UsesSignedRequestObjectForOIDCCRequestTypes(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         rpRuntimeConfig
+		wantMethod  string
+		wantRequire bool
+	}{
+		{name: "plain request", cfg: rpRuntimeConfig{RequestType: "plain_http_request"}, wantMethod: "", wantRequire: false},
+		{name: "request object", cfg: rpRuntimeConfig{RequestType: "request_object"}, wantMethod: "signed_non_repudiation", wantRequire: false},
+		{name: "request uri", cfg: rpRuntimeConfig{RequestType: "request_uri"}, wantMethod: "signed_non_repudiation", wantRequire: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(tt.wantMethod, requestMethodForRuntime(tt.cfg)); diff != "" {
+				t.Fatalf("requestMethodForRuntime() mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tt.wantRequire, runtimeRequiresPAR(tt.cfg)); diff != "" {
+				t.Fatalf("runtimeRequiresPAR() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestLoadRequestObjectKeyProvider_ReturnsAsymmetricSignerForSignedRequestTypes(t *testing.T) {
+	provider, err := loadRequestObjectKeyProvider("client_secret_basic", "", "request_object")
+	if err != nil {
+		t.Fatalf("loadRequestObjectKeyProvider() failed: %v", err)
+	}
+	if provider == nil {
+		t.Fatal("loadRequestObjectKeyProvider() = nil, want key provider")
+	}
+	if diff := cmp.Diff("PS256", provider.SigningAlgorithm()); diff != "" {
+		t.Fatalf("signing alg mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestRpDiscoveryModeForResolvedRequest(t *testing.T) {
 	tests := []struct {
 		name          string

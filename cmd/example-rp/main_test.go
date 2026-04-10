@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -81,6 +82,36 @@ func TestLoginRedirects(t *testing.T) {
 	}
 	if got := w.Header().Get("Location"); got == "" {
 		t.Fatalf("Location header missing")
+	}
+}
+
+func TestConformanceJWKSHandler(t *testing.T) {
+	alias := "alias-jwks"
+	if err := conformanceRuntimes.Register(rpRuntimeConfig{
+		Alias:       alias,
+		ClientID:    "client",
+		RedirectURI: "https://rp.localhost/callback/alias-jwks",
+	}); err != nil {
+		t.Fatalf("Register() failed: %v", err)
+	}
+	t.Cleanup(func() { conformanceRuntimes.Delete(alias) })
+
+	h := newMuxForTest(stubFlow{authURL: "https://issuer.test/authorize?x=1"})
+	req := httptest.NewRequest(http.MethodGet, "/conformance/jwks/"+alias, nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status mismatch: got %d", w.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+	keys, ok := body["keys"].([]any)
+	if !ok || len(keys) != 1 {
+		t.Fatalf("jwks keys = %#v, want single key", body["keys"])
 	}
 }
 

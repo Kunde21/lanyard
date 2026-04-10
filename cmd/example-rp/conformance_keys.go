@@ -46,8 +46,12 @@ func readConformanceKeySet() (conformanceKeySet, error) {
 	if certsDir == "" {
 		certsDir = "conformance/certs"
 	}
+	resolvedCertsDir, err := resolveConformanceCertsDir(certsDir)
+	if err != nil {
+		return conformanceKeySet{}, err
+	}
 
-	jwksData, err := os.ReadFile(filepath.Join(certsDir, "client.jwks.json"))
+	jwksData, err := os.ReadFile(filepath.Join(resolvedCertsDir, "client.jwks.json"))
 	if err != nil {
 		return conformanceKeySet{}, fmt.Errorf("read client jwks: %w", err)
 	}
@@ -56,11 +60,11 @@ func readConformanceKeySet() (conformanceKeySet, error) {
 		return conformanceKeySet{}, err
 	}
 
-	certData, err := os.ReadFile(filepath.Join(certsDir, "client-mtls.pem"))
+	certData, err := os.ReadFile(filepath.Join(resolvedCertsDir, "client-mtls.pem"))
 	if err != nil {
 		return conformanceKeySet{}, fmt.Errorf("read mtls cert: %w", err)
 	}
-	keyData, err := os.ReadFile(filepath.Join(certsDir, "client-mtls-key.pem"))
+	keyData, err := os.ReadFile(filepath.Join(resolvedCertsDir, "client-mtls-key.pem"))
 	if err != nil {
 		return conformanceKeySet{}, fmt.Errorf("read mtls key: %w", err)
 	}
@@ -79,10 +83,56 @@ func readConformanceKeySet() (conformanceKeySet, error) {
 	}, nil
 }
 
+func resolveConformanceCertsDir(certsDir string) (string, error) {
+	trimmed := strings.TrimSpace(certsDir)
+	if trimmed == "" {
+		return "", fmt.Errorf("conformance certs dir is required")
+	}
+	if filepath.IsAbs(trimmed) {
+		if _, err := os.Stat(trimmed); err != nil {
+			return "", fmt.Errorf("stat conformance certs dir: %w", err)
+		}
+		return trimmed, nil
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	current := wd
+	for {
+		candidate := filepath.Join(current, trimmed)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+
+	return "", fmt.Errorf("locate conformance certs dir %q from %q", trimmed, wd)
+}
+
 func loadClientKeyProvider(authType, senderConstrain string) (rp.ClientKeyProvider, error) {
-	switch strings.ToLower(strings.TrimSpace(authType)) {
-	case "private_key_jwt", "mtls", "self_signed_tls_client_auth", "tls_client_auth":
-	default:
+	trimmedAuthType := strings.ToLower(strings.TrimSpace(authType))
+	trimmedSenderConstrain := strings.ToLower(strings.TrimSpace(senderConstrain))
+
+	needsSigningKey := false
+	needsTLSCert := false
+
+	switch trimmedAuthType {
+	case "private_key_jwt":
+		needsSigningKey = true
+		needsTLSCert = trimmedSenderConstrain == "mtls"
+	case "mtls", "tls_client_auth", "self_signed_tls_client_auth":
+		needsSigningKey = true
+		needsTLSCert = true
+	}
+
+	if !needsSigningKey && !needsTLSCert {
 		return nil, nil
 	}
 
@@ -91,21 +141,61 @@ func loadClientKeyProvider(authType, senderConstrain string) (rp.ClientKeyProvid
 		return nil, err
 	}
 
+	var mtlsCert *tls.Certificate
+	if needsTLSCert {
+		mtlsCert = keys.mtlsCert
+	}
+
+	return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, mtlsCert), nil
+}
+
+func loadRequestObjectKeyProvider(authType, senderConstrain, requestType string) (rp.ClientKeyProvider, error) {
+	if !requestTypeNeedsAsymmetricSigningKey(requestType) {
+		return loadClientKeyProvider(authType, senderConstrain)
+	}
+
+	keys, err := loadConformanceKeySet()
+	if err != nil {
+		return nil, err
+	}
+
+	var mtlsCert *tls.Certificate
 	switch strings.ToLower(strings.TrimSpace(authType)) {
 	case "private_key_jwt":
-		var mtlsCert *tls.Certificate
 		if strings.EqualFold(strings.TrimSpace(senderConstrain), "mtls") {
 			mtlsCert = keys.mtlsCert
 		}
-		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, mtlsCert), nil
-	case "mtls":
-		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, keys.mtlsCert), nil
-	case "self_signed_tls_client_auth":
-		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, keys.mtlsCert), nil
-	case "tls_client_auth":
-		return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, keys.mtlsCert), nil
+	case "mtls", "tls_client_auth", "self_signed_tls_client_auth":
+		mtlsCert = keys.mtlsCert
+	}
+
+	return rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, keys.rsaAlg, mtlsCert), nil
+}
+
+func conformancePublicJWKS() (map[string]any, error) {
+	keys, err := loadConformanceKeySet()
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"keys": []map[string]any{{
+			"kty": "RSA",
+			"use": "sig",
+			"kid": keys.rsaKeyID,
+			"alg": keys.rsaAlg,
+			"n":   base64.RawURLEncoding.EncodeToString(keys.rsaPrivateKey.PublicKey.N.Bytes()),
+			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(keys.rsaPrivateKey.PublicKey.E)).Bytes()),
+		}},
+	}, nil
+}
+
+func requestTypeNeedsAsymmetricSigningKey(requestType string) bool {
+	switch strings.ToLower(strings.TrimSpace(requestType)) {
+	case "request_object", "request_uri":
+		return true
 	default:
-		return nil, nil
+		return false
 	}
 }
 

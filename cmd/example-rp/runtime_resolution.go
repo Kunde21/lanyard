@@ -137,7 +137,7 @@ func resolveRPRequestFromRuntimeConfig(cfg rpRuntimeConfig) (resolvedRPRequest, 
 	resolved.discoveryMode = cfg.DiscoveryMode
 	resolved.startupAction = cfg.startupAction()
 
-	keyProvider, err := loadClientKeyProvider(cfg.ClientAuthType, cfg.SenderConstrain)
+	keyProvider, err := loadRequestObjectKeyProvider(cfg.ClientAuthType, cfg.SenderConstrain, cfg.RequestType)
 	if err != nil {
 		return resolvedRPRequest{}, err
 	}
@@ -177,7 +177,7 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, 
 		resolved.clientSecret = "local-dev-secret-2-32-bytes-min!!"
 	}
 
-	keyProvider, err := loadClientKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain)
+	keyProvider, err := loadRequestObjectKeyProvider(runtimeCfg.ClientAuthType, runtimeCfg.SenderConstrain, runtimeCfg.RequestType)
 	if err != nil {
 		return resolvedRPRequest{}, err
 	}
