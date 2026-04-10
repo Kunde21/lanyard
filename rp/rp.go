@@ -121,6 +121,7 @@ type RP struct {
 	responseTypeExplicit  bool
 	requestMethod         requestMethodType
 	requestMethodExplicit bool
+	requestURIHandler     RequestURIHandler
 
 	profile               profileType
 	profileExplicit       bool

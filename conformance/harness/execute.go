@@ -892,6 +892,11 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 		cfg["client2"].(map[string]any)["request_object_signing_alg"] = "PS256"
 	}
 
+	if strings.EqualFold(strings.TrimSpace(requestType), "request_uri") {
+		cfg["client"].(map[string]any)["request_uris"] = []string{"https://rp.localhost/request/"}
+		cfg["client2"].(map[string]any)["request_uris"] = []string{"https://rp.localhost/request/"}
+	}
+
 	if strings.EqualFold(strings.TrimSpace(planVariant["authorization_request_type"]), "rar") {
 		cfg["resource"] = map[string]any{
 			"authorization_details_types_supported": []string{"account_information"},
@@ -926,6 +931,9 @@ func buildStandaloneModuleConfig(alias string, planVariant map[string]string, wa
 	if requestTypeUsesSignedRequestObject(requestTypeForPlanVariant(planVariant)) {
 		client["jwks"] = loadPublicJWKS("client.jwks.json")
 		client["request_object_signing_alg"] = "PS256"
+	}
+	if strings.EqualFold(strings.TrimSpace(requestTypeForPlanVariant(planVariant)), "request_uri") {
+		client["request_uris"] = []string{"https://rp.localhost/request/"}
 	}
 	return map[string]any{
 		"alias":              alias,

@@ -119,11 +119,26 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 		if err != nil {
 			return "", err
 		}
-		redirectParams = url.Values{}
-		for key, values := range params {
-			redirectParams[key] = append([]string(nil), values...)
+
+		if r.requestURIHandler != nil {
+			uri, err := r.requestURIHandler(signed)
+			if err != nil {
+				return "", fmt.Errorf("failed to store request object: %w", err)
+			}
+			redirectParams = url.Values{}
+			redirectParams.Set("client_id", r.clientID)
+			redirectParams.Set("request_uri", uri)
+			redirectParams.Set("scope", params.Get("scope"))
+			if v := params.Get("response_mode"); v != "" {
+				redirectParams.Set("response_mode", v)
+			}
+		} else {
+			redirectParams = url.Values{}
+			for key, values := range params {
+				redirectParams[key] = append([]string(nil), values...)
+			}
+			redirectParams.Set("request", signed)
 		}
-		redirectParams.Set("request", signed)
 	}
 
 	if err := r.saveCorrelation(ctx, w, req, state, nonce, verifier, nil); err != nil {

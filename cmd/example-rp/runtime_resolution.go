@@ -52,6 +52,7 @@ type resolvedRPRequest struct {
 	requestMethod        string
 	profile              string
 	discoveryMode        string
+	useRequestURI        bool
 	startupAction        startupAction
 }
 
@@ -135,6 +136,7 @@ func resolveRPRequestFromRuntimeConfig(cfg rpRuntimeConfig) (resolvedRPRequest, 
 	resolved.requestMethod = requestMethodForRuntime(cfg)
 	resolved.profile = cfg.Profile
 	resolved.discoveryMode = cfg.DiscoveryMode
+	resolved.useRequestURI = shouldUseRequestURI(cfg)
 	resolved.startupAction = cfg.startupAction()
 
 	keyProvider, err := loadRequestObjectKeyProvider(cfg.ClientAuthType, cfg.SenderConstrain, cfg.RequestType)
@@ -171,6 +173,7 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, 
 	resolved.requestMethod = requestMethodForRuntime(runtimeCfg)
 	resolved.profile = runtimeCfg.Profile
 	resolved.discoveryMode = runtimeCfg.DiscoveryMode
+	resolved.useRequestURI = shouldUseRequestURI(runtimeCfg)
 	resolved.startupAction = runtimeCfg.startupAction()
 	if shouldUseSecondClient(runtimeCfg, moduleName) {
 		resolved.clientID = "local-dev-client-2"
@@ -221,6 +224,16 @@ func runtimeRequiresPAR(cfg rpRuntimeConfig) bool {
 	}
 
 	return false
+}
+
+func shouldUseRequestURI(cfg rpRuntimeConfig) bool {
+	if strings.ToLower(strings.TrimSpace(cfg.RequestType)) != "request_uri" {
+		return false
+	}
+	if runtimeRequiresPAR(cfg) {
+		return false
+	}
+	return true
 }
 
 func authorizationDetailsForRuntime(cfg rpRuntimeConfig) []map[string]any {
@@ -354,6 +367,13 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	}
 	if mode, ok := rpDiscoveryModeForResolvedRequest(resolved); ok {
 		opts = append(opts, rp.WithDiscoveryMode(mode))
+	}
+	if resolved.useRequestURI {
+		store := newRequestObjectStore(5 * time.Minute)
+		opts = append(opts, rp.WithRequestURIMode(func(signedJWT string) (string, error) {
+			id := store.Store(signedJWT)
+			return "https://rp.localhost/request/" + id, nil
+		}))
 	}
 
 	return rp.New(r.Context(), resolved.issuer, resolved.clientID, resolved.clientSecret, resolved.redirectURI, opts...)

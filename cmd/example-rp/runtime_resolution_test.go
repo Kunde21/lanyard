@@ -266,6 +266,30 @@ func TestRequestMethodForRuntime_UsesSignedRequestObjectForOIDCCRequestTypes(t *
 	}
 }
 
+func TestShouldUseRequestURI(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  rpRuntimeConfig
+		want bool
+	}{
+		{name: "plain_http_request", cfg: rpRuntimeConfig{RequestType: "plain_http_request"}, want: false},
+		{name: "request_object", cfg: rpRuntimeConfig{RequestType: "request_object"}, want: false},
+		{name: "request_uri no fapi", cfg: rpRuntimeConfig{RequestType: "request_uri"}, want: true},
+		{name: "request_uri with fapi profile", cfg: rpRuntimeConfig{RequestType: "request_uri", FAPIProfile: "fapi2-sp"}, want: false},
+		{name: "request_uri with require_par", cfg: rpRuntimeConfig{RequestType: "request_uri", RequirePAR: true}, want: false},
+		{name: "request_uri with par request_type", cfg: rpRuntimeConfig{RequestType: "pushed_authorization_request"}, want: false},
+		{name: "empty request_type", cfg: rpRuntimeConfig{RequestType: ""}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(tt.want, shouldUseRequestURI(tt.cfg)); diff != "" {
+				t.Fatalf("shouldUseRequestURI() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestLoadRequestObjectKeyProvider_ReturnsAsymmetricSignerForSignedRequestTypes(t *testing.T) {
 	provider, err := loadRequestObjectKeyProvider("client_secret_basic", "", "request_object")
 	if err != nil {

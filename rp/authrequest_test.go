@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Kunde21/lanyard/metadata"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestAuthorizationURL(t *testing.T) {
@@ -417,5 +418,172 @@ func TestAuthorizationURL_NoResponseModeByDefault(t *testing.T) {
 	}
 	if got := parsed.Query().Get("response_mode"); got != "" {
 		t.Fatalf("response_mode should be empty by default, got %q", got)
+	}
+}
+
+func TestAuthorizationURL_WithRequestURIMode(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	var storedURI string
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:                 "https://issuer.test",
+			AuthorizationEndpoint:  "https://issuer.test/authorize",
+			TokenEndpoint:          "https://issuer.test/token",
+			JWKSURI:                "https://issuer.test/jwks",
+			ResponseTypesSupported: []string{"code"},
+		}}),
+		WithClientKeyProvider(NewStaticClientKeyProvider(privateKey, "kid-1", "PS256", nil)),
+		WithRequestMethod("signed_non_repudiation"),
+		WithRequestURIMode(func(signedJWT string) (string, error) {
+			storedURI = "https://rp.localhost/request/stored-id-" + signedJWT[:10]
+			return storedURI, nil
+		}),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+
+	q := parsed.Query()
+
+	if q.Get("request_uri") == "" {
+		t.Fatal("request_uri must be present when requestURIHandler is set")
+	}
+	if diff := cmp.Diff(storedURI, q.Get("request_uri")); diff != "" {
+		t.Fatalf("request_uri mismatch (-want +got):\n%s", diff)
+	}
+	if q.Get("request") != "" {
+		t.Fatal("request must not be present when requestURIHandler is set")
+	}
+	if q.Get("client_id") != "client-123" {
+		t.Fatalf("client_id = %q, want %q", q.Get("client_id"), "client-123")
+	}
+	if q.Get("scope") != "openid" {
+		t.Fatalf("scope = %q, want %q", q.Get("scope"), "openid")
+	}
+	if q.Get("state") != "" {
+		t.Fatal("state must not be in query when using request_uri (it's in the request object)")
+	}
+	if q.Get("nonce") != "" {
+		t.Fatal("nonce must not be in query when using request_uri (it's in the request object)")
+	}
+}
+
+func TestAuthorizationURL_WithRequestURIMode_IncludesResponseMode(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:                 "https://issuer.test",
+			AuthorizationEndpoint:  "https://issuer.test/authorize",
+			TokenEndpoint:          "https://issuer.test/token",
+			JWKSURI:                "https://issuer.test/jwks",
+			ResponseTypesSupported: []string{"code"},
+		}}),
+		WithClientKeyProvider(NewStaticClientKeyProvider(privateKey, "kid-1", "PS256", nil)),
+		WithRequestMethod("signed_non_repudiation"),
+		WithResponseMode("form_post"),
+		WithRequestURIMode(func(signedJWT string) (string, error) {
+			return "https://rp.localhost/request/test-id", nil
+		}),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+
+	q := parsed.Query()
+	if q.Get("response_mode") != "form_post" {
+		t.Fatalf("response_mode = %q, want %q", q.Get("response_mode"), "form_post")
+	}
+}
+
+func TestAuthorizationURL_RequestURIHandlerNil_PreservesRequestByValue(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		"client-123",
+		"secret",
+		"https://rp.test/callback",
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:                 "https://issuer.test",
+			AuthorizationEndpoint:  "https://issuer.test/authorize",
+			TokenEndpoint:          "https://issuer.test/token",
+			JWKSURI:                "https://issuer.test/jwks",
+			ResponseTypesSupported: []string{"code"},
+		}}),
+		WithClientKeyProvider(NewStaticClientKeyProvider(privateKey, "kid-1", "PS256", nil)),
+		WithRequestMethod("signed_non_repudiation"),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	rec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+
+	q := parsed.Query()
+	if q.Get("request") == "" {
+		t.Fatal("request must be present when requestURIHandler is nil")
+	}
+	if q.Get("request_uri") != "" {
+		t.Fatal("request_uri must not be present when requestURIHandler is nil")
 	}
 }

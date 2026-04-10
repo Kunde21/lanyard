@@ -359,6 +359,24 @@ func WithRequestMethod(method string) Option {
 	}
 }
 
+// RequestURIHandler is a callback that stores a signed request object JWT
+// and returns a URL where it can be retrieved. When set via WithRequestURIMode,
+// AuthorizationURL emits a request_uri parameter instead of embedding the
+// signed JWT as a request parameter.
+type RequestURIHandler func(signedJWT string) (requestURI string, err error)
+
+// WithRequestURIMode enables request_uri mode. Instead of embedding the signed
+// request object as a request parameter, the handler is called to store the JWT
+// and return a hosted URL. The authorization redirect will contain
+// client_id, request_uri, scope, and optionally response_mode.
+func WithRequestURIMode(handler RequestURIHandler) Option {
+	return func(r *RP) {
+		if r != nil {
+			r.requestURIHandler = handler
+		}
+	}
+}
+
 // Profile selects an RP behavior profile that applies sensible defaults.
 type Profile int
 
