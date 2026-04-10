@@ -2,7 +2,7 @@
 type: bug
 priority: high
 created: 2026-04-10T00:00:00Z
-status: created
+status: implemented
 tags: [conformance, oidcc-config, request-uri, jar, interrupted]
 keywords: [request_uri, oidcc-client-test-idtoken-sig-none, oidcc-client-test-signing-key-rotation, interrupted, suite api, request object]
 patterns: [conformance failure analysis, suite api log inspection, authorization request construction]
