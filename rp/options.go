@@ -237,6 +237,14 @@ func WithFAPIProfile(profile string) Option {
 	}
 }
 
+// WithValidateAuthorizationResponseIssuer enables RFC 9207 issuer validation
+// for front-channel authorization responses.
+func WithValidateAuthorizationResponseIssuer(validate bool) Option {
+	return func(r *RP) {
+		r.validateAuthorizationResponseIssuer = validate
+	}
+}
+
 // WithAllowUnsecuredIDTokens allows acceptance of ID tokens with alg=none.
 // For FAPI profiles, this option is ignored - unsecured tokens are always rejected.
 func WithAllowUnsecuredIDTokens(allow bool) Option {

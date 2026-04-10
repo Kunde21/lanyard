@@ -115,13 +115,14 @@ type RP struct {
 	fapiProfile             fapiProfileType
 	allowUnsecuredIDTokens  bool
 
-	responseMode          string
-	responseModeExplicit  bool
-	responseType          string
-	responseTypeExplicit  bool
-	requestMethod         requestMethodType
-	requestMethodExplicit bool
-	requestURIHandler     RequestURIHandler
+	responseMode                        string
+	responseModeExplicit                bool
+	responseType                        string
+	responseTypeExplicit                bool
+	requestMethod                       requestMethodType
+	requestMethodExplicit               bool
+	requestURIHandler                   RequestURIHandler
+	validateAuthorizationResponseIssuer bool
 
 	profile               profileType
 	profileExplicit       bool

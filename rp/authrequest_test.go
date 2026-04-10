@@ -483,11 +483,23 @@ func TestAuthorizationURL_WithRequestURIMode(t *testing.T) {
 	if q.Get("scope") != "openid" {
 		t.Fatalf("scope = %q, want %q", q.Get("scope"), "openid")
 	}
-	if q.Get("state") != "" {
-		t.Fatal("state must not be in query when using request_uri (it's in the request object)")
+	if q.Get("state") == "" {
+		t.Fatal("state must be present in the outer query when using request_uri")
 	}
-	if q.Get("nonce") != "" {
-		t.Fatal("nonce must not be in query when using request_uri (it's in the request object)")
+	if q.Get("nonce") == "" {
+		t.Fatal("nonce must be present in the outer query when using request_uri")
+	}
+	if q.Get("redirect_uri") != "https://rp.test/callback" {
+		t.Fatalf("redirect_uri = %q, want %q", q.Get("redirect_uri"), "https://rp.test/callback")
+	}
+	if q.Get("response_type") != "code" {
+		t.Fatalf("response_type = %q, want %q", q.Get("response_type"), "code")
+	}
+	if q.Get("code_challenge") == "" {
+		t.Fatal("code_challenge must be present in the outer query when using request_uri")
+	}
+	if q.Get("code_challenge_method") != "S256" {
+		t.Fatalf("code_challenge_method = %q, want %q", q.Get("code_challenge_method"), "S256")
 	}
 }
 

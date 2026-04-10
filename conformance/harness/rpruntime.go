@@ -15,29 +15,30 @@ import (
 )
 
 type rpRuntimeRequest struct {
-	Alias                    string                    `json:"alias"`
-	Issuer                   string                    `json:"issuer,omitempty"`
-	ClientID                 string                    `json:"client_id"`
-	ClientSecret             string                    `json:"client_secret,omitempty"`
-	RedirectURI              string                    `json:"redirect_uri"`
-	Scopes                   []string                  `json:"scopes,omitempty"`
-	Namespace                string                    `json:"namespace,omitempty"`
-	UserInfoTokenTransport   rp.UserInfoTokenTransport `json:"userinfo_token_transport,omitempty"`
-	ClientAuthType           string                    `json:"client_auth_type,omitempty"`
-	SenderConstrain          string                    `json:"sender_constrain,omitempty"`
-	AuthorizationRequestType string                    `json:"authorization_request_type,omitempty"`
-	FAPIClientType           string                    `json:"fapi_client_type,omitempty"`
-	FAPIProfile              string                    `json:"fapi_profile,omitempty"`
-	RequestType              string                    `json:"request_type,omitempty"`
-	RequirePAR               bool                      `json:"require_par,omitempty"`
-	ResponseMode             string                    `json:"response_mode,omitempty"`
-	ResponseType             string                    `json:"response_type,omitempty"`
-	FAPIRequestMethod        string                    `json:"fapi_request_method,omitempty"`
-	FAPIResponseMode         string                    `json:"fapi_response_mode,omitempty"`
-	Profile                  string                    `json:"profile,omitempty"`
-	DiscoveryMode            string                    `json:"discovery_mode,omitempty"`
-	StartupAction            string                    `json:"startup_action,omitempty"`
-	StartupAllowError        bool                      `json:"startup_allow_error,omitempty"`
+	Alias                               string                    `json:"alias"`
+	Issuer                              string                    `json:"issuer,omitempty"`
+	ClientID                            string                    `json:"client_id"`
+	ClientSecret                        string                    `json:"client_secret,omitempty"`
+	RedirectURI                         string                    `json:"redirect_uri"`
+	Scopes                              []string                  `json:"scopes,omitempty"`
+	Namespace                           string                    `json:"namespace,omitempty"`
+	UserInfoTokenTransport              rp.UserInfoTokenTransport `json:"userinfo_token_transport,omitempty"`
+	ClientAuthType                      string                    `json:"client_auth_type,omitempty"`
+	SenderConstrain                     string                    `json:"sender_constrain,omitempty"`
+	AuthorizationRequestType            string                    `json:"authorization_request_type,omitempty"`
+	FAPIClientType                      string                    `json:"fapi_client_type,omitempty"`
+	FAPIProfile                         string                    `json:"fapi_profile,omitempty"`
+	RequestType                         string                    `json:"request_type,omitempty"`
+	RequirePAR                          bool                      `json:"require_par,omitempty"`
+	ResponseMode                        string                    `json:"response_mode,omitempty"`
+	ResponseType                        string                    `json:"response_type,omitempty"`
+	FAPIRequestMethod                   string                    `json:"fapi_request_method,omitempty"`
+	FAPIResponseMode                    string                    `json:"fapi_response_mode,omitempty"`
+	Profile                             string                    `json:"profile,omitempty"`
+	DiscoveryMode                       string                    `json:"discovery_mode,omitempty"`
+	ValidateAuthorizationResponseIssuer bool                      `json:"validate_authorization_response_issuer,omitempty"`
+	StartupAction                       string                    `json:"startup_action,omitempty"`
+	StartupAllowError                   bool                      `json:"startup_allow_error,omitempty"`
 }
 
 type rpRuntimeClient interface {
@@ -217,28 +218,39 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 	scopes := scopesForPlanVariant(planVariant)
 
 	return rpRuntimeRequest{
-		Alias:                    alias,
-		Issuer:                   constructIssuer(suiteURL, "", alias),
-		ClientID:                 clientID,
-		ClientSecret:             clientSecret,
-		RedirectURI:              redirectURI,
-		Scopes:                   scopes,
-		Namespace:                alias,
-		UserInfoTokenTransport:   transport,
-		ClientAuthType:           planVariant["client_auth_type"],
-		SenderConstrain:          planVariant["sender_constrain"],
-		AuthorizationRequestType: planVariant["authorization_request_type"],
-		FAPIClientType:           planVariant["fapi_client_type"],
-		FAPIProfile:              planVariant["fapi_profile"],
-		RequestType:              requestType,
-		RequirePAR:               requirePARForVariant(planVariant),
-		ResponseMode:             coalesceResponseMode(responseModeForPlan(job.PlanName), responseModeForVariant(planVariant)),
-		ResponseType:             responseTypeForPlanVariant(job.PlanName, planVariant),
-		FAPIRequestMethod:        fapiRequestMethodForVariant(planVariant),
-		FAPIResponseMode:         planVariant["fapi_response_mode"],
-		Profile:                  profileForPlanVariant(job.PlanName, planVariant),
-		DiscoveryMode:            discoveryModeForPlanVariant(job.PlanName, planVariant),
+		Alias:                               alias,
+		Issuer:                              constructIssuer(suiteURL, "", alias),
+		ClientID:                            clientID,
+		ClientSecret:                        clientSecret,
+		RedirectURI:                         redirectURI,
+		Scopes:                              scopes,
+		Namespace:                           alias,
+		UserInfoTokenTransport:              transport,
+		ClientAuthType:                      planVariant["client_auth_type"],
+		SenderConstrain:                     planVariant["sender_constrain"],
+		AuthorizationRequestType:            planVariant["authorization_request_type"],
+		FAPIClientType:                      planVariant["fapi_client_type"],
+		FAPIProfile:                         planVariant["fapi_profile"],
+		RequestType:                         requestType,
+		RequirePAR:                          requirePARForVariant(planVariant),
+		ResponseMode:                        coalesceResponseMode(responseModeForPlan(job.PlanName), responseModeForVariant(planVariant)),
+		ResponseType:                        responseTypeForPlanVariant(job.PlanName, planVariant),
+		FAPIRequestMethod:                   fapiRequestMethodForVariant(planVariant),
+		FAPIResponseMode:                    planVariant["fapi_response_mode"],
+		Profile:                             profileForPlanVariant(job.PlanName, planVariant),
+		DiscoveryMode:                       discoveryModeForPlanVariant(job.PlanName, planVariant),
+		ValidateAuthorizationResponseIssuer: validateAuthorizationResponseIssuerForPlanVariant(job.PlanName, planVariant),
 	}
+}
+
+func validateAuthorizationResponseIssuerForPlanVariant(planName string, planVariant map[string]string) bool {
+	if strings.Contains(strings.ToLower(strings.TrimSpace(planName)), "fapi1") {
+		return false
+	}
+	if isFAPI2PlanVariant(planVariant) {
+		return true
+	}
+	return false
 }
 
 func startupActionForModule(moduleName string) string {

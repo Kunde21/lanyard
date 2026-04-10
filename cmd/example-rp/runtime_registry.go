@@ -31,28 +31,29 @@ func parseStartupAction(s string) startupAction {
 }
 
 type rpRuntimeConfig struct {
-	Alias                    string                    `json:"alias"`
-	Issuer                   string                    `json:"issuer,omitempty"`
-	ClientID                 string                    `json:"client_id"`
-	ClientSecret             string                    `json:"client_secret,omitempty"`
-	RedirectURI              string                    `json:"redirect_uri"`
-	Scopes                   []string                  `json:"scopes,omitempty"`
-	Namespace                string                    `json:"namespace,omitempty"`
-	UserInfoTokenTransport   rp.UserInfoTokenTransport `json:"userinfo_token_transport,omitempty"`
-	ClientAuthType           string                    `json:"client_auth_type,omitempty"`
-	SenderConstrain          string                    `json:"sender_constrain,omitempty"`
-	AuthorizationRequestType string                    `json:"authorization_request_type,omitempty"`
-	FAPIClientType           string                    `json:"fapi_client_type,omitempty"`
-	FAPIProfile              string                    `json:"fapi_profile,omitempty"`
-	RequestType              string                    `json:"request_type,omitempty"`
-	RequirePAR               bool                      `json:"require_par,omitempty"`
-	ResponseMode             string                    `json:"response_mode,omitempty"`
-	ResponseType             string                    `json:"response_type,omitempty"`
-	FAPIRequestMethod        string                    `json:"fapi_request_method,omitempty"`
-	Profile                  string                    `json:"profile,omitempty"`
-	DiscoveryMode            string                    `json:"discovery_mode,omitempty"`
-	StartupAction            string                    `json:"startup_action,omitempty"`
-	StartupAllowError        bool                      `json:"startup_allow_error,omitempty"`
+	Alias                               string                    `json:"alias"`
+	Issuer                              string                    `json:"issuer,omitempty"`
+	ClientID                            string                    `json:"client_id"`
+	ClientSecret                        string                    `json:"client_secret,omitempty"`
+	RedirectURI                         string                    `json:"redirect_uri"`
+	Scopes                              []string                  `json:"scopes,omitempty"`
+	Namespace                           string                    `json:"namespace,omitempty"`
+	UserInfoTokenTransport              rp.UserInfoTokenTransport `json:"userinfo_token_transport,omitempty"`
+	ClientAuthType                      string                    `json:"client_auth_type,omitempty"`
+	SenderConstrain                     string                    `json:"sender_constrain,omitempty"`
+	AuthorizationRequestType            string                    `json:"authorization_request_type,omitempty"`
+	FAPIClientType                      string                    `json:"fapi_client_type,omitempty"`
+	FAPIProfile                         string                    `json:"fapi_profile,omitempty"`
+	RequestType                         string                    `json:"request_type,omitempty"`
+	RequirePAR                          bool                      `json:"require_par,omitempty"`
+	ResponseMode                        string                    `json:"response_mode,omitempty"`
+	ResponseType                        string                    `json:"response_type,omitempty"`
+	FAPIRequestMethod                   string                    `json:"fapi_request_method,omitempty"`
+	Profile                             string                    `json:"profile,omitempty"`
+	DiscoveryMode                       string                    `json:"discovery_mode,omitempty"`
+	ValidateAuthorizationResponseIssuer bool                      `json:"validate_authorization_response_issuer,omitempty"`
+	StartupAction                       string                    `json:"startup_action,omitempty"`
+	StartupAllowError                   bool                      `json:"startup_allow_error,omitempty"`
 }
 
 type runtimeStartupResponse struct {

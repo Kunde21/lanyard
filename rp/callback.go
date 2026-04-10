@@ -109,11 +109,11 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		expectedIssuer = r.issuer
 	}
 
-	if r.isFAPIProfile() && authzResponseIss == "" {
-		return nil, fmt.Errorf("%w: authorization response iss is required for FAPI", ErrInvalidState)
+	if r.validateAuthorizationResponseIssuer && authzResponseIss == "" {
+		return nil, fmt.Errorf("%w: authorization response iss is required", ErrInvalidState)
 	}
 
-	if authzResponseIss != "" && authzResponseIss != expectedIssuer {
+	if r.validateAuthorizationResponseIssuer && authzResponseIss != "" && authzResponseIss != expectedIssuer {
 		return nil, fmt.Errorf("%w: authorization response iss mismatch", ErrInvalidState)
 	}
 

@@ -281,6 +281,9 @@ func TestBuildRPRuntimeRequest_MessageSigningFields(t *testing.T) {
 	if req.FAPIResponseMode != "jarm" {
 		t.Fatalf("FAPIResponseMode = %q, want %q", req.FAPIResponseMode, "jarm")
 	}
+	if !req.ValidateAuthorizationResponseIssuer {
+		t.Fatal("ValidateAuthorizationResponseIssuer = false, want true for FAPI2")
+	}
 	if req.ResponseMode != "query.jwt" {
 		t.Fatalf("ResponseMode = %q, want %q (query.jwt for JARM)", req.ResponseMode, "query.jwt")
 	}
@@ -373,6 +376,9 @@ func TestBuildRPRuntimeRequest_FAPI1AdvancedByValue(t *testing.T) {
 	if req.FAPIRequestMethod != "signed_non_repudiation" {
 		t.Fatalf("FAPIRequestMethod = %q, want %q", req.FAPIRequestMethod, "signed_non_repudiation")
 	}
+	if req.ValidateAuthorizationResponseIssuer {
+		t.Fatal("ValidateAuthorizationResponseIssuer = true, want false for FAPI1 Advanced")
+	}
 }
 
 func TestBuildRPRuntimeRequest_FAPI1AdvancedPushed(t *testing.T) {
@@ -397,6 +403,9 @@ func TestBuildRPRuntimeRequest_FAPI1AdvancedPushed(t *testing.T) {
 	}
 	if req.FAPIRequestMethod != "signed_non_repudiation" {
 		t.Fatalf("FAPIRequestMethod = %q, want %q", req.FAPIRequestMethod, "signed_non_repudiation")
+	}
+	if req.ValidateAuthorizationResponseIssuer {
+		t.Fatal("ValidateAuthorizationResponseIssuer = true, want false for FAPI1 Advanced")
 	}
 }
 

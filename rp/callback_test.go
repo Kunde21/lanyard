@@ -360,6 +360,7 @@ func TestHandleCallback_RejectsInvalidAuthorizationResponseIssuer(t *testing.T) 
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
+		WithValidateAuthorizationResponseIssuer(true),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -384,7 +385,7 @@ func TestHandleCallback_RejectsInvalidAuthorizationResponseIssuer(t *testing.T) 
 	}
 }
 
-func TestHandleCallback_FAPIRejectsMissingIss(t *testing.T) {
+func TestHandleCallback_RejectsMissingAuthorizationResponseIssuerWhenValidationEnabled(t *testing.T) {
 	now := time.Now().UTC()
 	issuer := ""
 	tokenCalls := 0
@@ -411,7 +412,7 @@ func TestHandleCallback_FAPIRejectsMissingIss(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithFAPIProfile("plain_fapi"),
+		WithValidateAuthorizationResponseIssuer(true),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -430,7 +431,7 @@ func TestHandleCallback_FAPIRejectsMissingIss(t *testing.T) {
 	rec, req := callbackRequest("code", "state")
 	_, err = r.HandleCallback(context.Background(), rec, req)
 	if !errors.Is(err, ErrInvalidState) {
-		t.Fatalf("HandleCallback() without iss should return ErrInvalidState for FAPI, got %v", err)
+		t.Fatalf("HandleCallback() without iss should return ErrInvalidState when issuer validation is enabled, got %v", err)
 	}
 	if tokenCalls != 0 {
 		t.Fatalf("tokenCalls = %d, want 0", tokenCalls)

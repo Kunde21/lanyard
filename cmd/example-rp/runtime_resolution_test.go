@@ -444,6 +444,28 @@ func TestRPRuntimeConfigStartupAction(t *testing.T) {
 	}
 }
 
+func TestShouldUseMemoryStateStore(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  rpRuntimeConfig
+		want bool
+	}{
+		{name: "oidc private_key_jwt", cfg: rpRuntimeConfig{ClientAuthType: "private_key_jwt"}, want: false},
+		{name: "oidc mtls", cfg: rpRuntimeConfig{ClientAuthType: "mtls"}, want: false},
+		{name: "plain fapi", cfg: rpRuntimeConfig{FAPIProfile: "plain_fapi"}, want: true},
+		{name: "fapi2", cfg: rpRuntimeConfig{FAPIProfile: "fapi2-sp"}, want: true},
+		{name: "fapi1", cfg: rpRuntimeConfig{FAPIProfile: "fapi1"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(tt.want, shouldUseMemoryStateStore(tt.cfg)); diff != "" {
+				t.Fatalf("shouldUseMemoryStateStore() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestResolveRPRequest_DefaultStartupActionIsFullFlow(t *testing.T) {
 	reg := newRuntimeRegistry()
 	if err := reg.Register(rpRuntimeConfig{
@@ -515,5 +537,31 @@ func TestResolveRPRequest_ParsesDiscoveryAndJWKSStartupAction(t *testing.T) {
 	}
 	if resolved.startupAction != startupActionDiscoveryAndJWKS {
 		t.Fatalf("startupAction = %q, want %q", resolved.startupAction, startupActionDiscoveryAndJWKS)
+	}
+}
+
+func TestShouldAllowUnsecuredIDTokens(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolved resolvedRPRequest
+		want     bool
+	}{
+		{name: "oidc profile allows", resolved: resolvedRPRequest{profile: "oidc"}, want: true},
+		{name: "oauth2 profile allows", resolved: resolvedRPRequest{profile: "oauth2"}, want: true},
+		{name: "empty profile allows", resolved: resolvedRPRequest{profile: ""}, want: true},
+		{name: "fapi1_adv profile rejects", resolved: resolvedRPRequest{profile: "fapi1_adv"}, want: false},
+		{name: "fapi1-advanced profile rejects", resolved: resolvedRPRequest{profile: "fapi1-advanced"}, want: false},
+		{name: "fapi2-sp profile rejects", resolved: resolvedRPRequest{profile: "fapi2-sp"}, want: false},
+		{name: "fapi2-ms profile rejects", resolved: resolvedRPRequest{profile: "fapi2-ms"}, want: false},
+		{name: "fapi_profile plain_fapi rejects", resolved: resolvedRPRequest{fapiProfile: "plain_fapi"}, want: false},
+		{name: "fapi_profile fapi2-sp rejects", resolved: resolvedRPRequest{fapiProfile: "fapi2-sp"}, want: false},
+		{name: "unknown profile allows", resolved: resolvedRPRequest{profile: "unknown"}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diff := cmp.Diff(tt.want, shouldAllowUnsecuredIDTokens(tt.resolved)); diff != "" {
+				t.Fatalf("shouldAllowUnsecuredIDTokens() mismatch (-want +got):\n%s", diff)
+			}
+		})
 	}
 }

@@ -34,27 +34,28 @@ func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type resolvedRPRequest struct {
-	issuer               string
-	clientID             string
-	clientSecret         string
-	redirectURI          string
-	scopes               []string
-	stateStore           rp.StateStore
-	userInfoTransport    rp.UserInfoTokenTransport
-	authMethod           rp.AuthMethod
-	hasAuthMethod        bool
-	keyProvider          rp.ClientKeyProvider
-	requirePAR           bool
-	senderConstrain      string
-	fapiProfile          string
-	authorizationDetails []map[string]any
-	responseMode         string
-	responseType         string
-	requestMethod        string
-	profile              string
-	discoveryMode        string
-	useRequestURI        bool
-	startupAction        startupAction
+	issuer                              string
+	clientID                            string
+	clientSecret                        string
+	redirectURI                         string
+	scopes                              []string
+	stateStore                          rp.StateStore
+	userInfoTransport                   rp.UserInfoTokenTransport
+	authMethod                          rp.AuthMethod
+	hasAuthMethod                       bool
+	keyProvider                         rp.ClientKeyProvider
+	requirePAR                          bool
+	senderConstrain                     string
+	fapiProfile                         string
+	authorizationDetails                []map[string]any
+	responseMode                        string
+	responseType                        string
+	requestMethod                       string
+	profile                             string
+	discoveryMode                       string
+	validateAuthorizationResponseIssuer bool
+	useRequestURI                       bool
+	startupAction                       startupAction
 }
 
 func newSharedStateStore() rp.StateStore {
@@ -131,6 +132,7 @@ func resolveRPRequestFromRuntimeConfig(cfg rpRuntimeConfig) (resolvedRPRequest, 
 	resolved.requirePAR = runtimeRequiresPAR(cfg)
 	resolved.senderConstrain = cfg.SenderConstrain
 	resolved.fapiProfile = cfg.FAPIProfile
+	resolved.validateAuthorizationResponseIssuer = cfg.ValidateAuthorizationResponseIssuer
 	resolved.authorizationDetails = authorizationDetailsForRuntime(cfg)
 	resolved.responseMode = cfg.ResponseMode
 	resolved.responseType = cfg.ResponseType
@@ -168,6 +170,7 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, 
 	resolved.requirePAR = runtimeRequiresPAR(runtimeCfg)
 	resolved.senderConstrain = runtimeCfg.SenderConstrain
 	resolved.fapiProfile = runtimeCfg.FAPIProfile
+	resolved.validateAuthorizationResponseIssuer = runtimeCfg.ValidateAuthorizationResponseIssuer
 	resolved.authorizationDetails = authorizationDetailsForRuntime(runtimeCfg)
 	resolved.responseMode = runtimeCfg.ResponseMode
 	resolved.responseType = runtimeCfg.ResponseType
@@ -191,18 +194,16 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, 
 }
 
 func stateStoreForRuntime(cfg rpRuntimeConfig) rp.StateStore {
-	if isFAPI2Profile(cfg) {
+	if shouldUseMemoryStateStore(cfg) {
 		return newNamespacedStateStore(sharedMemoryStore, cfg.Namespace)
 	}
 	return wrapWithIssuerShorthand(newNamespacedStateStore(sharedStateStore, cfg.Namespace))
 }
 
-func isFAPI2Profile(cfg rpRuntimeConfig) bool {
+func shouldUseMemoryStateStore(cfg rpRuntimeConfig) bool {
 	profile := strings.ToLower(strings.TrimSpace(cfg.FAPIProfile))
 	return strings.HasPrefix(profile, "plain_fapi") ||
-		strings.Contains(profile, "fapi2") ||
-		cfg.ClientAuthType == "private_key_jwt" ||
-		cfg.ClientAuthType == "mtls"
+		strings.Contains(profile, "fapi2")
 }
 
 func runtimeRequiresPAR(cfg rpRuntimeConfig) bool {
@@ -345,6 +346,9 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	if strings.TrimSpace(resolved.fapiProfile) != "" {
 		opts = append(opts, rp.WithFAPIProfile(resolved.fapiProfile))
 	}
+	if resolved.validateAuthorizationResponseIssuer {
+		opts = append(opts, rp.WithValidateAuthorizationResponseIssuer(true))
+	}
 	if resolved.keyProvider != nil {
 		opts = append(opts, rp.WithClientKeyProvider(resolved.keyProvider))
 	}
@@ -369,6 +373,9 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	if mode, ok := rpDiscoveryModeForResolvedRequest(resolved); ok {
 		opts = append(opts, rp.WithDiscoveryMode(mode))
 	}
+	if shouldAllowUnsecuredIDTokens(resolved) {
+		opts = append(opts, rp.WithAllowUnsecuredIDTokens(true))
+	}
 	if resolved.useRequestURI {
 		opts = append(opts, rp.WithRequestURIMode(func(signedJWT string) (string, error) {
 			id, err := sharedRequestStore.Store(signedJWT)
@@ -387,6 +394,19 @@ func shouldUseSecondClient(cfg rpRuntimeConfig, moduleName string) bool {
 		return false
 	}
 	return strings.Contains(strings.ToLower(strings.TrimSpace(moduleName)), "encrypted-idtoken")
+}
+
+func shouldAllowUnsecuredIDTokens(resolved resolvedRPRequest) bool {
+	profile := strings.ToLower(strings.TrimSpace(resolved.fapiProfile))
+	if strings.HasPrefix(profile, "fapi") || strings.Contains(profile, "fapi") {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(resolved.profile)) {
+	case "fapi1_adv", "fapi1-advanced", "fapi2_security_profile", "fapi2-sp", "fapi2_message_signing", "fapi2-ms":
+		return false
+	default:
+		return true
+	}
 }
 
 func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (metadata.Provider, bool) {
