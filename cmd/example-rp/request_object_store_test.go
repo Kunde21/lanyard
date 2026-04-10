@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +13,10 @@ import (
 
 func TestRequestObjectStore_StoreAndLoad(t *testing.T) {
 	store := newRequestObjectStore(5 * time.Minute)
-	id := store.Store("jwt-token")
+	id, err := store.Store("jwt-token")
+	if err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
 
 	jwt, ok := store.Load(id)
 	if !ok {
@@ -34,7 +38,10 @@ func TestRequestObjectStore_LoadUnknownID(t *testing.T) {
 
 func TestRequestObjectStore_ExpiredEntryReturnsFalse(t *testing.T) {
 	store := newRequestObjectStore(1 * time.Millisecond)
-	id := store.Store("jwt-token")
+	id, err := store.Store("jwt-token")
+	if err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
 
 	time.Sleep(10 * time.Millisecond)
 
@@ -46,7 +53,10 @@ func TestRequestObjectStore_ExpiredEntryReturnsFalse(t *testing.T) {
 
 func TestRequestObjectStore_Remove(t *testing.T) {
 	store := newRequestObjectStore(5 * time.Minute)
-	id := store.Store("jwt-token")
+	id, err := store.Store("jwt-token")
+	if err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
 
 	store.Remove(id)
 
@@ -58,8 +68,14 @@ func TestRequestObjectStore_Remove(t *testing.T) {
 
 func TestRequestObjectStore_StoreGeneratesUniqueIDs(t *testing.T) {
 	store := newRequestObjectStore(5 * time.Minute)
-	id1 := store.Store("jwt1")
-	id2 := store.Store("jwt2")
+	id1, err := store.Store("jwt1")
+	if err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
+	id2, err := store.Store("jwt2")
+	if err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
 
 	if id1 == id2 {
 		t.Fatal("Store() generated duplicate IDs")
@@ -70,8 +86,12 @@ func TestRequestObjectStore_StartCleanup(t *testing.T) {
 	store := newRequestObjectStore(50 * time.Millisecond)
 	store.StartCleanup(20 * time.Millisecond)
 
-	store.Store("will-expire")
-	store.Store("also-will-expire")
+	if _, err := store.Store("will-expire"); err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
+	if _, err := store.Store("also-will-expire"); err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -84,9 +104,26 @@ func TestRequestObjectStore_StartCleanup(t *testing.T) {
 	}
 }
 
+func TestRequestObjectStore_StoreReturnsErrorWhenRandomReadFails(t *testing.T) {
+	store := newRequestObjectStore(5 * time.Minute)
+	oldReader := requestObjectIDReader
+	requestObjectIDReader = errorReader{err: errors.New("boom")}
+	defer func() {
+		requestObjectIDReader = oldReader
+	}()
+
+	_, err := store.Store("jwt-token")
+	if err == nil {
+		t.Fatal("Store() error = nil, want non-nil")
+	}
+}
+
 func TestHandleRequestObject_ValidIDReturnsJWT(t *testing.T) {
 	store := newRequestObjectStore(5 * time.Minute)
-	id := store.Store("my-jwt-token")
+	id, err := store.Store("my-jwt-token")
+	if err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/request/"+id, nil)
 	rec := httptest.NewRecorder()
@@ -120,7 +157,10 @@ func TestHandleRequestObject_UnknownIDReturns404(t *testing.T) {
 
 func TestHandleRequestObject_PostMethodReturns405(t *testing.T) {
 	store := newRequestObjectStore(5 * time.Minute)
-	id := store.Store("jwt")
+	id, err := store.Store("jwt")
+	if err != nil {
+		t.Fatalf("Store() failed: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/request/"+id, nil)
 	rec := httptest.NewRecorder()
@@ -141,4 +181,12 @@ func TestHandleRequestObject_EmptyIDReturns400(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
+}
+
+type errorReader struct {
+	err error
+}
+
+func (r errorReader) Read(_ []byte) (int, error) {
+	return 0, r.err
 }

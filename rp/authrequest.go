@@ -126,12 +126,11 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 				return "", fmt.Errorf("failed to store request object: %w", err)
 			}
 			redirectParams = url.Values{}
-			redirectParams.Set("client_id", r.clientID)
-			redirectParams.Set("request_uri", uri)
-			redirectParams.Set("scope", params.Get("scope"))
-			if v := params.Get("response_mode"); v != "" {
-				redirectParams.Set("response_mode", v)
+			for key, values := range params {
+				redirectParams[key] = append([]string(nil), values...)
 			}
+			redirectParams.Del("request")
+			redirectParams.Set("request_uri", uri)
 		} else {
 			redirectParams = url.Values{}
 			for key, values := range params {

@@ -21,6 +21,7 @@ import (
 var (
 	sharedStateStore    = newSharedStateStore()
 	sharedMemoryStore   = memory.New(10 * time.Minute)
+	sharedRequestStore  = newRequestObjectStore(5 * time.Minute)
 	conformanceRuntimes = newRuntimeRegistry()
 )
 
@@ -369,9 +370,11 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 		opts = append(opts, rp.WithDiscoveryMode(mode))
 	}
 	if resolved.useRequestURI {
-		store := newRequestObjectStore(5 * time.Minute)
 		opts = append(opts, rp.WithRequestURIMode(func(signedJWT string) (string, error) {
-			id := store.Store(signedJWT)
+			id, err := sharedRequestStore.Store(signedJWT)
+			if err != nil {
+				return "", err
+			}
 			return "https://rp.localhost/request/" + id, nil
 		}))
 	}

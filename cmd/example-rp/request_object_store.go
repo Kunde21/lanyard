@@ -3,9 +3,13 @@ package main
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
+	"io"
 	"sync"
 	"time"
 )
+
+var requestObjectIDReader io.Reader = rand.Reader
 
 type requestObjectEntry struct {
 	jwt       string
@@ -25,9 +29,11 @@ func newRequestObjectStore(ttl time.Duration) *requestObjectStore {
 	}
 }
 
-func (s *requestObjectStore) Store(jwt string) string {
+func (s *requestObjectStore) Store(jwt string) (string, error) {
 	buf := make([]byte, 32)
-	_, _ = rand.Read(buf)
+	if _, err := io.ReadFull(requestObjectIDReader, buf); err != nil {
+		return "", fmt.Errorf("generate request object id: %w", err)
+	}
 	id := base64.RawURLEncoding.EncodeToString(buf)
 
 	s.mu.Lock()
@@ -37,7 +43,7 @@ func (s *requestObjectStore) Store(jwt string) string {
 	}
 	s.mu.Unlock()
 
-	return id
+	return id, nil
 }
 
 func (s *requestObjectStore) Load(id string) (string, bool) {

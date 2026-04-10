@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -287,6 +288,74 @@ func TestShouldUseRequestURI(t *testing.T) {
 				t.Fatalf("shouldUseRequestURI() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestBuildRPFromResolvedRequest_RequestURIModeUsesSharedStore(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	oldStore := sharedRequestStore
+	sharedRequestStore = newRequestObjectStore(5 * time.Minute)
+	defer func() {
+		sharedRequestStore = oldStore
+	}()
+
+	resolved := resolvedRPRequest{
+		issuer:        "https://suite.localhost/test/a/test-alias/",
+		clientID:      "local-dev-client-2",
+		clientSecret:  "secret",
+		redirectURI:   "https://rp.localhost/callback/test-alias",
+		stateStore:    sharedStateStore,
+		scopes:        []string{"openid"},
+		requestMethod: "signed_non_repudiation",
+		useRequestURI: true,
+		keyProvider:   rp.NewStaticClientKeyProvider(privateKey, "kid-1", "PS256", nil),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.localhost/login", nil)
+	flow, err := buildRPFromResolvedRequest(req, resolved)
+	if err != nil {
+		t.Fatalf("buildRPFromResolvedRequest() failed: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	authURL, err := flow.AuthorizationURL(req.Context(), rec, req)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse(authURL) failed: %v", err)
+	}
+	requestURI := parsed.Query().Get("request_uri")
+	if requestURI == "" {
+		t.Fatal("request_uri missing from authorization url")
+	}
+
+	requestURIParsed, err := url.Parse(requestURI)
+	if err != nil {
+		t.Fatalf("url.Parse(request_uri) failed: %v", err)
+	}
+
+	handlerReq := httptest.NewRequest(http.MethodGet, requestURIParsed.Path, nil)
+	handlerRec := httptest.NewRecorder()
+	handleRequestObject(sharedRequestStore).ServeHTTP(handlerRec, handlerReq)
+
+	if diff := cmp.Diff(http.StatusOK, handlerRec.Code); diff != "" {
+		t.Fatalf("request handler status mismatch (-want +got):\n%s", diff)
+	}
+	if got := handlerRec.Header().Get("Content-Type"); got != "application/jwt" {
+		t.Fatalf("Content-Type = %q, want %q", got, "application/jwt")
+	}
+	if strings.TrimSpace(handlerRec.Body.String()) == "" {
+		t.Fatal("hosted request object body is empty")
+	}
+	if !strings.Contains(handlerRec.Body.String(), ".") {
+		t.Fatal("hosted request object does not look like a compact JWT")
 	}
 }
 

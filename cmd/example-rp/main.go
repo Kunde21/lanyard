@@ -24,8 +24,7 @@ type flowHandler interface {
 }
 
 func main() {
-	requestObjectStore := newRequestObjectStore(5 * time.Minute)
-	requestObjectStore.StartCleanup(60 * time.Second)
+	sharedRequestStore.StartCleanup(60 * time.Second)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleRoot)
@@ -35,7 +34,7 @@ func main() {
 	mux.HandleFunc("/callback/", handleCallback)
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 	mux.HandleFunc("/conformance/jwks/", handleConformanceJWKS)
-	mux.HandleFunc("/request/", handleRequestObject(requestObjectStore))
+	mux.HandleFunc("/request/", handleRequestObject(sharedRequestStore))
 
 	const addr = ":8080"
 	slog.Info("example RP listening", "addr", addr)
@@ -53,7 +52,7 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 	mux.HandleFunc("/callback/", handleCallbackWithFlow(flow))
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 	mux.HandleFunc("/conformance/jwks/", handleConformanceJWKS)
-	mux.HandleFunc("/request/", handleRequestObject(newRequestObjectStore(5*time.Minute)))
+	mux.HandleFunc("/request/", handleRequestObject(sharedRequestStore))
 	return mux
 }
 
