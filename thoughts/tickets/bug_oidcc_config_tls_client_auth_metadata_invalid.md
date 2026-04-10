@@ -2,7 +2,7 @@
 type: bug
 priority: high
 created: 2026-04-10T00:00:00Z
-status: created
+status: implemented
 tags: [conformance, oidcc-config, tls-client-auth, mtls, client-metadata, interrupted]
 keywords: [tls_client_auth, client certificate, metadata validation, interrupted, oidcc-client-test-idtoken-sig-none, signing-key-rotation]
 patterns: [suite api log inspection, mtls metadata validation, static client configuration]

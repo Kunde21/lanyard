@@ -413,6 +413,58 @@ Then check results specifically for:
 - The change is backward-compatible: existing `request_object` and `plain_http_request` variants are unaffected.
 - FAPI profiles continue using PAR for `request_uri` as before.
 
+## Deviations from Plan
+
+### Deviation 1: Shared Request Object Store (Phase 3)
+
+**Planned:** The plan described `requestObjectStore` as initialized in `main()` and used directly in `buildRPFromResolvedRequest()`.
+
+**Actual:** The original implementation created separate `requestObjectStore` instances — one in `main()` for the `/request/` handler and one inside `buildRPFromResolvedRequest()` for the `WithRequestURIMode` callback. JWTs stored by the callback were unreachable from the HTTP handler.
+
+**Fix:** Made `sharedRequestStore` a package-level var in `runtime_resolution.go`, used by both the HTTP handler wiring and `buildRPFromResolvedRequest()`.
+
+### Deviation 2: Full Outer Query Preservation (Phase 2)
+
+**Planned:** When `requestURIHandler` is set, the authorization redirect was to contain only `client_id`, `request_uri`, `scope`, and optionally `response_mode`.
+
+**Actual:** The conformance suite rejected this with `EnsureRequiredAuthorizationRequestParametersMatchRequestObject` — it expects ALL required authorization request parameters to be present in the outer query AND match the claims inside the hosted request object.
+
+**Fix:** Preserve the full parameter set and replace only `request=<JWT>` with `request_uri=<url>`.
+
+### Deviation 3: Store Returns Error (Phase 1)
+
+**Planned:** `Store()` returned just `(id string)`.
+
+**Actual:** Changed to `Store(jwt string) (string, error)` to properly handle `rand.Read` errors. Uses `io.ReadFull` with a testable `requestObjectIDReader` variable.
+
+## Results
+
+### Conformance Improvement
+
+**Before:** 70 failures in the OIDCC config certification matrix
+**After:** 42 failures (all pre-existing auth-type issues)
+
+**Fixed (28 tests):**
+- All `client_secret_basic` + `request_uri` variants (6)
+- All `client_secret_jwt` + `request_uri` variants (6)
+- All `client_secret_post` + `request_uri` variants (6)
+- All `none` + `request_uri` variants (6)
+- 4 of 6 `private_key_jwt` + `request_uri` variants
+
+**Remaining (42 tests — pre-existing, unrelated to request_uri):**
+- `private_key_jwt`: 6 failures across all request types (auth-method config issue)
+- `tls_client_auth`: 18 failures across all request types
+- `self_signed_tls_client_auth`: 18 failures across all request types
+
+These pre-existing failures occur across ALL request types (plain_http_request, request_object, request_uri), confirming they are auth-method configuration issues unrelated to the request_uri implementation.
+
+### Success Criteria Status
+
+- [x] OIDCC config `request_uri` variants no longer fail with `FetchRequestUriAndExtractRequestObject`.
+- [x] The three affected modules progress past `INTERRUPTED` in `request_uri` variants for supported auth types.
+- [x] Existing `plain_http_request` and `request_object` variant tests are not regressed.
+- [x] `go test ./...` remains green.
+
 ## References
 
 - Original ticket: `thoughts/tickets/bug_oidcc_config_request_uri_not_sent.md`
