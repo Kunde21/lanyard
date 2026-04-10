@@ -55,7 +55,7 @@ func newJobRunner(client *suiteClient, cfg harnessConfig, job RunJob, logf func(
 }
 
 func (jr *jobRunner) registerRuntime(ctx context.Context) (func(), error) {
-	if err := jr.registerRuntimeAlias(ctx, jr.job.Alias, ""); err != nil {
+	if err := jr.registerRuntimeAlias(ctx, jr.job.Alias, "", ""); err != nil {
 		return nil, err
 	}
 	return func() {
@@ -69,12 +69,15 @@ func (jr *jobRunner) registerRuntime(ctx context.Context) (func(), error) {
 	}, nil
 }
 
-func (jr *jobRunner) registerRuntimeAlias(ctx context.Context, alias string, moduleName string) error {
+func (jr *jobRunner) registerRuntimeAlias(ctx context.Context, alias, namespace, moduleName string) error {
 	if jr.runtimeClient == nil {
 		return nil
 	}
 	planVariant := mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants)
 	req := buildRPRuntimeRequestForAlias(jr.job, planVariant, jr.cfg.SuiteURL, alias)
+	if namespace != "" && namespace != alias {
+		req.Namespace = namespace
+	}
 	if strings.TrimSpace(moduleName) != "" {
 		req.StartupAction = startupActionForModule(moduleName)
 		req.StartupAllowError = startupAllowsErrorForModule(moduleName)

@@ -219,31 +219,32 @@ func (jr *jobRunner) executeModule(ctx context.Context, module PlanModule, planI
 		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, testID, err)
 		return res
 	}
-	suiteAlias := effectiveSuiteAlias(info.Alias, jr.job.Alias)
-	jr.logf("  test context: job=%s plan=%s module=%s test_id=%s local_alias=%s suite_alias=%s", jr.job.JobID, jr.job.PlanName, module.Name, testID, alias, suiteAlias)
+	runtimeAlias := effectiveSuiteAlias(info.Alias, jr.job.Alias)
+	runtimeNamespace := alias
+	jr.logf("  test context: job=%s plan=%s module=%s test_id=%s local_alias=%s suite_alias=%s runtime_alias=%s", jr.job.JobID, jr.job.PlanName, module.Name, testID, alias, info.Alias, runtimeAlias)
 
 	pollCtx, cancel := context.WithTimeout(ctx, jr.cfg.TestTimeout)
 	defer cancel()
-	if err := jr.registerRuntimeAlias(pollCtx, suiteAlias, module.Name); err != nil {
+	if err := jr.registerRuntimeAlias(pollCtx, runtimeAlias, runtimeNamespace, module.Name); err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("register runtime alias failed: %v", err))
-		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s suite_alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, suiteAlias, testID, err)
+		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s runtime_alias=%s test_id=%s err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, runtimeAlias, testID, err)
 		return res
 	}
 
 	var trigger func(context.Context, string) error
 	if action == "full_flow" {
-		trigger = jr.frontChannelTriggerForAlias(suiteAlias, module.Name)
+		trigger = jr.frontChannelTriggerForAlias(runtimeAlias, module.Name)
 	}
 
 	pollInfo, err := pollTestResultWithConfig(pollCtx, jr.client, testID, trigger, jr.cfg.WaitingMaxRetries, jr.cfg.WaitingRetryInterval)
 	if err != nil {
-		cleanupErr := jr.cancelTestAndWaitTerminal(testID, jr.job.PlanName, module.Name, alias, suiteAlias)
+		cleanupErr := jr.cancelTestAndWaitTerminal(testID, jr.job.PlanName, module.Name, alias, runtimeAlias)
 		summary := fmt.Sprintf("poll failed: %v", err)
 		if cleanupErr != nil {
 			summary = fmt.Sprintf("%s (cleanup failed: %v)", summary, cleanupErr)
 		}
 		failTest(&res, "ERROR", "FAILED", summary)
-		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s suite_alias=%s test_id=%s err=%v cleanup_err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, suiteAlias, testID, err, cleanupErr)
+		jr.logf("  test failed: job=%s plan=%s module=%s alias=%s runtime_alias=%s test_id=%s err=%v cleanup_err=%v", jr.job.JobID, jr.job.PlanName, module.Name, alias, runtimeAlias, testID, err, cleanupErr)
 		return res
 	}
 
@@ -251,29 +252,29 @@ func (jr *jobRunner) executeModule(ctx context.Context, module PlanModule, planI
 	res.Result = pollInfo.Result
 	res.Summary = pollInfo.Summary
 	finalizeTest(&res)
-	jr.logf("  test done: job=%s plan=%s module=%s alias=%s suite_alias=%s test_id=%s status=%s result=%s", jr.job.JobID, jr.job.PlanName, module.Name, alias, suiteAlias, testID, res.Status, res.Result)
+	jr.logf("  test done: job=%s plan=%s module=%s alias=%s runtime_alias=%s test_id=%s status=%s result=%s", jr.job.JobID, jr.job.PlanName, module.Name, alias, runtimeAlias, testID, res.Status, res.Result)
 	return res
 }
 
-func (jr *jobRunner) cancelTestAndWaitTerminal(testID, planName, moduleName, localAlias, suiteAlias string) error {
+func (jr *jobRunner) cancelTestAndWaitTerminal(testID, planName, moduleName, localAlias, runtimeAlias string) error {
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
 	cancelErr := jr.client.CancelTest(cleanupCtx, testID)
 	if cancelErr != nil {
-		jr.logf("  cleanup warning: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s failed to cancel test: %v", planName, moduleName, localAlias, suiteAlias, testID, cancelErr)
+		jr.logf("  cleanup warning: plan=%s module=%s local_alias=%s runtime_alias=%s test_id=%s failed to cancel test: %v", planName, moduleName, localAlias, runtimeAlias, testID, cancelErr)
 	}
 
 	waitErr := waitForTerminalTestState(cleanupCtx, jr.client, testID)
 	if waitErr != nil {
-		jr.logf("  cleanup warning: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s failed waiting for terminal state: %v", planName, moduleName, localAlias, suiteAlias, testID, waitErr)
+		jr.logf("  cleanup warning: plan=%s module=%s local_alias=%s runtime_alias=%s test_id=%s failed waiting for terminal state: %v", planName, moduleName, localAlias, runtimeAlias, testID, waitErr)
 	}
 
 	if cancelErr != nil || waitErr != nil {
 		return errors.Join(cancelErr, waitErr)
 	}
 
-	jr.logf("  cleanup done: plan=%s module=%s local_alias=%s suite_alias=%s test_id=%s reached terminal state", planName, moduleName, localAlias, suiteAlias, testID)
+	jr.logf("  cleanup done: plan=%s module=%s local_alias=%s runtime_alias=%s test_id=%s reached terminal state", planName, moduleName, localAlias, runtimeAlias, testID)
 	return nil
 }
 
@@ -898,13 +899,8 @@ func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSec
 	}
 
 	if authType == "self_signed_tls_client_auth" {
-		for _, c := range []map[string]any{
-			cfg["client"].(map[string]any),
-			cfg["client2"].(map[string]any),
-		} {
-			if jwks, ok := c["jwks"].(map[string]any); ok {
-				c["jwks"] = appendSelfSignedCertToJWKS(jwks)
-			}
+		if jwks, ok := cfg["client"].(map[string]any)["jwks"].(map[string]any); ok {
+			cfg["client"].(map[string]any)["jwks"] = appendSelfSignedCertToJWKS(jwks)
 		}
 	}
 

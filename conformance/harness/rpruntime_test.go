@@ -131,7 +131,7 @@ func TestJobRunner_RegisterRuntimeAlias_UsesProvidedAlias(t *testing.T) {
 	jr := newJobRunner(newSuiteClient("https://suite.localhost"), harnessConfig{ArtifactsDir: t.TempDir(), SuiteURL: "https://suite.localhost"}, job, t.Logf)
 	jr.runtimeClient = runtimeClient
 
-	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias", ""); err != nil {
+	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias", "", ""); err != nil {
 		t.Fatalf("registerRuntimeAlias() failed: %v", err)
 	}
 
@@ -173,7 +173,7 @@ func TestJobRunner_RuntimeCleanupDeletesAllRegisteredAliases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("registerRuntime() failed: %v", err)
 	}
-	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias", ""); err != nil {
+	if err := jr.registerRuntimeAlias(context.Background(), "suite-alias", "", ""); err != nil {
 		t.Fatalf("registerRuntimeAlias() failed: %v", err)
 	}
 	cleanup()
