@@ -250,7 +250,8 @@ func TestRequestMethodForRuntime_UsesSignedRequestObjectForOIDCCRequestTypes(t *
 	}{
 		{name: "plain request", cfg: rpRuntimeConfig{RequestType: "plain_http_request"}, wantMethod: "", wantRequire: false},
 		{name: "request object", cfg: rpRuntimeConfig{RequestType: "request_object"}, wantMethod: "signed_non_repudiation", wantRequire: false},
-		{name: "request uri", cfg: rpRuntimeConfig{RequestType: "request_uri"}, wantMethod: "signed_non_repudiation", wantRequire: true},
+		{name: "request uri non-fapi", cfg: rpRuntimeConfig{RequestType: "request_uri"}, wantMethod: "signed_non_repudiation", wantRequire: false},
+		{name: "request uri fapi", cfg: rpRuntimeConfig{RequestType: "request_uri", FAPIProfile: "fapi2-sp"}, wantMethod: "signed_non_repudiation", wantRequire: true},
 	}
 
 	for _, tt := range tests {

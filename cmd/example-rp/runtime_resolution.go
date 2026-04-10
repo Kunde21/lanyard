@@ -215,7 +215,9 @@ func runtimeRequiresPAR(cfg rpRuntimeConfig) bool {
 	case "par", "pushed_authorization_request":
 		return true
 	case "request_uri":
-		return true
+		if strings.TrimSpace(cfg.FAPIProfile) != "" {
+			return true
+		}
 	}
 
 	return false

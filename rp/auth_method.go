@@ -101,6 +101,18 @@ func methodSupported(method AuthMethod, supported []string) bool {
 		}
 	}
 
+	if want == "tls_client_auth" {
+		for _, current := range supported {
+			if current == "self_signed_tls_client_auth" {
+				return true
+			}
+		}
+	}
+
+	if want == "none" {
+		return true
+	}
+
 	return false
 }
 
