@@ -383,7 +383,13 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 		}))
 	}
 
-	return rp.New(r.Context(), resolved.issuer, resolved.clientID, resolved.clientSecret, resolved.redirectURI, opts...)
+	return rp.New(r.Context(), resolved.issuer,
+		append([]rp.Option{
+			rp.WithClientID(resolved.clientID),
+			rp.WithClientSecret(resolved.clientSecret),
+			rp.WithRedirectURI(resolved.redirectURI),
+		}, opts...)...,
+	)
 }
 
 func shouldUseSecondClient(cfg rpRuntimeConfig, moduleName string) bool {

@@ -217,9 +217,9 @@ func newJARMTestRP(t *testing.T, jwksServer *httptest.Server, clientID string, n
 	r, err := New(
 		context.Background(),
 		"https://issuer.test",
-		clientID,
-		"secret",
-		"https://rp.test/callback",
+		WithClientID(clientID),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(jwksServer.Client()),
 		WithProviderMetadata(provider),
 		withNow(func() time.Time { return now }),

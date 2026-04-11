@@ -15,6 +15,28 @@ import (
 // Option configures an RP instance.
 type Option func(*RP)
 
+// WithClientID sets the OAuth 2.0 client identifier.
+func WithClientID(id string) Option {
+	return func(r *RP) {
+		r.clientID = strings.TrimSpace(id)
+	}
+}
+
+// WithClientSecret sets the OAuth 2.0 client secret. For public clients,
+// omit this option or pass an empty string.
+func WithClientSecret(secret string) Option {
+	return func(r *RP) {
+		r.clientSecret = secret
+	}
+}
+
+// WithRedirectURI sets the OAuth 2.0 redirect URI for authorization callbacks.
+func WithRedirectURI(uri string) Option {
+	return func(r *RP) {
+		r.redirectURI = strings.TrimSpace(uri)
+	}
+}
+
 // AuthorizationURLOption configures a single authorization URL generation.
 type AuthorizationURLOption func(*authorizationURLConfig)
 

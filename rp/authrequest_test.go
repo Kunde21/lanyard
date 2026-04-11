@@ -30,9 +30,8 @@ func TestAuthorizationURL(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
 	)
@@ -115,9 +114,8 @@ func TestAuthorizationURLDoesNotRediscoverAfterNew(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithMetadataClient(metadata.NewClient(
 			metadata.WithHTTPClient(ts.Client()),
@@ -152,9 +150,8 @@ func TestAuthorizationURL_IncludesAuthorizationDetailsWhenConfigured(t *testing.
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithScopes("accounts"),
 		WithAuthorizationDetails([]map[string]any{
@@ -194,9 +191,8 @@ func TestAuthorizationURL_SetAuthorizationDetailsOverridesConfiguredValue(t *tes
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithScopes("accounts"),
 		WithAuthorizationDetails([]map[string]any{{"type": "account_information"}}),
@@ -241,9 +237,8 @@ func TestAuthorizationURL_SetAuthParamAddsCustomQueryValue(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
 	)
@@ -273,12 +268,11 @@ func TestAuthorizationURL_SignedRequestObjectByValueUsesRequestParameter(t *test
 		t.Fatalf("GenerateKey() failed: %v", err)
 	}
 
-	r, err := New(
-		context.Background(),
+	r, err := New(context.Background(),
 		"https://issuer.test",
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                 "https://issuer.test",
 			AuthorizationEndpoint:  "https://issuer.test/authorize",
@@ -356,9 +350,8 @@ func TestAuthorizationURL_WithResponseMode(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithResponseMode("form_post"),
 		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
@@ -395,9 +388,8 @@ func TestAuthorizationURL_NoResponseModeByDefault(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
 	)
@@ -429,12 +421,11 @@ func TestAuthorizationURL_WithRequestURIMode(t *testing.T) {
 
 	var storedURI string
 
-	r, err := New(
-		context.Background(),
+	r, err := New(context.Background(),
 		"https://issuer.test",
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                 "https://issuer.test",
 			AuthorizationEndpoint:  "https://issuer.test/authorize",
@@ -509,12 +500,11 @@ func TestAuthorizationURL_WithRequestURIMode_IncludesResponseMode(t *testing.T) 
 		t.Fatalf("GenerateKey() failed: %v", err)
 	}
 
-	r, err := New(
-		context.Background(),
+	r, err := New(context.Background(),
 		"https://issuer.test",
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                 "https://issuer.test",
 			AuthorizationEndpoint:  "https://issuer.test/authorize",
@@ -558,12 +548,11 @@ func TestAuthorizationURL_RequestURIHandlerNil_PreservesRequestByValue(t *testin
 		t.Fatalf("GenerateKey() failed: %v", err)
 	}
 
-	r, err := New(
-		context.Background(),
+	r, err := New(context.Background(),
 		"https://issuer.test",
-		"client-123",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-123"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
 			Issuer:                 "https://issuer.test",
 			AuthorizationEndpoint:  "https://issuer.test/authorize",

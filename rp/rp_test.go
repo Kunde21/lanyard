@@ -23,6 +23,7 @@ func TestNew_Validation(t *testing.T) {
 		issuer      string
 		clientID    string
 		redirectURI string
+		wantErr     bool
 	}{
 		{name: "missing issuer", issuer: "", clientID: "client", redirectURI: "https://rp.test/callback"},
 		{name: "invalid issuer", issuer: "http://issuer.test", clientID: "client", redirectURI: "https://rp.test/callback"},
@@ -33,7 +34,11 @@ func TestNew_Validation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := New(context.Background(), tt.issuer, tt.clientID, "secret", tt.redirectURI)
+			_, err := New(context.Background(), tt.issuer,
+				WithClientID(tt.clientID),
+				WithClientSecret("secret"),
+				WithRedirectURI(tt.redirectURI),
+			)
 			if err == nil {
 				t.Fatalf("New() expected error")
 			}
@@ -53,9 +58,9 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(customHTTPClient),
 		WithLogger(customLogger),
 		WithMetadataClient(customOIDCClient),
@@ -105,9 +110,9 @@ func TestNew_PerformsDiscoveryByDefault(t *testing.T) {
 	_, err := New(
 		context.Background(),
 		issuer,
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 	)
 	if err != nil {
@@ -129,9 +134,9 @@ func TestNew_SkipsDiscoveryForOAuthOnlyScopes(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		issuer,
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithScopes("accounts"),
 	)
@@ -181,9 +186,9 @@ func TestNew_WithProviderMetadata_SkipsDiscoveryHTTP(t *testing.T) {
 	_, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProviderMetadata(provider),
 	)
@@ -196,9 +201,9 @@ func TestNew_WithProviderMetadataMissingAuthorizationEndpoint_ReturnsError(t *te
 	_, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(metadata.Provider{}),
 	)
 	if err == nil {
@@ -223,9 +228,9 @@ func TestNew_WithProfile_StoresProfileOnRP(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithScopes("accounts"),
 		WithProfile(OAuth2),
@@ -252,9 +257,9 @@ func TestNew_WithDiscoveryMode_DiscoveryDisabledStoredOnRP(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithScopes("accounts"),
 		WithDiscoveryMode(DiscoveryDisabled),
@@ -280,9 +285,9 @@ func TestNew_WithProfile_DefaultProfileIsOIDC(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithScopes("accounts"),
 	)
@@ -302,9 +307,9 @@ func TestNew_WithDiscoveryMode_DefaultIsAuto(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithScopes("accounts"),
 	)
@@ -324,9 +329,9 @@ func TestNew_ExplicitScopesMarkedExplicit(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithScopes("accounts"),
 	)
@@ -346,9 +351,9 @@ func TestNew_ScopesExplicit_WithScopesMarksExplicit(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithScopes("custom"),
 	)
@@ -380,9 +385,9 @@ func TestNew_WithProviderMetadata_SkipsDiscoveryWhenMetadataIsComplete(t *testin
 	_, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProviderMetadata(provider),
 	)
@@ -399,9 +404,9 @@ func TestNew_WithAuthorizationEndpoint_StoresPartialMetadata(t *testing.T) {
 	_, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithAuthorizationEndpoint("https://issuer.test/authorize"),
 		WithScopes("accounts"),
@@ -419,9 +424,9 @@ func TestNew_WithTokenEndpoint_StoresPartialMetadata(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithAuthorizationEndpoint("https://issuer.test/authorize"),
 		WithTokenEndpoint("https://issuer.test/token"),
@@ -443,9 +448,9 @@ func TestNew_WithJWKSURI_StoresPartialMetadata(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithAuthorizationEndpoint("https://issuer.test/authorize"),
 		WithJWKSURI("https://issuer.test/jwks"),
@@ -484,9 +489,9 @@ func TestNew_GranularOptions_MergeWithDiscovery(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		issuer,
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithAuthorizationEndpoint("https://custom.test/authorize"),
 		WithScopes("openid"),
@@ -537,9 +542,9 @@ func TestNew_WithProviderMetadata_PreservesExplicitFieldsOverDiscovery(t *testin
 	got, err := New(
 		context.Background(),
 		issuer,
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithProviderMetadata(partialProvider),
 		WithScopes("openid"),
@@ -567,9 +572,9 @@ func TestNew_WithDiscoveryDisabledAndMissingAuthorizationEndpoint_ReturnsError(t
 	_, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithScopes("accounts"),
 		WithDiscoveryMode(DiscoveryDisabled),
@@ -607,9 +612,9 @@ func TestNew_WithDiscoveryModeOAuth2_UsesAuthorizationServerDiscovery(t *testing
 	got, err := New(
 		context.Background(),
 		issuer,
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithScopes("accounts"),
 		WithDiscoveryMode(DiscoveryOAuth2),
@@ -640,9 +645,9 @@ func TestNew_WithDiscoveryModeOAuth2_ReturnsDiscoveryError(t *testing.T) {
 	_, err := New(
 		context.Background(),
 		issuer,
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithScopes("accounts"),
 		WithDiscoveryMode(DiscoveryOAuth2),
@@ -687,9 +692,9 @@ func TestNew_ExplicitProviderFieldsOverrideDiscoveredValues(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		issuer,
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithAuthorizationEndpoint("https://custom.test/authorize"),
 		WithScopes("openid"),
@@ -720,9 +725,9 @@ func TestNew_WithProviderMetadataThenGranularOption_LastExplicitValueWins(t *tes
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
 			AuthorizationEndpoint: "https://bulk.test/authorize",
@@ -753,9 +758,9 @@ func TestNew_WithGranularOptionThenProviderMetadata_UnrelatedFieldsAccumulate(t 
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithAuthorizationEndpoint("https://granular.test/authorize"),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
@@ -785,9 +790,9 @@ func TestNew_WithGranularAndBulkMetadata_LastExplicitValueWinsForSameField(t *te
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithAuthorizationEndpoint("https://first.test/authorize"),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
@@ -829,9 +834,9 @@ func TestNew_WithDiscoveryModeOIDC_UsesOIDCDiscovery(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		issuer,
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithScopes("accounts"),
 		WithDiscoveryMode(DiscoveryOIDC),
@@ -854,9 +859,9 @@ func TestWithProfile_OIDC_DefaultsOpenIDScope(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(OIDC),
 		WithAuthorizationEndpoint("https://issuer.test/authorize"),
@@ -879,9 +884,9 @@ func TestWithProfile_OAuth2_DoesNotForceOpenIDScope(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(OAuth2),
 		WithScopes("accounts"),
@@ -907,9 +912,9 @@ func TestWithProfile_FAPI1Adv_DefaultsCanBeOverridden(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI1Adv),
 		WithScopes("accounts"),
@@ -932,9 +937,9 @@ func TestWithProfile_FAPI2_SetsSignedRequestMethod(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI2MessageSigning),
 		WithAuthorizationEndpoint("https://issuer.test/authorize"),
@@ -957,9 +962,9 @@ func TestWithProfile_FAPI1Adv_SignedRequestMethodCanBeOverridden(t *testing.T) {
 	got, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI1Adv),
 		WithRequestMethod(""),

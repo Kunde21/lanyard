@@ -43,9 +43,9 @@ func TestValidateIDToken(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-id",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		withNow(func() time.Time { return now }),
 	)
@@ -207,9 +207,9 @@ func TestValidateIDTokenMissingKIDWithMultipleSigningKeysTriesAllKeys(t *testing
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-id",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		withNow(func() time.Time { return now }),
 	)
@@ -263,9 +263,9 @@ func TestValidateIDToken_DecryptsEncryptedToken(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-id",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithClientKeyProvider(NewStaticClientKeyProvider(decryptionKey, "enc-kid", "PS256", nil)),
 		withNow(func() time.Time { return now }),
@@ -336,9 +336,9 @@ func TestValidateIDToken_RejectsRSA1_5EncryptedToken(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		issuer,
-		"client-id",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithClientKeyProvider(NewStaticClientKeyProvider(decryptionKey, "enc-kid", "PS256", nil)),
 		withNow(func() time.Time { return now }),

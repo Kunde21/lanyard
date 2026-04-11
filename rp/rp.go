@@ -134,12 +134,12 @@ type RP struct {
 // Provider metadata is discovered automatically unless [WithProviderMetadata]
 // supplies complete metadata or [WithDiscoveryMode] is set to
 // [DiscoveryDisabled].
-func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string, opts ...Option) (*RP, error) {
+func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	r := newRP(issuer, clientID, clientSecret, redirectURI)
+	r := newRP(issuer)
 
 	for _, opt := range opts {
 		opt(r)
@@ -334,12 +334,9 @@ func providerIsComplete(p metadata.Provider) bool {
 		providerHasJWKSURI(p)
 }
 
-func newRP(issuer, clientID, clientSecret, redirectURI string) *RP {
+func newRP(issuer string) *RP {
 	return &RP{
 		issuer:                 strings.TrimSpace(issuer),
-		clientID:               strings.TrimSpace(clientID),
-		clientSecret:           clientSecret,
-		redirectURI:            strings.TrimSpace(redirectURI),
 		scopes:                 []string{"openid"},
 		httpClient:             http.DefaultClient,
 		logger:                 slog.New(slog.NewTextHandler(io.Discard, nil)),

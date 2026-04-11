@@ -32,9 +32,9 @@ func ExampleNew() {
 	rpClient, err := rp.New(
 		context.Background(),
 		issuer,
-		"client-id",
-		"client-secret",
-		"https://rp.example.com/callback",
+		rp.WithClientID("client-id"),
+		rp.WithClientSecret("client-secret"),
+		rp.WithRedirectURI("https://rp.example.com/callback"),
 		rp.WithHTTPClient(server.Client()),
 		rp.WithMetadataClient(metadata.NewClient(metadata.WithHTTPClient(server.Client()))),
 	)

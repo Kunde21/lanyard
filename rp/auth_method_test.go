@@ -13,9 +13,9 @@ func TestNew_AutoNegotiatesAuthMethodPrefersPost(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(providerForAuthMethods("client_secret_basic", "client_secret_post")),
 	)
 	if err != nil {
@@ -34,9 +34,9 @@ func TestNew_WithAuthMethodValidatesAgainstProviderMetadata(t *testing.T) {
 	r, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(providerForAuthMethods("client_secret_post")),
 		WithAuthMethod(AuthMethodPost),
 	)
@@ -53,9 +53,9 @@ func TestNew_WithAuthMethodReturnsTypedErrorWhenUnsupported(t *testing.T) {
 	_, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"secret",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(providerForAuthMethods("client_secret_basic")),
 		WithAuthMethod(AuthMethodPost),
 	)
@@ -76,9 +76,9 @@ func TestNew_WithSecretBasedAuthMethodRequiresClientSecret(t *testing.T) {
 	_, err := New(
 		context.Background(),
 		"https://issuer.test",
-		"client",
-		"",
-		"https://rp.test/callback",
+		WithClientID("client"),
+		WithClientSecret(""),
+		WithRedirectURI("https://rp.test/callback"),
 		WithProviderMetadata(providerForAuthMethods("client_secret_post")),
 		WithAuthMethod(AuthMethodPost),
 	)
