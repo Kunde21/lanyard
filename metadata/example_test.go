@@ -30,11 +30,11 @@ func ExampleClient_DiscoverProvider() {
 	issuer = server.URL
 
 	client := metadata.NewClient(metadata.WithHTTPClient(server.Client()))
-	metadata, err := client.DiscoverProvider(context.Background(), issuer)
+	provider, err := client.DiscoverProvider(context.Background(), issuer)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	fmt.Println(metadata.Issuer)
+	fmt.Println(provider.Issuer)
 }

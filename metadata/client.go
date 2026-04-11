@@ -28,7 +28,9 @@ type Client struct {
 	discoveryGroup singleflight.Group
 }
 
-// NewClient constructs a discovery client.
+// NewClient constructs a discovery client with default in-memory caches for
+// both discovery metadata and JWKS results. Use [WithDiscoveryCache] or
+// [WithJWKSCache] to replace the default caches.
 func NewClient(opts ...Option) *Client {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	c := &Client{

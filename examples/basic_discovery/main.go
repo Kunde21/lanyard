@@ -15,13 +15,13 @@ func main() {
 	}
 
 	client := metadata.NewClient()
-	metadata, err := client.DiscoverProvider(context.Background(), issuer)
+	provider, err := client.DiscoverProvider(context.Background(), issuer)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "discover provider: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("issuer: %s\n", metadata.Issuer)
-	fmt.Printf("jwks_uri: %s\n", metadata.JWKSURI)
-	fmt.Printf("response_types_supported: %v\n", metadata.ResponseTypesSupported)
+	fmt.Printf("issuer: %s\n", provider.Issuer)
+	fmt.Printf("jwks_uri: %s\n", provider.JWKSURI)
+	fmt.Printf("response_types_supported: %v\n", provider.ResponseTypesSupported)
 }

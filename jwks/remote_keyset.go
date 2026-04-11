@@ -34,7 +34,11 @@ type RemoteKeySet struct {
 	minRefreshInterval time.Duration
 }
 
-// NewRemoteKeySet creates a new remote key set client.
+// NewRemoteKeySet creates a new remote key set client. Keys are fetched from
+// the given JWKS URL and cached in an in-memory store. Cached keys are returned
+// immediately when fresh; stale entries trigger a background refresh so callers
+// never block after the initial fetch. Use [WithCache] to supply a custom
+// [CacheStore].
 func NewRemoteKeySet(jwksURL string, opts ...Option) (*RemoteKeySet, error) {
 	u, err := url.Parse(jwksURL)
 	if err != nil {

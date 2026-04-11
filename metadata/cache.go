@@ -2,7 +2,7 @@ package metadata
 
 import "time"
 
-// CacheStore is the minimal cache interface used by the oidc package.
+// CacheStore is the minimal cache interface used by the metadata package.
 // Implementations must be safe for concurrent use.
 type CacheStore interface {
 	Get(key string) (value *CacheEntry, ok bool)
