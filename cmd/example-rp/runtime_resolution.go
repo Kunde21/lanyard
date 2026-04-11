@@ -364,11 +364,8 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	if strings.TrimSpace(resolved.requestMethod) != "" {
 		opts = append(opts, rp.WithRequestMethod(resolved.requestMethod))
 	}
-	if profile, ok := rpProfileForResolvedRequest(resolved); ok {
-		opts = append(opts, rp.WithProfile(profile))
-	}
-	if mode, ok := rpDiscoveryModeForResolvedRequest(resolved); ok {
-		opts = append(opts, rp.WithDiscoveryMode(mode))
+	if strings.TrimSpace(resolved.fapiProfile) != "" {
+		opts = append(opts, rp.WithProfile(rp.PlainFAPI))
 	}
 	if shouldAllowUnsecuredIDTokens(resolved) {
 		opts = append(opts, rp.WithAllowUnsecuredIDTokens(true))
@@ -443,6 +440,7 @@ func providerMetadataForResolvedRequest(resolved resolvedRPRequest) (metadata.Pr
 			},
 		},
 		UserinfoEndpoint:                       base + "/userinfo",
+		SubjectTypesSupported:                  []string{"pairwise"},
 		IDTokenSigningAlgValuesSupported:       []string{"PS256", "RS256"},
 		PushedAuthorizationRequestEndpoint:     base + "/par",
 		RequestObjectSigningAlgValuesSupported: []string{"PS256", "ES256", "EdDSA"},
@@ -469,26 +467,6 @@ func conformanceMTLSBaseURL(issuer string) (string, error) {
 	parsed.Path = strings.Replace(trimmedPath, "/test/a/", "/test-mtls/a/", 1)
 	parsed.RawPath = ""
 	return parsed.String(), nil
-}
-
-func rpProfileForResolvedRequest(resolved resolvedRPRequest) (rp.Profile, bool) {
-	switch strings.ToLower(strings.TrimSpace(resolved.profile)) {
-	case "oauth2":
-		return rp.OAuth2, true
-	case "fapi1_adv", "fapi1-advanced":
-		return rp.FAPI1Adv, true
-	case "fapi2_security_profile", "fapi2-sp":
-		return rp.FAPI2SecurityProfile, true
-	case "fapi2_message_signing", "fapi2-ms":
-		return rp.FAPI2MessageSigning, true
-	case "oidc":
-		return rp.OIDC, true
-	default:
-		if strings.TrimSpace(resolved.fapiProfile) != "" {
-			return rp.PlainFAPI, true
-		}
-		return rp.OIDC, false
-	}
 }
 
 func rpDiscoveryModeForResolvedRequest(resolved resolvedRPRequest) (rp.DiscoveryMode, bool) {

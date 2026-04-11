@@ -10,7 +10,6 @@ import (
 
 func TestPublicAPIOptionNames(t *testing.T) {
 	_ = rp.WithProviderMetadata(metadata.Provider{})
-	_ = rp.WithClientCredentialsProviderMetadata(metadata.Provider{})
 	_ = rp.WithDiscoveryHTTPClient(nil)
 	_ = rp.WithDiscoveryLogger(nil)
 	_ = rp.WithDiscoveryMetadataClient(nil)
@@ -31,8 +30,6 @@ func TestPublicAPIOptionNames(t *testing.T) {
 	_ = rp.WithSenderConstrain(rp.SenderConstraintDPoP)
 	_ = rp.WithSenderConstrain(rp.SenderConstraintMTLS)
 	_ = rp.WithSenderConstrain(rp.SenderConstraintNone)
-	_ = rp.WithClientCredentialsSenderConstrain(rp.SenderConstraintDPoP)
-	_ = rp.WithClientCredentialsSenderConstrain(rp.SenderConstraintMTLS)
 
 	tok := rp.Token{
 		AccessToken:  "at",
@@ -53,17 +50,12 @@ func TestPublicAPIOptionNames(t *testing.T) {
 	_, _ = rp.NewClientCredentials(
 		context.Background(),
 		"https://issuer.example.com",
-		"client-id",
-		"secret",
-		rp.WithClientCredentialsProviderMetadata(metadata.Provider{}),
+		rp.WithClientID("client-id"),
+		rp.WithClientSecret("secret"),
+		rp.WithProviderMetadata(metadata.Provider{}),
 	)
 }
 
 func TestPublicAPIRemovedSymbols(t *testing.T) {
-	// These symbols should no longer compile. The test file is a compilation
-	// check: if any of the removed names are still defined, this file would
-	// fail to compile when callers try to use them. Since we cannot test
-	// negative compilation in a single test binary, we verify by reading
-	// the exported surface with go doc.
-	t.Log("WithFAPIProfile, WithOIDCClient, WithClientCredentialsOIDCClient, WithDiscoveryOIDCClient, and string-taking sender-constrain signatures have been removed")
+	t.Log("WithFAPIProfile, WithOIDCClient, WithClientCredentialsOIDCClient, WithDiscoveryOIDCClient, WithClientCredentialsProviderMetadata, WithClientCredentialsSenderConstrain, and string-taking sender-constrain signatures have been removed")
 }

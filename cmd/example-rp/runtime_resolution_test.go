@@ -213,35 +213,6 @@ func generateUnrelatedCAPool() (*x509.CertPool, error) {
 	return pool, nil
 }
 
-func TestRpProfileForResolvedRequest(t *testing.T) {
-	tests := []struct {
-		name     string
-		profile  string
-		want     rp.Profile
-		wantBool bool
-	}{
-		{"oauth2", "oauth2", rp.OAuth2, true},
-		{"fapi1_adv", "fapi1_adv", rp.FAPI1Adv, true},
-		{"fapi1-advanced", "fapi1-advanced", rp.FAPI1Adv, true},
-		{"fapi2-sp", "fapi2-sp", rp.FAPI2SecurityProfile, true},
-		{"fapi2-ms", "fapi2-ms", rp.FAPI2MessageSigning, true},
-		{"oidc", "oidc", rp.OIDC, true},
-		{"empty", "", rp.OIDC, false},
-		{"unknown", "unknown", rp.OIDC, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := rpProfileForResolvedRequest(resolvedRPRequest{profile: tt.profile})
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Fatalf("profile mismatch (-want +got):\n%s", diff)
-			}
-			if diff := cmp.Diff(tt.wantBool, ok); diff != "" {
-				t.Fatalf("ok mismatch (-want +got):\n%s", diff)
-			}
-		})
-	}
-}
-
 func TestRequestMethodForRuntime_UsesSignedRequestObjectForOIDCCRequestTypes(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -369,33 +340,6 @@ func TestLoadRequestObjectKeyProvider_ReturnsAsymmetricSignerForSignedRequestTyp
 	}
 	if diff := cmp.Diff("PS256", provider.SigningAlgorithm()); diff != "" {
 		t.Fatalf("signing alg mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestRpDiscoveryModeForResolvedRequest(t *testing.T) {
-	tests := []struct {
-		name          string
-		discoveryMode string
-		want          rp.DiscoveryMode
-		wantBool      bool
-	}{
-		{"oidc", "oidc", rp.DiscoveryOIDC, true},
-		{"oauth2", "oauth2", rp.DiscoveryOAuth2, true},
-		{"disabled", "disabled", rp.DiscoveryDisabled, true},
-		{"auto", "auto", rp.DiscoveryAuto, true},
-		{"empty", "", rp.DiscoveryAuto, false},
-		{"unknown", "unknown", rp.DiscoveryAuto, false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := rpDiscoveryModeForResolvedRequest(resolvedRPRequest{discoveryMode: tt.discoveryMode})
-			if diff := cmp.Diff(tt.want, got); diff != "" {
-				t.Fatalf("discovery mode mismatch (-want +got):\n%s", diff)
-			}
-			if diff := cmp.Diff(tt.wantBool, ok); diff != "" {
-				t.Fatalf("ok mismatch (-want +got):\n%s", diff)
-			}
-		})
 	}
 }
 

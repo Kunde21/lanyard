@@ -75,8 +75,10 @@ func TestNewClientCredentials_Validation(t *testing.T) {
 			provider := clientCredentialsProvider(server.URL+"/token", AuthMethodPost)
 			provider.Issuer = tc.issuer
 
-			_, err := NewClientCredentials(ctx, tc.issuer, tc.clientID, tc.clientSecret,
-				WithClientCredentialsProviderMetadata(provider))
+			_, err := NewClientCredentials(ctx, tc.issuer,
+			WithClientID(tc.clientID),
+			WithClientSecret(tc.clientSecret),
+				WithProviderMetadata(provider))
 
 			if tc.wantErr {
 				if err == nil {
@@ -114,9 +116,11 @@ func TestClientCredentials_Token_BasicAuth(t *testing.T) {
 	ctx := context.Background()
 	provider := clientCredentialsProvider(server.URL, AuthMethodBasic)
 
-	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "client-secret",
-		WithClientCredentialsProviderMetadata(provider),
-		WithClientCredentialsAuthMethod(AuthMethodBasic))
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
@@ -178,9 +182,11 @@ func TestClientCredentials_Token_PostAuth(t *testing.T) {
 	ctx := context.Background()
 	provider := clientCredentialsProvider(server.URL, AuthMethodPost)
 
-	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "client-secret",
-		WithClientCredentialsProviderMetadata(provider),
-		WithClientCredentialsAuthMethod(AuthMethodPost))
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodPost))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
@@ -234,9 +240,11 @@ func TestClientCredentials_Token_Scopes(t *testing.T) {
 	provider := clientCredentialsProvider(server.URL, AuthMethodPost)
 
 	t.Run("default scopes from constructor", func(t *testing.T) {
-		client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "client-secret",
-			WithClientCredentialsProviderMetadata(provider),
-			WithClientCredentialsScopes("api:read", "api:write"))
+		client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+			WithProviderMetadata(provider),
+			WithScopes("api:read", "api:write"))
 		if err != nil {
 			t.Fatalf("failed to create client: %v", err)
 		}
@@ -252,9 +260,11 @@ func TestClientCredentials_Token_Scopes(t *testing.T) {
 	})
 
 	t.Run("per-request scopes override", func(t *testing.T) {
-		client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "client-secret",
-			WithClientCredentialsProviderMetadata(provider),
-			WithClientCredentialsScopes("api:read"))
+		client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+			WithProviderMetadata(provider),
+			WithScopes("api:read"))
 		if err != nil {
 			t.Fatalf("failed to create client: %v", err)
 		}
@@ -271,8 +281,10 @@ func TestClientCredentials_Token_Scopes(t *testing.T) {
 	})
 
 	t.Run("no scopes when none configured", func(t *testing.T) {
-		client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "client-secret",
-			WithClientCredentialsProviderMetadata(provider))
+		client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+			WithProviderMetadata(provider))
 		if err != nil {
 			t.Fatalf("failed to create client: %v", err)
 		}
@@ -333,8 +345,10 @@ func TestClientCredentials_Token_ErrorResponses(t *testing.T) {
 			ctx := context.Background()
 			provider := clientCredentialsProvider(server.URL, AuthMethodPost)
 
-			client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "client-secret",
-				WithClientCredentialsProviderMetadata(provider))
+			client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+				WithProviderMetadata(provider))
 			if err != nil {
 				t.Fatalf("failed to create client: %v", err)
 			}
@@ -380,8 +394,10 @@ func TestClientCredentials_Token_Fallback(t *testing.T) {
 	// Provider with no supported auth methods listed triggers fallback behavior
 	provider := clientCredentialsProvider(server.URL)
 
-	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "client-secret",
-		WithClientCredentialsProviderMetadata(provider))
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+		WithProviderMetadata(provider))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
@@ -435,10 +451,11 @@ func TestClientCredentials_Token_PrivateKeyJWT(t *testing.T) {
 		t.Fatalf("failed to create test key provider: %v", err)
 	}
 
-	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
-		WithClientCredentialsProviderMetadata(provider),
-		WithClientCredentialsKeyProvider(keyProvider),
-		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT))
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithProviderMetadata(provider),
+		WithClientKeyProvider(keyProvider),
+		WithAuthMethod(AuthMethodPrivateKeyJWT))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
@@ -477,8 +494,10 @@ func TestClientCredentials_Discovery(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err := NewClientCredentials(ctx, issuer, "client-id", "client-secret",
-		WithClientCredentialsHTTPClient(ts.Client()))
+	_, err := NewClientCredentials(ctx, issuer,
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+		WithHTTPClient(ts.Client()))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}
@@ -598,11 +617,12 @@ func TestClientCredentials_Token_DPoP(t *testing.T) {
 	ctx := context.Background()
 	provider := clientCredentialsProvider(server.URL, AuthMethodPrivateKeyJWT)
 
-	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
-		WithClientCredentialsProviderMetadata(provider),
-		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
-		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
-		WithClientCredentialsSenderConstrain(SenderConstraintDPoP),
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithProviderMetadata(provider),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
@@ -654,11 +674,12 @@ func TestClientCredentials_Token_DPoP_TLSClientAuth(t *testing.T) {
 	ctx := context.Background()
 	provider := clientCredentialsProvider(server.URL, AuthMethodTLSClientAuth)
 
-	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
-		WithClientCredentialsProviderMetadata(provider),
-		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", &tls.Certificate{})),
-		WithClientCredentialsAuthMethod(AuthMethodTLSClientAuth),
-		WithClientCredentialsSenderConstrain(SenderConstraintDPoP),
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithProviderMetadata(provider),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", &tls.Certificate{})),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
@@ -699,11 +720,12 @@ func TestClientCredentials_Token_MTLSSenderConstrainDisablesDPoP(t *testing.T) {
 		t.Fatalf("failed to create test key provider: %v", err)
 	}
 
-	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
-		WithClientCredentialsProviderMetadata(provider),
-		WithClientCredentialsKeyProvider(keyProvider),
-		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
-		WithClientCredentialsSenderConstrain(SenderConstraintMTLS),
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithProviderMetadata(provider),
+		WithClientKeyProvider(keyProvider),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithSenderConstrain(SenderConstraintMTLS),
 	)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
@@ -760,11 +782,12 @@ func TestClientCredentials_Token_StoresNonceFromSuccessfulResponse(t *testing.T)
 	ctx := context.Background()
 	provider := clientCredentialsProvider(server.URL, AuthMethodPrivateKeyJWT)
 
-	client, err := NewClientCredentials(ctx, "https://auth.example.com", "client-id", "",
-		WithClientCredentialsProviderMetadata(provider),
-		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
-		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
-		WithClientCredentialsSenderConstrain(SenderConstraintDPoP),
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithProviderMetadata(provider),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("NewClientCredentials(): %v", err)

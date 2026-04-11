@@ -25,14 +25,16 @@ func TestBuildSignedRequestObject_ContainsExpectedClaims(t *testing.T) {
 	fixedNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	r := &RP{
-		issuer:            "https://example.com",
-		clientID:          "client-1",
-		redirectURI:       "https://rp.example.com/callback",
-		scopes:            []string{"openid", "profile"},
-		clientKeyProvider: provider,
-		now:               func() time.Time { return fixedNow },
-		randReader:        strings.NewReader("01234567890123456789012345678901"),
-		responseMode:      "query.jwt",
+		clientConfig: clientConfig{
+			issuer:            "https://example.com",
+			clientID:          "client-1",
+			scopes:            []string{"openid", "profile"},
+			clientKeyProvider: provider,
+			now:               func() time.Time { return fixedNow },
+			randReader:        strings.NewReader("01234567890123456789012345678901"),
+		},
+		redirectURI:  "https://rp.example.com/callback",
+		responseMode: "query.jwt",
 	}
 
 	signed, err := r.buildSignedRequestObject("test-state", "test-nonce", "challenge-value", "", nil)
@@ -86,13 +88,15 @@ func TestBuildSignedRequestObject_OmitsNonceWithoutOpenIDScope(t *testing.T) {
 	provider := NewStaticClientKeyProvider(key, "test-kid-2", "PS256", nil)
 
 	r := &RP{
-		issuer:            "https://example.com",
-		clientID:          "client-1",
-		redirectURI:       "https://rp.example.com/callback",
-		scopes:            []string{"accounts"},
-		clientKeyProvider: provider,
-		now:               func() time.Time { return time.Now().UTC() },
-		randReader:        strings.NewReader("01234567890123456789012345678901"),
+		clientConfig: clientConfig{
+			issuer:            "https://example.com",
+			clientID:          "client-1",
+			scopes:            []string{"accounts"},
+			clientKeyProvider: provider,
+			now:               func() time.Time { return time.Now().UTC() },
+			randReader:        strings.NewReader("01234567890123456789012345678901"),
+		},
+		redirectURI: "https://rp.example.com/callback",
 	}
 
 	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
@@ -113,14 +117,16 @@ func TestBuildSignedRequestObject_UsesConfiguredResponseType(t *testing.T) {
 	}
 
 	r := &RP{
-		issuer:            "https://example.com",
-		clientID:          "client-1",
-		redirectURI:       "https://rp.example.com/callback",
-		scopes:            []string{"openid"},
-		clientKeyProvider: NewStaticClientKeyProvider(key, "kid", "PS256", nil),
-		now:               func() time.Time { return time.Now().UTC() },
-		randReader:        strings.NewReader("01234567890123456789012345678901"),
-		responseType:      "code id_token",
+		clientConfig: clientConfig{
+			issuer:            "https://example.com",
+			clientID:          "client-1",
+			scopes:            []string{"openid"},
+			clientKeyProvider: NewStaticClientKeyProvider(key, "kid", "PS256", nil),
+			now:               func() time.Time { return time.Now().UTC() },
+			randReader:        strings.NewReader("01234567890123456789012345678901"),
+		},
+		redirectURI:  "https://rp.example.com/callback",
+		responseType: "code id_token",
 	}
 
 	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
@@ -136,12 +142,14 @@ func TestBuildSignedRequestObject_UsesConfiguredResponseType(t *testing.T) {
 
 func TestBuildSignedRequestObject_RequiresKeyProvider(t *testing.T) {
 	r := &RP{
-		issuer:      "https://example.com",
-		clientID:    "client-1",
+		clientConfig: clientConfig{
+			issuer:     "https://example.com",
+			clientID:   "client-1",
+			scopes:     []string{"openid"},
+			now:        func() time.Time { return time.Now().UTC() },
+			randReader: strings.NewReader("01234567890123456789012345678901"),
+		},
 		redirectURI: "https://rp.example.com/callback",
-		scopes:      []string{"openid"},
-		now:         func() time.Time { return time.Now().UTC() },
-		randReader:  strings.NewReader("01234567890123456789012345678901"),
 	}
 
 	_, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
@@ -159,13 +167,15 @@ func TestBuildSignedRequestObject_ES256(t *testing.T) {
 	provider := NewStaticClientKeyProvider(key, "ec-kid", "ES256", nil)
 
 	r := &RP{
-		issuer:            "https://example.com",
-		clientID:          "client-1",
-		redirectURI:       "https://rp.example.com/callback",
-		scopes:            []string{"openid"},
-		clientKeyProvider: provider,
-		now:               func() time.Time { return time.Now().UTC() },
-		randReader:        strings.NewReader("01234567890123456789012345678901"),
+		clientConfig: clientConfig{
+			issuer:            "https://example.com",
+			clientID:          "client-1",
+			scopes:            []string{"openid"},
+			clientKeyProvider: provider,
+			now:               func() time.Time { return time.Now().UTC() },
+			randReader:        strings.NewReader("01234567890123456789012345678901"),
+		},
+		redirectURI: "https://rp.example.com/callback",
 	}
 
 	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
@@ -197,13 +207,15 @@ func TestBuildSignedRequestObject_AuthorizationDetails(t *testing.T) {
 	provider := NewStaticClientKeyProvider(key, "kid", "PS256", nil)
 
 	r := &RP{
-		issuer:            "https://example.com",
-		clientID:          "client-1",
-		redirectURI:       "https://rp.example.com/callback",
-		scopes:            []string{"openid"},
-		clientKeyProvider: provider,
-		now:               func() time.Time { return time.Now().UTC() },
-		randReader:        strings.NewReader("01234567890123456789012345678901"),
+		clientConfig: clientConfig{
+			issuer:            "https://example.com",
+			clientID:          "client-1",
+			scopes:            []string{"openid"},
+			clientKeyProvider: provider,
+			now:               func() time.Time { return time.Now().UTC() },
+			randReader:        strings.NewReader("01234567890123456789012345678901"),
+		},
+		redirectURI: "https://rp.example.com/callback",
 	}
 
 	details := `[{"type":"account_information"}]`

@@ -1013,8 +1013,9 @@ func requestTypeForPlanVariant(planVariant map[string]string) string {
 func isFAPI2PlanVariant(planVariant map[string]string) bool {
 	for key := range planVariant {
 		lower := strings.ToLower(key)
-		if strings.HasPrefix(lower, "fapi_") ||
-			strings.HasPrefix(lower, "sender_") {
+		if strings.HasPrefix(lower, "sender_") ||
+			lower == "authorization_request_type" ||
+			lower == "fapi_profile" {
 			return true
 		}
 	}

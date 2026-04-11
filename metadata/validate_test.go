@@ -83,3 +83,25 @@ func TestValidateProviderRequiredFields(t *testing.T) {
 		t.Fatalf("expected ValidationError, got %T", err)
 	}
 }
+
+func TestValidateProviderStrictValidationRejectsMissingOIDCFields(t *testing.T) {
+	c := NewClient()
+
+	provider := Provider{
+		AuthorizationServer: AuthorizationServer{
+			Issuer:                 "https://issuer.example.com",
+			AuthorizationEndpoint:  "https://issuer.example.com/authorize",
+			TokenEndpoint:          "https://issuer.example.com/token",
+			ResponseTypesSupported: []string{"code"},
+		},
+	}
+	err := c.validateProvider("https://issuer.example.com", provider)
+	if err == nil {
+		t.Fatalf("strict validateProvider() expected error for missing jwks_uri")
+	}
+
+	var validationErr *ValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("expected ValidationError, got %T", err)
+	}
+}

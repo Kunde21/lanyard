@@ -12,32 +12,24 @@ import (
 	"github.com/Kunde21/lanyard/metadata"
 )
 
-// Option configures an RP instance.
-type Option func(*RP)
-
-// WithClientID sets the OAuth 2.0 client identifier.
 func WithClientID(id string) Option {
-	return func(r *RP) {
-		r.clientID = strings.TrimSpace(id)
-	}
+	return optionFunc(func(c *clientConfig) {
+		c.clientID = strings.TrimSpace(id)
+	})
 }
 
-// WithClientSecret sets the OAuth 2.0 client secret. For public clients,
-// omit this option or pass an empty string.
 func WithClientSecret(secret string) Option {
-	return func(r *RP) {
-		r.clientSecret = secret
-	}
+	return optionFunc(func(c *clientConfig) {
+		c.clientSecret = secret
+	})
 }
 
-// WithRedirectURI sets the OAuth 2.0 redirect URI for authorization callbacks.
 func WithRedirectURI(uri string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		r.redirectURI = strings.TrimSpace(uri)
-	}
+	})
 }
 
-// AuthorizationURLOption configures a single authorization URL generation.
 type AuthorizationURLOption func(*authorizationURLConfig)
 
 type authorizationURLConfig struct {
@@ -45,68 +37,76 @@ type authorizationURLConfig struct {
 	parameters           url.Values
 }
 
-// WithMetadataClient sets the metadata discovery and JWKS client.
 func WithMetadataClient(client *metadata.Client) Option {
-	return func(r *RP) {
+	return optionFunc(func(c *clientConfig) {
 		if client != nil {
-			r.metadataClient = client
+			c.metadataClient = client
 		}
-	}
+	})
 }
 
-// WithLogger sets the structured logger.
 func WithLogger(logger *slog.Logger) Option {
-	return func(r *RP) {
+	return optionFunc(func(c *clientConfig) {
 		if logger != nil {
-			r.logger = logger
+			c.logger = logger
 		}
-	}
+	})
 }
 
-// WithHTTPClient sets the HTTP client used by RP network calls.
 func WithHTTPClient(client *http.Client) Option {
-	return func(r *RP) {
+	return optionFunc(func(c *clientConfig) {
 		if client != nil {
-			r.httpClient = client
+			c.httpClient = client
 		}
-	}
+	})
 }
 
-// WithScopes sets requested authorization scopes.
 func WithScopes(scopes ...string) Option {
-	return func(r *RP) {
-		if len(scopes) == 0 {
-			return
-		}
-		r.scopes = append([]string(nil), scopes...)
+	return scopesOption{scopes: append([]string(nil), scopes...)}
+}
+
+type scopesOption struct {
+	scopes []string
+}
+
+func (o scopesOption) apply(t optionTarget) {
+	if len(o.scopes) == 0 {
+		return
+	}
+	t.config().scopes = append([]string(nil), o.scopes...)
+	if r, ok := t.(*RP); ok {
 		r.scopesExplicit = true
 	}
 }
 
-// WithClockSkew sets clock skew tolerance for token claim checks.
 func WithClockSkew(skew time.Duration) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		if skew >= 0 {
 			r.clockSkew = skew
 		}
-	}
+	})
 }
 
-// WithProviderMetadata supplies provider metadata. Values are stored as partial
-// configuration and merged with discovered metadata; caller-supplied values
-// take precedence over discovered values.
 func WithProviderMetadata(provider metadata.Provider) Option {
-	return func(r *RP) {
-		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, provider)
+	return providerMetadataOption{provider: provider}
+}
+
+type providerMetadataOption struct {
+	provider metadata.Provider
+}
+
+func (o providerMetadataOption) apply(t optionTarget) {
+	merged := mergeConfiguredProvider(t.config().provider, o.provider)
+	t.config().provider = merged
+	t.config().providerSet = true
+	if r, ok := t.(*RP); ok {
+		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, o.provider)
 		r.configuredProviderSet = true
 	}
 }
 
-// WithAuthorizationEndpoint sets the authorization endpoint URL.
-// The value is stored as partial metadata and merged with discovered metadata.
-// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithAuthorizationEndpoint(endpoint string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
 		if endpoint == "" {
 			return
@@ -115,14 +115,11 @@ func WithAuthorizationEndpoint(endpoint string) Option {
 			AuthorizationServer: metadata.AuthorizationServer{AuthorizationEndpoint: endpoint},
 		})
 		r.configuredProviderSet = true
-	}
+	})
 }
 
-// WithTokenEndpoint sets the token endpoint URL.
-// The value is stored as partial metadata and merged with discovered metadata.
-// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithTokenEndpoint(endpoint string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
 		if endpoint == "" {
 			return
@@ -131,28 +128,22 @@ func WithTokenEndpoint(endpoint string) Option {
 			AuthorizationServer: metadata.AuthorizationServer{TokenEndpoint: endpoint},
 		})
 		r.configuredProviderSet = true
-	}
+	})
 }
 
-// WithUserInfoEndpoint sets the userinfo endpoint URL.
-// The value is stored as partial metadata and merged with discovered metadata.
-// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithUserInfoEndpoint(endpoint string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
 		if endpoint == "" {
 			return
 		}
 		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{UserinfoEndpoint: endpoint})
 		r.configuredProviderSet = true
-	}
+	})
 }
 
-// WithJWKSURI sets the JWKS URI.
-// The value is stored as partial metadata and merged with discovered metadata.
-// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithJWKSURI(uri string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		uri = strings.TrimSpace(uri)
 		if uri == "" {
 			return
@@ -161,14 +152,11 @@ func WithJWKSURI(uri string) Option {
 			AuthorizationServer: metadata.AuthorizationServer{JWKSURI: uri},
 		})
 		r.configuredProviderSet = true
-	}
+	})
 }
 
-// WithPushedAuthorizationRequestEndpoint sets the PAR endpoint URL.
-// The value is stored as partial metadata and merged with discovered metadata.
-// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithPushedAuthorizationRequestEndpoint(endpoint string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
 		if endpoint == "" {
 			return
@@ -177,24 +165,20 @@ func WithPushedAuthorizationRequestEndpoint(endpoint string) Option {
 			PushedAuthorizationRequestEndpoint: endpoint,
 		})
 		r.configuredProviderSet = true
-	}
+	})
 }
 
-// WithMTLSEndpointAliases sets the mTLS endpoint aliases.
-// The value is stored as partial metadata and merged with discovered metadata.
-// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithMTLSEndpointAliases(aliases metadata.MTLSEndpointAliases) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
 			AuthorizationServer: metadata.AuthorizationServer{MTLSEndpointAliases: aliases},
 		})
 		r.configuredProviderSet = true
-	}
+	})
 }
 
-// WithProviderIssuer sets the provider issuer in the configured metadata.
 func WithProviderIssuer(issuer string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		issuer = strings.TrimSpace(issuer)
 		if issuer == "" {
 			return
@@ -203,115 +187,96 @@ func WithProviderIssuer(issuer string) Option {
 			AuthorizationServer: metadata.AuthorizationServer{Issuer: issuer},
 		})
 		r.configuredProviderSet = true
-	}
+	})
 }
 
-// WithAuthMethod sets the token endpoint client authentication method.
 func WithAuthMethod(method AuthMethod) Option {
-	return func(r *RP) {
-		r.authMethod = method
-	}
+	return optionFunc(func(c *clientConfig) {
+		c.authMethod = method
+	})
 }
 
-// WithStateStore sets the state store used for callback correlation and caller values.
-// When not provided, [New] creates a default in-memory store from rp/store/memory.
 func WithStateStore(store StateStore) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		if store != nil {
 			r.stateStore = store
 		}
-	}
+	})
 }
 
-// WithUserInfoTokenTransport sets how UserInfo requests send access tokens.
 func WithUserInfoTokenTransport(transport UserInfoTokenTransport) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		r.userInfoTokenTransport = normalizeUserInfoTokenTransport(transport)
-	}
+	})
 }
 
-// WithClientKeyProvider sets the key provider for private_key_jwt and mTLS authentication.
 func WithClientKeyProvider(provider ClientKeyProvider) Option {
-	return func(r *RP) {
+	return optionFunc(func(c *clientConfig) {
 		if provider != nil {
-			r.clientKeyProvider = provider
+			c.clientKeyProvider = provider
 		}
-	}
+	})
 }
 
-// WithRequirePAR forces the use of Pushed Authorization Requests (PAR).
 func WithRequirePAR(require bool) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		r.requirePAR = require
 		r.requirePARExplicit = true
-	}
+	})
 }
 
-// WithSenderConstrain sets the sender-constraining mode used for outbound requests.
-// Use the typed [SenderConstraint] constants: [SenderConstraintDPoP] or
-// [SenderConstraintMTLS].
 func WithSenderConstrain(mode SenderConstraint) Option {
-	return func(r *RP) {
-		r.senderConstrain = normalizeSenderConstrain(string(mode))
-		r.senderConstrainExplicit = true
-	}
+	return optionFunc(func(c *clientConfig) {
+		c.senderConstrain = normalizeSenderConstrain(string(mode))
+	})
 }
 
-// WithValidateAuthorizationResponseIssuer enables RFC 9207 issuer validation
-// for front-channel authorization responses.
 func WithValidateAuthorizationResponseIssuer(validate bool) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		r.validateAuthorizationResponseIssuer = validate
-	}
+	})
 }
 
-// WithAllowUnsecuredIDTokens allows acceptance of ID tokens with alg=none.
-// For FAPI profiles, this option is ignored - unsecured tokens are always rejected.
 func WithAllowUnsecuredIDTokens(allow bool) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		r.allowUnsecuredIDTokens = allow
-	}
+	})
 }
 
 func withNow(now func() time.Time) Option {
-	return func(r *RP) {
+	return optionFunc(func(c *clientConfig) {
 		if now != nil {
-			r.now = now
+			c.now = now
 		}
-	}
+	})
 }
 
 func withRandReader(reader io.Reader) Option {
-	return func(r *RP) {
+	return optionFunc(func(c *clientConfig) {
 		if reader != nil {
-			r.randReader = reader
+			c.randReader = reader
 		}
-	}
+	})
 }
 
-// WithDPoPNonceTTL sets the TTL for cached DPoP nonces.
 func WithDPoPNonceTTL(ttl time.Duration) Option {
-	return func(r *RP) {
+	return optionFunc(func(c *clientConfig) {
 		if ttl > 0 {
-			r.dpopNonces = newDPoPNonceStore(ttl)
+			c.dpopNonces = newDPoPNonceStore(ttl)
 		}
-	}
+	})
 }
 
-// WithAuthorizationDetails sets the Rich Authorization Request (RAR) details.
-// The details should be a slice of maps containing authorization detail types.
 func WithAuthorizationDetails(details []map[string]any) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		authorizationDetails, ok := marshalAuthorizationDetails(details)
 		if !ok {
 			return
 		}
 		r.authorizationDetails = authorizationDetails
-	}
+	})
 }
 
-// SetAuthorizationDetails sets Rich Authorization Request (RAR) details for a
-// single authorization URL generation.
 func SetAuthorizationDetails(details []map[string]any) AuthorizationURLOption {
 	return func(cfg *authorizationURLConfig) {
 		if cfg == nil {
@@ -325,9 +290,6 @@ func SetAuthorizationDetails(details []map[string]any) AuthorizationURLOption {
 	}
 }
 
-// SetAuthParam sets a single authorization request parameter for a
-// specific authorization URL generation. The parameter is added to the browser
-// redirect query or pushed authorization request body.
 func SetAuthParam(key, value string) AuthorizationURLOption {
 	return func(cfg *authorizationURLConfig) {
 		if cfg == nil {
@@ -355,74 +317,51 @@ func marshalAuthorizationDetails(details []map[string]any) (string, bool) {
 	return string(b), true
 }
 
-// WithResponseMode sets the OAuth 2.0 response_mode for authorization requests.
-// Common values are "query" (default) and "form_post".
 func WithResponseMode(mode string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		if r != nil {
 			r.responseMode = strings.TrimSpace(mode)
 			r.responseModeExplicit = true
 		}
-	}
+	})
 }
 
-// WithResponseType sets the OAuth 2.0 response_type for authorization requests.
 func WithResponseType(responseType string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		if r != nil {
 			r.responseType = strings.TrimSpace(responseType)
 			r.responseTypeExplicit = true
 		}
-	}
+	})
 }
 
-// WithRequestMethod sets the FAPI request method. Use "signed_non_repudiation"
-// to enable JAR (signed request objects) for message-signing profiles.
 func WithRequestMethod(method string) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		if r != nil {
 			r.requestMethod = normalizeRequestMethod(method)
 			r.requestMethodExplicit = true
 		}
-	}
+	})
 }
 
-// RequestURIHandler is a callback that stores a signed request object JWT
-// and returns a URL where it can be retrieved. When set via WithRequestURIMode,
-// AuthorizationURL emits a request_uri parameter instead of embedding the
-// signed JWT as a request parameter.
 type RequestURIHandler func(signedJWT string) (requestURI string, err error)
 
-// WithRequestURIMode enables request_uri mode. Instead of embedding the signed
-// request object as a request parameter, the handler is called to store the JWT
-// and return a hosted URL. The authorization redirect will contain
-// client_id, request_uri, scope, and optionally response_mode.
 func WithRequestURIMode(handler RequestURIHandler) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		if r != nil {
 			r.requestURIHandler = handler
 		}
-	}
+	})
 }
 
-// Profile selects an RP behavior profile that applies sensible defaults.
 type Profile int
 
 const (
-	// OIDC selects standard OpenID Connect defaults.
 	OIDC Profile = iota
-	// OAuth2 selects OAuth 2.0-only defaults (no forced openid scope).
 	OAuth2
-	// FAPI1Adv selects FAPI 1.0 Advanced profile defaults.
 	FAPI1Adv
-	// FAPI2SecurityProfile selects FAPI 2.0 Security Profile defaults.
 	FAPI2SecurityProfile
-	// FAPI2MessageSigning selects FAPI 2.0 Message Signing defaults.
 	FAPI2MessageSigning
-	// PlainFAPI selects FAPI strict security validation without applying
-	// specific profile defaults for scopes or request methods. Use this
-	// when you need FAPI-level ID token validation but want to control
-	// scopes and other settings yourself.
 	PlainFAPI
 )
 
@@ -443,30 +382,19 @@ func profileFromPublic(p Profile) profileType {
 	}
 }
 
-// WithProfile sets an RP behavior profile that applies sensible defaults
-// for scopes, discovery mode, and security settings. Profile defaults only
-// fill fields that the caller has not already set via explicit options.
-//
-// This is the preferred profile selector. Use the typed [Profile] constants
-// rather than raw strings.
 func WithProfile(profile Profile) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		r.profile = profileFromPublic(profile)
 		r.profileExplicit = true
-	}
+	})
 }
 
-// DiscoveryMode controls whether and how provider metadata is discovered.
 type DiscoveryMode int
 
 const (
-	// DiscoveryAuto selects discovery type from profile and current RP needs.
 	DiscoveryAuto DiscoveryMode = iota
-	// DiscoveryOIDC forces OIDC provider metadata discovery.
 	DiscoveryOIDC
-	// DiscoveryOAuth2 forces OAuth 2.0 authorization server metadata discovery.
 	DiscoveryOAuth2
-	// DiscoveryDisabled never discovers; fails if required metadata is missing.
 	DiscoveryDisabled
 )
 
@@ -483,10 +411,9 @@ func discoveryModeFromPublic(m DiscoveryMode) discoveryModeType {
 	}
 }
 
-// WithDiscoveryMode sets the discovery policy for provider metadata resolution.
 func WithDiscoveryMode(mode DiscoveryMode) Option {
-	return func(r *RP) {
+	return rpOptionFunc(func(r *RP) {
 		r.discoveryMode = discoveryModeFromPublic(mode)
 		r.discoveryModeExplicit = true
-	}
+	})
 }

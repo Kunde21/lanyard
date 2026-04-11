@@ -174,6 +174,9 @@ func fapiRequestMethodForVariant(planVariant map[string]string) string {
 }
 
 func profileForPlanVariant(planName string, planVariant map[string]string) string {
+	if strings.EqualFold(strings.TrimSpace(planVariant["fapi_client_type"]), "plain_oauth") {
+		return "oauth2"
+	}
 	if isFAPI2PlanVariant(planVariant) {
 		if strings.Contains(strings.ToLower(planName), "message-signing") {
 			return "fapi2_message_signing"
@@ -183,21 +186,18 @@ func profileForPlanVariant(planName string, planVariant map[string]string) strin
 	if strings.Contains(strings.ToLower(planName), "fapi1") {
 		return "fapi1_adv"
 	}
-	if strings.EqualFold(strings.TrimSpace(planVariant["fapi_client_type"]), "plain_oauth") {
-		return "oauth2"
-	}
 	return "oidc"
 }
 
 func discoveryModeForPlanVariant(planName string, planVariant map[string]string) string {
+	if strings.EqualFold(strings.TrimSpace(planVariant["fapi_client_type"]), "plain_oauth") {
+		return "oauth2"
+	}
 	if isFAPI2PlanVariant(planVariant) {
 		return "auto"
 	}
 	if strings.Contains(strings.ToLower(planName), "fapi1") {
 		return "auto"
-	}
-	if strings.EqualFold(strings.TrimSpace(planVariant["fapi_client_type"]), "plain_oauth") {
-		return "oauth2"
 	}
 	return "auto"
 }

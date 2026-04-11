@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Kunde21/lanyard/metadata"
@@ -68,32 +67,21 @@ func (r requestMethodType) isSigned() bool {
 }
 
 type RP struct {
-	issuer         string
-	clientID       string
-	clientSecret   string
-	redirectURI    string
-	scopes         []string
+	clientConfig
+
+	redirectURI string
+
 	scopesExplicit bool
-	authMethod     AuthMethod
 
-	httpClient     *http.Client
-	logger         *slog.Logger
-	metadataClient *metadata.Client
-	stateStore     StateStore
-
-	provider    metadata.Provider
-	providerSet bool
+	stateStore StateStore
 
 	configuredProvider    metadata.Provider
 	configuredProviderSet bool
 
 	userInfoTokenTransport UserInfoTokenTransport
 
-	clientKeyProvider ClientKeyProvider
-
 	requirePAR              bool
 	requirePARExplicit      bool
-	senderConstrain         SenderConstraint
 	senderConstrainExplicit bool
 	allowUnsecuredIDTokens  bool
 
@@ -111,14 +99,7 @@ type RP struct {
 	discoveryMode         discoveryModeType
 	discoveryModeExplicit bool
 
-	resolvedAuthMethod  AuthMethod
-	allowMethodFallback bool
-	methodMu            sync.RWMutex
-
-	now        func() time.Time
-	randReader io.Reader
-	clockSkew  time.Duration
-	dpopNonces *dpopNonceStore
+	clockSkew time.Duration
 
 	authorizationDetails string
 }
@@ -142,7 +123,7 @@ func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 	r := newRP(issuer)
 
 	for _, opt := range opts {
-		opt(r)
+		opt.apply(r)
 	}
 
 	r.applyProfileDefaults()
@@ -336,21 +317,21 @@ func providerIsComplete(p metadata.Provider) bool {
 
 func newRP(issuer string) *RP {
 	return &RP{
-		issuer:                 strings.TrimSpace(issuer),
-		scopes:                 []string{"openid"},
-		httpClient:             http.DefaultClient,
-		logger:                 slog.New(slog.NewTextHandler(io.Discard, nil)),
+		clientConfig: clientConfig{
+			issuer:     strings.TrimSpace(issuer),
+			scopes:     []string{"openid"},
+			httpClient: http.DefaultClient,
+			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			now:        func() time.Time { return time.Now().UTC() },
+			randReader: rand.Reader,
+		},
 		userInfoTokenTransport: UserInfoTokenTransportHeader,
-		now:                    func() time.Time { return time.Now().UTC() },
-		randReader:             rand.Reader,
 		clockSkew:              defaultClockSkew,
 	}
 }
 
 func (r *RP) initDefaults() {
-	if r.dpopNonces == nil {
-		r.dpopNonces = newDPoPNonceStore(5 * time.Minute)
-	}
+	r.clientConfig.initDefaults()
 	if r.stateStore == nil {
 		r.stateStore = memory.New(10 * time.Minute)
 	}

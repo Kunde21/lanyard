@@ -8,6 +8,8 @@ import (
 	"slices"
 	"sync"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestRPRuntimeClient_RegisterAndDelete(t *testing.T) {
@@ -406,6 +408,168 @@ func TestBuildRPRuntimeRequest_FAPI1AdvancedPushed(t *testing.T) {
 	}
 	if req.ValidateAuthorizationResponseIssuer {
 		t.Fatal("ValidateAuthorizationResponseIssuer = true, want false for FAPI1 Advanced")
+	}
+}
+
+func TestDiscoveryModeForPlanVariant(t *testing.T) {
+	tests := []struct {
+		name        string
+		planName    string
+		planVariant map[string]string
+		want        string
+	}{
+		{
+			name:        "plain_oauth_with_fapi2_sp",
+			planName:    "fapi2-security-profile-final-client-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth", "client_auth_type": "private_key_jwt", "sender_constrain": "dpop"},
+			want:        "oauth2",
+		},
+		{
+			name:        "plain_oauth_with_fapi2_ms",
+			planName:    "fapi2-message-signing-final-client-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth", "fapi_response_mode": "jarm"},
+			want:        "oauth2",
+		},
+		{
+			name:        "plain_oauth_with_fapi1_adv",
+			planName:    "fapi1-advanced-final-client-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth", "fapi_auth_request_method": "pushed"},
+			want:        "oauth2",
+		},
+		{
+			name:        "oidc_with_fapi2_sp",
+			planName:    "fapi2-security-profile-final-client-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "oidc", "client_auth_type": "private_key_jwt"},
+			want:        "auto",
+		},
+		{
+			name:        "oidc_with_fapi1_adv",
+			planName:    "fapi1-advanced-final-client-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "oidc", "fapi_auth_request_method": "by_value"},
+			want:        "auto",
+		},
+		{
+			name:        "plain_oauth_without_fapi",
+			planName:    "oidcc-client-config-certification-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth"},
+			want:        "oauth2",
+		},
+		{
+			name:        "no_client_type_oidc_plan",
+			planName:    "oidcc-client-config-certification-test-plan",
+			planVariant: map[string]string{},
+			want:        "auto",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := discoveryModeForPlanVariant(tc.planName, tc.planVariant)
+			if got != tc.want {
+				t.Fatalf("discoveryModeForPlanVariant() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestProfileForPlanVariant(t *testing.T) {
+	tests := []struct {
+		name        string
+		planName    string
+		planVariant map[string]string
+		want        string
+	}{
+		{
+			name:        "oidc_with_fapi2_sp_variant_keys",
+			planName:    "fapi2-security-profile-final-client-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "oidc", "sender_constrain": "mtls"},
+			want:        "fapi2_security_profile",
+		},
+		{
+			name:        "oidc_with_fapi2_ms_variant_keys",
+			planName:    "fapi2-message-signing-final-client-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "oidc", "authorization_request_type": "rar", "fapi_response_mode": "jarm"},
+			want:        "fapi2_message_signing",
+		},
+		{
+			name:        "plain_oauth_with_fapi1_adv",
+			planName:    "fapi1-advanced-final-client-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth", "fapi_auth_request_method": "pushed"},
+			want:        "oauth2",
+		},
+		{
+			name:        "plain_oauth_without_fapi_keys",
+			planName:    "oidcc-client-config-certification-test-plan",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth"},
+			want:        "oauth2",
+		},
+		{
+			name:        "oidc_without_fapi_keys",
+			planName:    "oidcc-client-config-certification-test-plan",
+			planVariant: map[string]string{},
+			want:        "oidc",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := profileForPlanVariant(tc.planName, tc.planVariant)
+			if got != tc.want {
+				t.Fatalf("profileForPlanVariant() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsFAPI2PlanVariant(t *testing.T) {
+	tests := []struct {
+		name        string
+		planVariant map[string]string
+		want        bool
+	}{
+		{
+			name:        "fapi2_sender_constrain_variant",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth", "sender_constrain": "mtls"},
+			want:        true,
+		},
+		{
+			name:        "fapi2_authorization_request_type_variant",
+			planVariant: map[string]string{"fapi_client_type": "oidc", "authorization_request_type": "rar"},
+			want:        true,
+		},
+		{
+			name:        "fapi1_plain_oauth_variant",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth", "fapi_auth_request_method": "pushed"},
+			want:        false,
+		},
+		{
+			name:        "non_fapi_plain_oauth_variant",
+			planVariant: map[string]string{"fapi_client_type": "plain_oauth"},
+			want:        false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isFAPI2PlanVariant(tc.planVariant)
+			if got != tc.want {
+				t.Fatalf("isFAPI2PlanVariant() = %t, want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildRPRuntimeRequest_PlainOAuthUsesOAuth2ProfileAndScopes(t *testing.T) {
+	job := RunJob{Alias: "alias-a", PlanName: "fapi1-advanced-final-client-test-plan"}
+	planVariant := map[string]string{
+		"fapi_client_type":         "plain_oauth",
+		"fapi_auth_request_method": "pushed",
+	}
+
+	req := buildRPRuntimeRequest(job, planVariant, "https://suite.localhost")
+	if req.Profile != "oauth2" {
+		t.Fatalf("Profile = %q, want %q", req.Profile, "oauth2")
+	}
+	if diff := cmp.Diff([]string{"accounts"}, req.Scopes); diff != "" {
+		t.Fatalf("Scopes mismatch (-want +got):\n%s", diff)
 	}
 }
 

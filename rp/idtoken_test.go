@@ -75,11 +75,13 @@ func TestValidateIDToken(t *testing.T) {
 	unsignedToken := signUnsecuredIDToken(t, baseClaims)
 
 	rNoUnsecured := &RP{
-		issuer:                 issuer,
-		clientID:               "client-id",
-		httpClient:             ts.Client(),
-		metadataClient:         r.metadataClient,
-		now:                    func() time.Time { return now },
+		clientConfig: clientConfig{
+			issuer:         issuer,
+			clientID:       "client-id",
+			httpClient:     ts.Client(),
+			metadataClient: r.metadataClient,
+			now:            func() time.Time { return now },
+		},
 		allowUnsecuredIDTokens: false,
 	}
 	if _, err := rNoUnsecured.validateIDToken(context.Background(), unsignedToken, "nonce-123", issuer+"/jwks", nil); err == nil {
@@ -87,11 +89,13 @@ func TestValidateIDToken(t *testing.T) {
 	}
 
 	rAllow := &RP{
-		issuer:                 issuer,
-		clientID:               "client-id",
-		httpClient:             ts.Client(),
-		metadataClient:         r.metadataClient,
-		now:                    func() time.Time { return now },
+		clientConfig: clientConfig{
+			issuer:         issuer,
+			clientID:       "client-id",
+			httpClient:     ts.Client(),
+			metadataClient: r.metadataClient,
+			now:            func() time.Time { return now },
+		},
 		allowUnsecuredIDTokens: true,
 	}
 	if _, err := rAllow.validateIDToken(context.Background(), unsignedToken, "nonce-123", issuer+"/jwks", nil); err != nil {
@@ -99,11 +103,13 @@ func TestValidateIDToken(t *testing.T) {
 	}
 
 	rFAPI := &RP{
-		issuer:                 issuer,
-		clientID:               "client-id",
-		httpClient:             ts.Client(),
-		metadataClient:         r.metadataClient,
-		now:                    func() time.Time { return now },
+		clientConfig: clientConfig{
+			issuer:         issuer,
+			clientID:       "client-id",
+			httpClient:     ts.Client(),
+			metadataClient: r.metadataClient,
+			now:            func() time.Time { return now },
+		},
 		profile:                profilePlainFAPI,
 		allowUnsecuredIDTokens: true,
 	}
@@ -159,10 +165,12 @@ func TestValidateIDTokenRejectsAlgorithmNotInProviderList(t *testing.T) {
 	token := signIDTokenWithAlg(t, key, "kid-1", claims, jose.RS256)
 
 	r := &RP{
-		issuer:     "https://issuer.test",
-		clientID:   "client-id",
-		httpClient: http.DefaultClient,
-		now:        func() time.Time { return now },
+		clientConfig: clientConfig{
+			issuer:     "https://issuer.test",
+			clientID:   "client-id",
+			httpClient: http.DefaultClient,
+			now:        func() time.Time { return now },
+		},
 	}
 
 	_, err = r.validateIDToken(context.Background(), token, "nonce-123", "", []string{"ES256"})
@@ -452,10 +460,12 @@ func TestValidateIDTokenClaims_RejectsOldIatForFAPIProfile(t *testing.T) {
 	}
 
 	r := &RP{
-		issuer:    "https://example.com",
-		clientID:  "client-1",
+		clientConfig: clientConfig{
+			issuer:   "https://example.com",
+			clientID: "client-1",
+			now:      func() time.Time { return now },
+		},
 		profile:   profilePlainFAPI,
-		now:       func() time.Time { return now },
 		clockSkew: 5 * time.Minute,
 	}
 
@@ -480,10 +490,12 @@ func TestValidateIDTokenClaims_AllowsOldIatForNonFAPI(t *testing.T) {
 	}
 
 	r := &RP{
-		issuer:    "https://example.com",
-		clientID:  "client-1",
+		clientConfig: clientConfig{
+			issuer:   "https://example.com",
+			clientID: "client-1",
+			now:      func() time.Time { return now },
+		},
 		profile:   profileOIDC,
-		now:       func() time.Time { return now },
 		clockSkew: 5 * time.Minute,
 	}
 

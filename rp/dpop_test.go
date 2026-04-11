@@ -25,10 +25,12 @@ func TestGenerateDPoPProof_IncludesExpectedClaims(t *testing.T) {
 	}
 
 	r := &RP{
-		clientKeyProvider:  NewStaticClientKeyProvider(key, "kid-1", "PS256", nil),
-		resolvedAuthMethod: AuthMethodPrivateKeyJWT,
-		randReader:         bytes.NewReader(bytes.Repeat([]byte{0x42}, 32)),
-		now:                func() time.Time { return time.Unix(1712100000, 0).UTC() },
+		clientConfig: clientConfig{
+			clientKeyProvider:  NewStaticClientKeyProvider(key, "kid-1", "PS256", nil),
+			resolvedAuthMethod: AuthMethodPrivateKeyJWT,
+			randReader:         bytes.NewReader(bytes.Repeat([]byte{0x42}, 32)),
+			now:                func() time.Time { return time.Unix(1712100000, 0).UTC() },
+		},
 	}
 
 	proof, err := r.generateDPoPProof(http.MethodPost, "https://issuer.test/token", "access-token", "nonce-123")
