@@ -51,52 +51,16 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
 
 ### Conformance Status
 
-Lanyard is verified against the OpenID Foundation conformance suite with the included local harness.
+Lanyard is verified against the OpenID Foundation conformance suite (`104/104` plans, `1180/1180` tests passed) covering:
 
-*   **Full suite preset**: `all-rp-full`
-*   **Latest verified result**: `104/104` plans passed, `1180/1180` tests passed
-*   **Included coverage**:
-    *   OpenID Connect Core Basic Certification
-    *   OpenID Connect Config Certification (`42/42` plans)
-    *   OpenID Connect Form Post Basic Certification
-    *   FAPI 1.0 Advanced Final (`12/12` plans)
-    *   FAPI 2.0 Security Profile Final (`16/16` plans)
-    *   FAPI 2.0 Message Signing Final (`32/32` plans)
-*   **Setup**: See `conformance/README.md` for local suite setup and harness usage.
+*   OpenID Connect Core Basic Certification
+*   OpenID Connect Config Certification
+*   OpenID Connect Form Post Basic Certification
+*   FAPI 1.0 Advanced Final
+*   FAPI 2.0 Security Profile Final
+*   FAPI 2.0 Message Signing Final
 
-Useful commands:
-
-```bash
-# Full verified RP suite
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -args -preset=all-rp-full
-
-# OIDC config matrix only
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -args -preset=oidcc-config-full
-
-# FAPI 1.0 Advanced Final
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -args -preset=fapi1-adv-full
-
-# FAPI 2.0 Security Profile Final
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -test.timeout=45m \
-  -args -profile=fapi-rp \
-  -include-plan-regex='fapi2-security-profile-final-client-test-plan' \
-  -matrix=fapi2-sp-final-plain-fapi-all16 \
-  -parallel \
-  -max-parallel-runs=8
-
-# FAPI 2.0 Message Signing Final
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -test.timeout=60m \
-  -args -profile=fapi-rp \
-  -include-plan-regex='fapi2-message-signing-final-client-test-plan' \
-  -matrix=fapi2-ms-final-plain-fapi-all32 \
-  -parallel \
-  -max-parallel-runs=8
-```
+See `conformance` package for local suite setup, harness usage, and run commands.
 
 ## Installation
 
