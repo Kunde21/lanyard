@@ -21,7 +21,7 @@ Core OpenID Connect specification for Relying Party functionality.
 
 **Implementation**:
 
-- `oidc/discovery.go` - Provider discovery
+- `metadata/discovery.go` - Provider discovery
 - `rp/rp.go` - Authorization Code flow
 - `rp/idtoken.go` - ID Token validation
 - `rp/userinfo.go` - UserInfo endpoint
@@ -43,9 +43,9 @@ Provider metadata discovery and validation.
 
 **Implementation**:
 
-- `oidc/metadata_provider.go` - Provider metadata
-- `oidc/validate.go` - Metadata validation
-- `oidc/webfinger.go` - WebFinger discovery
+- `metadata/provider.go` - Provider metadata
+- `metadata/validate.go` - Metadata validation
+- `metadata/webfinger.go` - WebFinger discovery
 
 ---
 
@@ -149,8 +149,8 @@ Authorization server metadata discovery.
 
 **Implementation**:
 
-- `oidc/well_known.go` - Well-known URL construction
-- `oidc/metadata_oauth_as.go` - Authorization server metadata
+- `metadata/well_known.go` - Well-known URL construction
+- `metadata/authorization_server.go` - Authorization server metadata
 - `rp/endpoints.go` - Endpoint resolution with mTLS aliases
 
 ---
@@ -188,7 +188,7 @@ Mutual TLS for client authentication and sender constraint.
 **Implementation**:
 
 - `rp/auth_method.go` - tls_client_auth method
-- `oidc/metadata_oauth_as.go` - MTLSEndpointAliases
+- `metadata/authorization_server.go` - MTLSEndpointAliases
 - `rp/endpoints.go` - Endpoint resolution
 
 ---
@@ -452,7 +452,7 @@ WebFinger protocol for issuer discovery.
 
 **Implementation**:
 
-- `oidc/webfinger.go` - WebFinger discovery
+- `metadata/webfinger.go` - WebFinger discovery
 
 ---
 
@@ -460,7 +460,7 @@ WebFinger protocol for issuer discovery.
 
 ### FAPI 1.0 Advanced
 
-**Status**: Not Implemented
+**Status**: Implemented (Conformance Verified)
 
 Financial-grade API Part 2: Advanced security profile.
 
@@ -473,9 +473,20 @@ Financial-grade API Part 2: Advanced security profile.
 | PKCE                        | ✅     | Required with PAR              |
 | JAR                         | ✅     | Signed request object required |
 | JARM                        | ✅     | JWT response mode required     |
-| Hybrid Flow (code id_token) | ❌     | response_type=code id_token    |
+| Hybrid Flow (code id_token) | ✅     | response_type=code id_token    |
 | PS256/ES256 Only            | ✅     | RS256 forbidden for signing    |
 | nonce Required              | ✅     | For OIDC flows                 |
+
+**Conformance Profiles Tested**:
+
+- `fapi1-advanced-final-client-test-plan`
+- `fapi1-adv-final-first4`
+- `fapi1-adv-final-all12`
+
+**Verification**:
+
+- smoke matrix: `4/4` plans passed
+- full `all12` matrix: `12/12` plans passed
 
 **Required Algorithms**:
 
@@ -515,7 +526,11 @@ Financial-grade API security profile.
 **Conformance Profiles Tested**:
 
 - `fapi2-security-profile-final-client-test-plan`
-- `plain_fapi` variant
+- `fapi2-sp-final-plain-fapi-all16`
+
+**Verification**:
+
+- full `all16` matrix: `16/16` plans passed
 
 **Implementation**:
 
@@ -528,7 +543,7 @@ Financial-grade API security profile.
 
 ### FAPI 2.0 Message Signing
 
-**Status**: Implemented (Conformance Testing)
+**Status**: Implemented (Conformance Verified)
 
 FAPI 2.0 profile with signed protocol messages.
 
@@ -640,8 +655,10 @@ Consolidated OAuth 2.0 with security best practices.
 |---------------------|--------|-----------------|------------------|--------------|----------|
 | client_secret_basic | ✅     | RFC 6749 §2.3.1 | HTTP Basic Auth  | ❌           | ❌       |
 | client_secret_post  | ✅     | RFC 6749 §2.3.1 | Form parameters  | ❌           | ❌       |
+| client_secret_jwt   | ✅     | RFC 7523        | HMAC JWT assertion | ❌         | ❌       |
 | private_key_jwt     | ✅     | RFC 7523        | JWT assertion    | ✅           | ✅       |
 | tls_client_auth     | ✅     | RFC 8705        | mTLS certificate | ✅           | ✅       |
+| self_signed_tls_client_auth | ✅ | OpenID / RFC 8705 ecosystem | Self-signed client cert over mTLS | ❌ | ❌ |
 
 **Implementation**:
 
@@ -675,22 +692,29 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 
 **Latest Verified Results**:
 
-| Profile                   | Variant         | Module/Test                                            | Result               | Notes                                                                                                                                           |
-|---------------------------|-----------------|--------------------------------------------------------|----------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
-| FAPI 2.0 Security Profile | `plain_fapi-01` | `fapi2-security-profile-final-client-test-happy-path`  | ✅ Passed            | Verified after fixing the RP to call the suite `accounts_endpoint` during the FAPI happy path.                                                  |
-| FAPI 2.0 Security Profile | `plain_fapi-01` | `fapi2-security-profile-final-client-test-invalid-iss` | ⚠️ Behavior observed | RP rejected the invalid issuer with `id token validation failed: issuer mismatch`, but the full module result was not captured in this session. |
-| FAPI 2.0 Security Profile | `plain_fapi-02` | DPoP sender-constrained flow                           | ❌ Failing           | Suite reported `Couldn't parse incoming_dpop_proof from incoming_request as a JWT`; DPoP proof generation still needs investigation.            |
+| Profile | Scope | Result | Notes |
+|---------|-------|--------|-------|
+| OpenID Connect Core RP | `oidcc-client-basic-certification-test-plan` | ✅ Passed | Included in the full suite run. |
+| OpenID Connect Config RP | `oidcc-config-cert-all42` | ✅ Passed | `42/42` plans, `252/252` tests passed. |
+| FAPI 1.0 Advanced Final | `fapi1-adv-final-all12` | ✅ Passed | `12/12` plans, `156/156` tests passed. |
+| FAPI 2.0 Security Profile Final | `fapi2-sp-final-plain-fapi-all16` | ✅ Passed | `16/16` plans, `216/216` tests passed. |
+| FAPI 2.0 Message Signing Final | `fapi2-ms-final-plain-fapi-all32` | ✅ Passed | `32/32` plans, `528/528` tests passed. |
+| Full RP preset | `all-rp-full` | ✅ Passed | `104/104` plans, `1180/1180` tests passed. |
 
 **Test Profiles**:
 
 - `oidc-rp` - OpenID Connect Core RP tests
-- `fapi-rp` - FAPI 2.0 RP tests
+- `fapi-rp` - FAPI RP tests
 - `all-rp` - All available RP profiles
 
 **Test Plans**:
 
 - `oidcc-client-basic-certification-test-plan` - Basic RP profile
+- `oidcc-client-config-certification-test-plan` - OIDC configuration matrix profile
+- `oidcc-client-formpost-basic-certification-test-plan` - OIDC form_post profile
+- `fapi1-advanced-final-client-test-plan` - FAPI 1.0 Advanced Final
 - `fapi2-security-profile-final-client-test-plan` - FAPI 2.0 Security Profile
+- `fapi2-message-signing-final-client-test-plan` - FAPI 2.0 Message Signing Final
 
 **Implementation**:
 
@@ -722,7 +746,9 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | JSON Web Signature                      | RFC 7515              | ✅     |
 | JSON Web Key                            | RFC 7517              | ✅     |
 | WebFinger                               | RFC 7033              | ✅     |
+| FAPI 1.0 Advanced                       | OpenID FAPI           | ✅     |
 | FAPI 2.0 Security Profile               | OpenID FAPI           | ✅     |
+| FAPI 2.0 Message Signing                | OpenID FAPI           | ✅     |
 | JWT Secured Authorization Request (JAR) | RFC 9101              | ✅     |
 | JARM                                    | OpenID                | ✅     |
 
@@ -734,9 +760,6 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | PoP Key Semantics (cnf claim)           | RFC 7800     | DPoP/mTLS sender constraint                 |
 | JWT Introspection Response              | RFC 9701     | Enhanced introspection                      |
 | Refresh Token Rotation                  | RFC 9700     | OAuth 2.0 Security BCP                      |
-| Hybrid Flow (code id_token)             | OpenID Core  | FAPI 1.0 Advanced                           |
-| FAPI 1.0 Advanced                       | OpenID FAPI  | Full FAPI 1.0 Advanced profile              |
-| FAPI 2.0 Message Signing                | OpenID FAPI  | FAPI 2.0 with message signing               |
 | FAPI 2.0 Grant Management               | OpenID FAPI  | Grant lifecycle management                  |
 | OpenID Connect for Identity Assurance   | OpenID       | Identity-proofing ecosystems                |
 

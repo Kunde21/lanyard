@@ -7,13 +7,25 @@ Run the OpenID Foundation conformance suite locally behind trusted HTTPS at:
 
 Note: `*.localhost` domains resolve automatically to 127.0.0.1 (no /etc/hosts edits needed)
 
-This setup is Linux-focused and is intended to run and pass:
+This setup is Linux-focused and is intended to run the full local RP verification stack, including:
 
 - `OpenID Connect Core: Basic Certification Profile Relying Party Tests`
+- `OpenID Connect Core: Config Certification Profile Relying Party Tests`
+- `OpenID Connect Core: Form Post Basic Certification Profile Relying Party Tests`
+- `FAPI 1.0 Advanced Final: Relying Party Tests`
+- `FAPI 2.0 Security Profile Final: Relying Party Tests`
+- `FAPI 2.0 Message Signing Final: Relying Party Tests`
 
-The example RP now implements Authorization Code + PKCE, ID token validation, and UserInfo validation for this profile.
-It uses the supported cookie-backed RP state store (`rp/store/cookie`) so login and callback state
-is bound to the browser session.
+Latest verified full-suite result:
+
+- preset: `all-rp-full`
+- result: `104/104` plans passed, `1180/1180` tests passed
+- artifact: `artifacts/20260410-232441/report.json`
+
+The example RP implements Authorization Code + PKCE, ID token validation, UserInfo validation,
+PAR, JAR, JARM, RAR, DPoP, mTLS, and RP-hosted `request_uri` support. It uses the supported
+cookie-backed RP state store (`rp/store/cookie`) so login and callback state is bound to the
+browser session.
 
 ## Prerequisites
 
@@ -82,11 +94,11 @@ docker compose -f conformance/docker-compose.yml down -v
 
 MongoDB data is ephemeral by default.
 
-## 4) Create a Basic RP run in the suite UI
+## 4) Create a Run in the Suite UI
 
 In `https://suite.localhost`:
 
-1. Create a new test plan: `OpenID Connect Core: Basic Certification Profile Relying Party Tests`.
+1. Create a new test plan such as `OpenID Connect Core: Basic Certification Profile Relying Party Tests`.
 2. Configure the RP redirect URI as `https://rp.localhost/callback`.
 3. For RP metadata fields, use values supported by the RP implementation:
    - Client type: confidential
@@ -94,13 +106,13 @@ In `https://suite.localhost`:
    - Response type: `code`
    - Grant type: `authorization_code`
    - Token endpoint auth: `client_secret_basic`
-5. Optional cookie-store env vars for the example RP:
+4. Optional cookie-store env vars for the example RP:
    - `RP_STATE_COOKIE_AUTH_KEY` (32+ byte signing key)
    - `RP_STATE_COOKIE_ENC_KEY` (16/24/32 byte encryption key)
    - `RP_STATE_COOKIE_INSECURE=true` (only for non-HTTPS local debugging)
-4. Start the plan.
+5. Start the plan.
 
-Expected result: tests run to passing final states for the target profile.
+Expected result: the selected tests run to passing final states for the target profile.
 
 ## 5) Capture evidence artifacts
 
@@ -142,17 +154,23 @@ Common issues:
 
 ## Automated local run
 
-After one-time setup (`setup.sh`, hosts entries, and trusted mkcert CA), you can run the automation harness directly:
+After one-time setup (`setup.sh` and trusted mkcert CA), you can run the automation harness directly:
 
 ```bash
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=oidc-rp
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=all-rp-full
 ```
 
 Common variants:
 
 ```bash
-# Run all RP plans discovered from the suite API
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=all-rp
+# Run the full verified preset
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=all-rp-full
+
+# Run the smoke preset
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=all-rp-smoke
 
 # Filter plans by regex
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -args -profile=oidc-rp -include-plan-regex='basic|implicit'
@@ -170,6 +188,14 @@ LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness 
   -parallel=true \
   -max-parallel-runs=4 \
   -matrix=fapi2-sp-final-plain-fapi-first4
+
+# Run the full OIDC config matrix
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=oidcc-config-full
+
+# Run the full FAPI 1.0 Advanced matrix
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=fapi1-adv-full
 ```
 
 Selected flags:
@@ -186,6 +212,7 @@ Selected flags:
 - `-parallel` to execute expanded jobs concurrently
 - `-max-parallel-runs` to bound job concurrency
 - `-matrix` to expand a selected plan into a named job matrix
+- `-preset` to run a named verified bundle of profile + matrices + parallelism
 - `-fail-fast` to stop launching queued jobs after the first failure
 
 Artifacts are written to:
@@ -203,6 +230,14 @@ The harness exits non-zero through `go test` failure semantics when a selected t
 - The runner expands selected plans into isolated jobs before execution.
 - Each job gets a unique alias, independent cookie jar, independent RP runtime registration, and job-scoped artifacts.
 - Matrix modes currently include:
+  - `oidcc-config-cert-first2`
+  - `oidcc-config-cert-all42`
+  - `fapi1-adv-final-first4`
+  - `fapi1-adv-final-all12`
   - `fapi2-sp-final-plain-fapi-first4`
+  - `fapi2-sp-final-plain-fapi-mtls`
   - `fapi2-sp-final-plain-fapi-all16`
+  - `fapi2-ms-final-plain-fapi-jar4`
+  - `fapi2-ms-final-plain-fapi-jarm4`
+  - `fapi2-ms-final-plain-fapi-all32`
 - The RP exposes a local-only runtime registration endpoint used by the harness to align client behavior with each suite profile.

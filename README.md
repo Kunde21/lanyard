@@ -1,6 +1,6 @@
 # Lanyard
 
-Lanyard is a Go OpenID Connect (OIDC) relying party library.
+Lanyard is a Go OpenID Connect (OIDC) and OAuth 2.0 relying party library.
 
 ## Capabilities
 
@@ -22,10 +22,13 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
     *   Dynamic client authentication methods:
         *   `client_secret_basic`
         *   `client_secret_post`
+        *   `client_secret_jwt`
         *   `private_key_jwt` (asymmetric signatures)
         *   `tls_client_auth` (mTLS)
+        *   `self_signed_tls_client_auth`
     *   Pushed Authorization Requests (PAR) support.
     *   JWT Secured Authorization Requests (JAR).
+    *   RP-hosted `request_uri` request object support for OIDC configuration variants.
     *   JWT Secured Authorization Response Mode (JARM).
     *   Rich Authorization Requests (RAR).
 
@@ -46,35 +49,36 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
     *   Clock skew tolerance configuration.
     *   Request/response validation helpers.
 
-### OpenID Conformance Status
+### Conformance Status
 
-Lanyard is designed to pass OpenID Connect conformance tests.
+Lanyard is verified against the OpenID Foundation conformance suite with the included local harness.
 
-*   **Profile**: OpenID Connect Core: Basic Certification Profile Relying Party Tests
-*   **Status**: Verified with the included conformance harness against the official OpenID Foundation conformance suite.
-*   **Setup**: See `conformance/README.md` for instructions on running the conformance tests locally using Docker.
-
-To run the conformance tests (Linux required):
-
-```bash
-LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
-  -args -profile=oidc-rp
-```
-
-### FAPI Conformance Status
-
-Lanyard also includes verified FAPI 2.0 relying party coverage.
-
-*   **FAPI 2.0 Security Profile Final**: verified with the `fapi2-sp-final-plain-fapi-all16` matrix (`16/16` plans passed)
-*   **FAPI 2.0 Message Signing Final**: verified with the `fapi2-ms-final-plain-fapi-all32` matrix (`32/32` plans passed)
-*   **Implemented capabilities**:
-    *   `private_key_jwt` and `tls_client_auth`
-    *   DPoP and mTLS sender constraining
-    *   PAR, JAR, JARM, and RAR
+*   **Full suite preset**: `all-rp-full`
+*   **Latest verified result**: `104/104` plans passed, `1180/1180` tests passed
+*   **Included coverage**:
+    *   OpenID Connect Core Basic Certification
+    *   OpenID Connect Config Certification (`42/42` plans)
+    *   OpenID Connect Form Post Basic Certification
+    *   FAPI 1.0 Advanced Final (`12/12` plans)
+    *   FAPI 2.0 Security Profile Final (`16/16` plans)
+    *   FAPI 2.0 Message Signing Final (`32/32` plans)
+*   **Setup**: See `conformance/README.md` for local suite setup and harness usage.
 
 Useful commands:
 
 ```bash
+# Full verified RP suite
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=all-rp-full
+
+# OIDC config matrix only
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=oidcc-config-full
+
+# FAPI 1.0 Advanced Final
+LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
+  -args -preset=fapi1-adv-full
+
 # FAPI 2.0 Security Profile Final
 LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestConformanceHarness -v \
   -test.timeout=45m \
@@ -266,7 +270,7 @@ func main() {
 
 *   `cmd/example-rp/` - Example Relying Party implementation.
 *   `conformance/` - Conformance test harness and setup.
-*   `metadata/` - Core OIDC discovery, metadata, and validation logic.
+*   `metadata/` - OIDC and OAuth AS discovery, metadata, and validation logic.
 *   `rp/` - Relying Party implementation (Authorization Code flow, tokens, user info).
 *   `rp/store/memory/` - In-memory RP state store.
 *   `rp/store/cookie/` - Cookie-backed RP state store using `gorilla/sessions`.
