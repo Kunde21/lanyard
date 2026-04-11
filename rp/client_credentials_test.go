@@ -602,7 +602,7 @@ func TestClientCredentials_Token_DPoP(t *testing.T) {
 		WithClientCredentialsProviderMetadata(provider),
 		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
 		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
-		WithClientCredentialsSenderConstrain("dpop"),
+		WithClientCredentialsSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
@@ -658,7 +658,7 @@ func TestClientCredentials_Token_DPoP_TLSClientAuth(t *testing.T) {
 		WithClientCredentialsProviderMetadata(provider),
 		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", &tls.Certificate{})),
 		WithClientCredentialsAuthMethod(AuthMethodTLSClientAuth),
-		WithClientCredentialsSenderConstrain("dpop"),
+		WithClientCredentialsSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
@@ -703,7 +703,7 @@ func TestClientCredentials_Token_MTLSSenderConstrainDisablesDPoP(t *testing.T) {
 		WithClientCredentialsProviderMetadata(provider),
 		WithClientCredentialsKeyProvider(keyProvider),
 		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
-		WithClientCredentialsSenderConstrain("mtls"),
+		WithClientCredentialsSenderConstrain(SenderConstraintMTLS),
 	)
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
@@ -764,7 +764,7 @@ func TestClientCredentials_Token_StoresNonceFromSuccessfulResponse(t *testing.T)
 		WithClientCredentialsProviderMetadata(provider),
 		WithClientCredentialsKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
 		WithClientCredentialsAuthMethod(AuthMethodPrivateKeyJWT),
-		WithClientCredentialsSenderConstrain("dpop"),
+		WithClientCredentialsSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("NewClientCredentials(): %v", err)

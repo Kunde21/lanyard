@@ -85,7 +85,7 @@ func DiscoverProvider(ctx context.Context, issuer string, opts ...ProviderDiscov
 }
 
 // WithDiscoveryHTTPClient sets the HTTP client used by [DiscoverProvider] when
-// it constructs its own OIDC client.
+// it constructs its own metadata client.
 func WithDiscoveryHTTPClient(client *http.Client) ProviderDiscoveryOption {
 	return providerDiscoveryOptionFunc(func(cfg *providerDiscoveryConfig) {
 		if client != nil {
@@ -95,7 +95,7 @@ func WithDiscoveryHTTPClient(client *http.Client) ProviderDiscoveryOption {
 }
 
 // WithDiscoveryLogger sets the structured logger used by [DiscoverProvider]
-// when it constructs its own OIDC client.
+// when it constructs its own metadata client.
 func WithDiscoveryLogger(logger *slog.Logger) ProviderDiscoveryOption {
 	return providerDiscoveryOptionFunc(func(cfg *providerDiscoveryConfig) {
 		if logger != nil {
@@ -104,11 +104,11 @@ func WithDiscoveryLogger(logger *slog.Logger) ProviderDiscoveryOption {
 	})
 }
 
-// WithDiscoveryOIDCClient sets the OIDC client used by [DiscoverProvider].
+// WithDiscoveryMetadataClient sets the metadata client used by [DiscoverProvider].
 //
 // When provided, this client takes precedence over discovery-specific HTTP and
 // logger options.
-func WithDiscoveryOIDCClient(client *metadata.Client) ProviderDiscoveryOption {
+func WithDiscoveryMetadataClient(client *metadata.Client) ProviderDiscoveryOption {
 	return providerDiscoveryOptionFunc(func(cfg *providerDiscoveryConfig) {
 		if client != nil {
 			cfg.metadataClient = client

@@ -230,27 +230,31 @@ func (r *RP) StoreDPoPNonce(endpoint, nonce string) {
 	r.storeDPoPNonce(endpoint, nonce)
 }
 
-type senderConstrainType string
+// SenderConstraint selects the sender-constraining mode for outbound requests.
+type SenderConstraint string
 
 const (
-	SenderConstrainNone senderConstrainType = ""
-	SenderConstrainDPoP senderConstrainType = "dpop"
-	SenderConstrainMTLS senderConstrainType = "mtls"
+	// SenderConstraintNone disables sender-constraining.
+	SenderConstraintNone SenderConstraint = ""
+	// SenderConstraintDPoP enables DPoP (Demonstration of Proof-of-Possession).
+	SenderConstraintDPoP SenderConstraint = "dpop"
+	// SenderConstraintMTLS enables mTLS sender-constraining.
+	SenderConstraintMTLS SenderConstraint = "mtls"
 )
 
-func normalizeSenderConstrain(raw string) senderConstrainType {
+func normalizeSenderConstrain(raw string) SenderConstraint {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case string(SenderConstrainDPoP):
-		return SenderConstrainDPoP
-	case string(SenderConstrainMTLS):
-		return SenderConstrainMTLS
+	case string(SenderConstraintDPoP):
+		return SenderConstraintDPoP
+	case string(SenderConstraintMTLS):
+		return SenderConstraintMTLS
 	default:
-		return SenderConstrainNone
+		return SenderConstraintNone
 	}
 }
 
 func (r *RP) shouldUseDPoP() bool {
-	return r.senderConstrain == SenderConstrainDPoP &&
+	return r.senderConstrain == SenderConstraintDPoP &&
 		r.clientKeyProvider != nil &&
 		isDPoPSupported(r.resolvedAuthMethod)
 }

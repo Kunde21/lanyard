@@ -308,7 +308,7 @@ func TestHandleCallback_UsesMTLSAliasForUserInfoWhenSenderConstrainMTLS(t *testi
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
 		WithAuthMethod(AuthMethodPost),
-		WithSenderConstrain("mtls"),
+		WithSenderConstrain(SenderConstraintMTLS),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -525,7 +525,7 @@ func TestHandleCallback_RejectsInvalidAuthorizationResponseIDTokenBeforeTokenExc
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithFAPIProfile("plain_fapi"),
+		WithProfile(PlainFAPI),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -597,7 +597,7 @@ func TestHandleCallback_RejectsAuthorizationResponseIDTokenWithOldIATBeforeToken
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithFAPIProfile("plain_fapi"),
+		WithProfile(PlainFAPI),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -784,7 +784,7 @@ func TestHandleCallback_FAPISkipsUserInfo(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithFAPIProfile("plain_fapi"),
+		WithProfile(PlainFAPI),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -1001,7 +1001,7 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithFAPIProfile("plain_fapi"),
+		WithProfile(PlainFAPI),
 		WithResponseType("code id_token"),
 		WithRequestMethod("signed_non_repudiation"),
 		WithClientKeyProvider(NewStaticClientKeyProvider(clientKey, "client-kid-1", "PS256", nil)),
@@ -1140,7 +1140,7 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithFAPIProfile("plain_fapi"),
+		WithProfile(PlainFAPI),
 		WithResponseType("code id_token"),
 		WithRequestMethod("signed_non_repudiation"),
 		WithClientKeyProvider(NewStaticClientKeyProvider(clientKey, "client-kid-1", "PS256", &tls.Certificate{})),

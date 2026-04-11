@@ -41,7 +41,7 @@ type ClientCredentials struct {
 	allowMethodFallback bool
 	methodMu            sync.RWMutex
 
-	senderConstrain senderConstrainType
+	senderConstrain SenderConstraint
 
 	now        func() time.Time
 	randReader io.Reader
@@ -50,6 +50,12 @@ type ClientCredentials struct {
 }
 
 // NewClientCredentials creates a new Client Credentials client.
+//
+// Unless [WithClientCredentialsProviderMetadata] supplies provider metadata,
+// NewClientCredentials discovers the token endpoint via OIDC discovery. If no
+// metadata client is provided via [WithClientCredentialsMetadataClient], a
+// default [metadata.Client] is constructed with the configured HTTP client and
+// logger.
 func NewClientCredentials(ctx context.Context, issuer, clientID, clientSecret string, opts ...ClientCredentialsOption) (*ClientCredentials, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -86,7 +92,7 @@ func NewClientCredentials(ctx context.Context, issuer, clientID, clientSecret st
 
 	if !c.providerSet {
 		provider, err := DiscoverProvider(ctx, c.issuer,
-			WithDiscoveryOIDCClient(c.oidcClient),
+			WithDiscoveryMetadataClient(c.oidcClient),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
@@ -181,8 +187,8 @@ func (c *ClientCredentials) validateResolvedAuthMethod(method AuthMethod) error 
 }
 
 func (c *ClientCredentials) shouldUseDPoP() bool {
-	if c.senderConstrain != SenderConstrainNone {
-		return c.senderConstrain == SenderConstrainDPoP && c.clientKeyProvider != nil && isDPoPSupported(c.resolvedAuthMethod)
+	if c.senderConstrain != SenderConstraintNone {
+		return c.senderConstrain == SenderConstraintDPoP && c.clientKeyProvider != nil && isDPoPSupported(c.resolvedAuthMethod)
 	}
 	return c.clientKeyProvider != nil && isDPoPSupported(c.resolvedAuthMethod)
 }

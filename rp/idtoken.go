@@ -73,7 +73,7 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 	}
 
 	if parsed.Headers[0].Algorithm == "none" {
-		if r.fapiProfile.isFAPI() {
+		if r.profile.isFAPI() {
 			return idTokenClaims{}, fmt.Errorf("%w: id_token must not use 'none' algorithm for FAPI", ErrIDTokenValidationFailed)
 		}
 		if !r.allowUnsecuredIDTokens {
@@ -186,7 +186,7 @@ func (r *RP) validateIDTokenClaims(claims idTokenClaims, expectedNonce string) e
 	if iat.After(now.Add(r.clockSkew)) {
 		return fmt.Errorf("%w: iat in the future", ErrIDTokenValidationFailed)
 	}
-	if r.fapiProfile.isFAPI() && iat.Before(now.Add(-r.clockSkew)) {
+	if r.profile.isFAPI() && iat.Before(now.Add(-r.clockSkew)) {
 		return fmt.Errorf("%w: iat too old", ErrIDTokenValidationFailed)
 	}
 

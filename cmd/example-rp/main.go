@@ -360,7 +360,10 @@ func isUseDPoPNonceChallenge(resp *http.Response) bool {
 }
 
 func isFAPIProfile(resolved resolvedRPRequest) bool {
-	profile := strings.ToLower(strings.TrimSpace(resolved.fapiProfile))
+	if strings.TrimSpace(resolved.fapiProfile) != "" {
+		return true
+	}
+	profile := strings.ToLower(strings.TrimSpace(resolved.profile))
 	return strings.Contains(profile, "fapi")
 }
 

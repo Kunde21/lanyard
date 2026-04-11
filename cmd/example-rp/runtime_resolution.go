@@ -331,7 +331,7 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 
 	opts := []rp.Option{
 		rp.WithHTTPClient(httpClient),
-		rp.WithOIDCClient(metadataClient),
+		rp.WithMetadataClient(metadataClient),
 		rp.WithStateStore(resolved.stateStore),
 		rp.WithUserInfoTokenTransport(resolved.userInfoTransport),
 		rp.WithScopes(resolved.scopes...),
@@ -341,10 +341,7 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 		opts = append(opts, rp.WithAuthMethod(resolved.authMethod))
 	}
 	if strings.TrimSpace(resolved.senderConstrain) != "" {
-		opts = append(opts, rp.WithSenderConstrain(resolved.senderConstrain))
-	}
-	if strings.TrimSpace(resolved.fapiProfile) != "" {
-		opts = append(opts, rp.WithFAPIProfile(resolved.fapiProfile))
+		opts = append(opts, rp.WithSenderConstrain(rp.SenderConstraint(resolved.senderConstrain)))
 	}
 	if resolved.validateAuthorizationResponseIssuer {
 		opts = append(opts, rp.WithValidateAuthorizationResponseIssuer(true))
@@ -397,8 +394,7 @@ func shouldUseSecondClient(cfg rpRuntimeConfig, moduleName string) bool {
 }
 
 func shouldAllowUnsecuredIDTokens(resolved resolvedRPRequest) bool {
-	profile := strings.ToLower(strings.TrimSpace(resolved.fapiProfile))
-	if strings.HasPrefix(profile, "fapi") || strings.Contains(profile, "fapi") {
+	if strings.TrimSpace(resolved.fapiProfile) != "" {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(resolved.profile)) {
@@ -482,6 +478,9 @@ func rpProfileForResolvedRequest(resolved resolvedRPRequest) (rp.Profile, bool) 
 	case "oidc":
 		return rp.OIDC, true
 	default:
+		if strings.TrimSpace(resolved.fapiProfile) != "" {
+			return rp.PlainFAPI, true
+		}
 		return rp.OIDC, false
 	}
 }

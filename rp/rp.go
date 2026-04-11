@@ -20,33 +20,6 @@ import (
 const defaultClockSkew = 5 * time.Minute
 
 // RP is an OpenID Connect relying party for the Authorization Code flow.
-type fapiProfileType int
-
-const (
-	fapiProfileNone fapiProfileType = iota
-	fapiProfilePlainFAPI
-	fapiProfileFAPI2
-	fapiProfileFAPI1
-)
-
-func normalizeFAPIProfile(raw string) fapiProfileType {
-	lower := strings.ToLower(strings.TrimSpace(raw))
-	if strings.HasPrefix(lower, "plain_fapi") {
-		return fapiProfilePlainFAPI
-	}
-	if strings.Contains(lower, "fapi2") {
-		return fapiProfileFAPI2
-	}
-	if strings.Contains(lower, "fapi1") {
-		return fapiProfileFAPI1
-	}
-	return fapiProfileNone
-}
-
-func (f fapiProfileType) isFAPI() bool {
-	return f != fapiProfileNone
-}
-
 type requestMethodType int
 
 const (
@@ -62,7 +35,17 @@ const (
 	profileFAPI1Adv
 	profileFAPI2SecurityProfile
 	profileFAPI2MessageSigning
+	profilePlainFAPI
 )
+
+func (p profileType) isFAPI() bool {
+	switch p {
+	case profileFAPI1Adv, profileFAPI2SecurityProfile, profileFAPI2MessageSigning, profilePlainFAPI:
+		return true
+	default:
+		return false
+	}
+}
 
 type discoveryModeType int
 
@@ -110,9 +93,8 @@ type RP struct {
 
 	requirePAR              bool
 	requirePARExplicit      bool
-	senderConstrain         senderConstrainType
+	senderConstrain         SenderConstraint
 	senderConstrainExplicit bool
-	fapiProfile             fapiProfileType
 	allowUnsecuredIDTokens  bool
 
 	responseMode                        string
@@ -143,6 +125,15 @@ type RP struct {
 
 // New creates a browser-flow relying party that is ready to generate an
 // authorization URL immediately after construction.
+//
+// If no state store is provided via [WithStateStore], New creates a default
+// in-memory state store from rp/store/memory with a 10-minute TTL. If no
+// metadata client is provided via [WithMetadataClient], New constructs a
+// default [metadata.Client] with the configured HTTP client and logger.
+//
+// Provider metadata is discovered automatically unless [WithProviderMetadata]
+// supplies complete metadata or [WithDiscoveryMode] is set to
+// [DiscoveryDisabled].
 func New(ctx context.Context, issuer, clientID, clientSecret, redirectURI string, opts ...Option) (*RP, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -429,7 +420,7 @@ func (r *RP) discoverProviderMetadataForMode(ctx context.Context, issuer string,
 	switch mode {
 	case discoveryModeOIDC:
 		return DiscoverProvider(ctx, issuer,
-			WithDiscoveryOIDCClient(r.metadataClient),
+			WithDiscoveryMetadataClient(r.metadataClient),
 		)
 	case discoveryModeOAuth2:
 		as, err := r.metadataClient.DiscoverAuthorizationServer(ctx, issuer)
@@ -490,7 +481,7 @@ func removeScope(scopes []string, target string) []string {
 }
 
 func (r *RP) finalizeSecurityDefaults() {
-	if !r.fapiProfile.isFAPI() && !r.allowUnsecuredIDTokens {
+	if !r.profile.isFAPI() && !r.allowUnsecuredIDTokens {
 		r.allowUnsecuredIDTokens = true
 	}
 }
@@ -529,7 +520,7 @@ func (r *RP) validate() error {
 func (r *RP) discoverProviderMetadata(ctx context.Context, issuer string) (metadata.Provider, error) {
 	if r.usesOpenIDScope() {
 		return DiscoverProvider(ctx, issuer,
-			WithDiscoveryOIDCClient(r.metadataClient),
+			WithDiscoveryMetadataClient(r.metadataClient),
 		)
 	}
 

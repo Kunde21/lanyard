@@ -58,7 +58,7 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 		"https://rp.test/callback",
 		WithHTTPClient(customHTTPClient),
 		WithLogger(customLogger),
-		WithOIDCClient(customOIDCClient),
+		WithMetadataClient(customOIDCClient),
 		WithStateStore(customStateStore),
 		WithUserInfoTokenTransport(UserInfoTokenTransportBody),
 		WithProviderMetadata(providerForAuthMethods()),

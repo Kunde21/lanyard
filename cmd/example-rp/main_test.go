@@ -232,7 +232,7 @@ func TestMaybeFetchConformanceResource_RetriesWithDpopNonce(t *testing.T) {
 		rp.WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{AuthorizationEndpoint: "https://issuer.test/authorize", TokenEndpoint: "https://issuer.test/token", JWKSURI: "https://issuer.test/jwks"}}),
 		rp.WithAuthMethod(rp.AuthMethodPrivateKeyJWT),
 		rp.WithClientKeyProvider(keyProvider),
-		rp.WithSenderConstrain("dpop"),
+		rp.WithSenderConstrain(rp.SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("rp.New() failed: %v", err)

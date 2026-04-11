@@ -108,7 +108,7 @@ func TestAuthorizationURL_UsesMTLSAliasForPARWhenTLSClientAuth(t *testing.T) {
 		WithProviderMetadata(provider),
 		WithAuthMethod(AuthMethodTLSClientAuth),
 		WithClientKeyProvider(NewStaticClientKeyProvider(nil, "", "", &tls.Certificate{})),
-		WithSenderConstrain("mtls"),
+		WithSenderConstrain(SenderConstraintMTLS),
 		WithRequirePAR(true),
 	)
 	if err != nil {
@@ -146,7 +146,7 @@ func TestAuthorizationURL_OAuthOnlySkipsMTLSAliasForDerivedPAR(t *testing.T) {
 		WithScopes("accounts"),
 		WithAuthMethod(AuthMethodTLSClientAuth),
 		WithClientKeyProvider(NewStaticClientKeyProvider(nil, "", "", &tls.Certificate{})),
-		WithSenderConstrain("mtls"),
+		WithSenderConstrain(SenderConstraintMTLS),
 		WithRequirePAR(true),
 	)
 	if err != nil {
@@ -199,7 +199,7 @@ func TestPushAuthorizationRequest_RetriesWithDpopNonce(t *testing.T) {
 		WithProviderMetadata(providerWithAuthorizationAndPAR(ts.URL, "private_key_jwt")),
 		WithAuthMethod(AuthMethodPrivateKeyJWT),
 		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
-		WithSenderConstrain("dpop"),
+		WithSenderConstrain(SenderConstraintDPoP),
 		WithRequirePAR(true),
 	)
 	if err != nil {

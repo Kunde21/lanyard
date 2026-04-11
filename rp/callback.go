@@ -208,7 +208,7 @@ func (r *RP) validateAuthorizationResponseIDToken(ctx context.Context, rawIDToke
 }
 
 func (r *RP) isFAPIProfile() bool {
-	return r.fapiProfile.isFAPI()
+	return r.profile.isFAPI()
 }
 
 func (r *RP) usesOpenIDScope() bool {

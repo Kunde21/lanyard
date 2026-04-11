@@ -104,7 +104,7 @@ func TestValidateIDToken(t *testing.T) {
 		httpClient:             ts.Client(),
 		metadataClient:         r.metadataClient,
 		now:                    func() time.Time { return now },
-		fapiProfile:            fapiProfilePlainFAPI,
+		profile:                profilePlainFAPI,
 		allowUnsecuredIDTokens: true,
 	}
 	if _, err := rFAPI.validateIDToken(context.Background(), unsignedToken, "nonce-123", issuer+"/jwks", nil); err == nil {
@@ -452,11 +452,11 @@ func TestValidateIDTokenClaims_RejectsOldIatForFAPIProfile(t *testing.T) {
 	}
 
 	r := &RP{
-		issuer:      "https://example.com",
-		clientID:    "client-1",
-		fapiProfile: fapiProfilePlainFAPI,
-		now:         func() time.Time { return now },
-		clockSkew:   5 * time.Minute,
+		issuer:    "https://example.com",
+		clientID:  "client-1",
+		profile:   profilePlainFAPI,
+		now:       func() time.Time { return now },
+		clockSkew: 5 * time.Minute,
 	}
 
 	err := r.validateIDTokenClaims(claims, "nonce-1")
@@ -480,11 +480,11 @@ func TestValidateIDTokenClaims_AllowsOldIatForNonFAPI(t *testing.T) {
 	}
 
 	r := &RP{
-		issuer:      "https://example.com",
-		clientID:    "client-1",
-		fapiProfile: fapiProfileNone,
-		now:         func() time.Time { return now },
-		clockSkew:   5 * time.Minute,
+		issuer:    "https://example.com",
+		clientID:  "client-1",
+		profile:   profileOIDC,
+		now:       func() time.Time { return now },
+		clockSkew: 5 * time.Minute,
 	}
 
 	err := r.validateIDTokenClaims(claims, "nonce-1")

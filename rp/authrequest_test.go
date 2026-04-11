@@ -119,7 +119,7 @@ func TestAuthorizationURLDoesNotRediscoverAfterNew(t *testing.T) {
 		"secret",
 		"https://rp.test/callback",
 		WithHTTPClient(ts.Client()),
-		WithOIDCClient(metadata.NewClient(
+		WithMetadataClient(metadata.NewClient(
 			metadata.WithHTTPClient(ts.Client()),
 			metadata.WithConformanceFreshDiscovery(true),
 		)),

@@ -23,8 +23,8 @@ type authorizationURLConfig struct {
 	parameters           url.Values
 }
 
-// WithOIDCClient sets the OIDC discovery and JWKS client.
-func WithOIDCClient(client *metadata.Client) Option {
+// WithMetadataClient sets the metadata discovery and JWKS client.
+func WithMetadataClient(client *metadata.Client) Option {
 	return func(r *RP) {
 		if client != nil {
 			r.metadataClient = client
@@ -82,6 +82,7 @@ func WithProviderMetadata(provider metadata.Provider) Option {
 
 // WithAuthorizationEndpoint sets the authorization endpoint URL.
 // The value is stored as partial metadata and merged with discovered metadata.
+// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithAuthorizationEndpoint(endpoint string) Option {
 	return func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
@@ -97,6 +98,7 @@ func WithAuthorizationEndpoint(endpoint string) Option {
 
 // WithTokenEndpoint sets the token endpoint URL.
 // The value is stored as partial metadata and merged with discovered metadata.
+// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithTokenEndpoint(endpoint string) Option {
 	return func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
@@ -112,6 +114,7 @@ func WithTokenEndpoint(endpoint string) Option {
 
 // WithUserInfoEndpoint sets the userinfo endpoint URL.
 // The value is stored as partial metadata and merged with discovered metadata.
+// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithUserInfoEndpoint(endpoint string) Option {
 	return func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
@@ -125,6 +128,7 @@ func WithUserInfoEndpoint(endpoint string) Option {
 
 // WithJWKSURI sets the JWKS URI.
 // The value is stored as partial metadata and merged with discovered metadata.
+// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithJWKSURI(uri string) Option {
 	return func(r *RP) {
 		uri = strings.TrimSpace(uri)
@@ -140,6 +144,7 @@ func WithJWKSURI(uri string) Option {
 
 // WithPushedAuthorizationRequestEndpoint sets the PAR endpoint URL.
 // The value is stored as partial metadata and merged with discovered metadata.
+// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithPushedAuthorizationRequestEndpoint(endpoint string) Option {
 	return func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
@@ -155,6 +160,7 @@ func WithPushedAuthorizationRequestEndpoint(endpoint string) Option {
 
 // WithMTLSEndpointAliases sets the mTLS endpoint aliases.
 // The value is stored as partial metadata and merged with discovered metadata.
+// For overriding multiple related fields, prefer [WithProviderMetadata].
 func WithMTLSEndpointAliases(aliases metadata.MTLSEndpointAliases) Option {
 	return func(r *RP) {
 		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
@@ -186,8 +192,7 @@ func WithAuthMethod(method AuthMethod) Option {
 }
 
 // WithStateStore sets the state store used for callback correlation and caller values.
-//
-// Callers typically provide implementations from `rp/store/memory` or `rp/store/cookie`.
+// When not provided, [New] creates a default in-memory store from rp/store/memory.
 func WithStateStore(store StateStore) Option {
 	return func(r *RP) {
 		if store != nil {
@@ -221,19 +226,12 @@ func WithRequirePAR(require bool) Option {
 }
 
 // WithSenderConstrain sets the sender-constraining mode used for outbound requests.
-// Supported values are "", "mtls", and "dpop".
-func WithSenderConstrain(mode string) Option {
+// Use the typed [SenderConstraint] constants: [SenderConstraintDPoP] or
+// [SenderConstraintMTLS].
+func WithSenderConstrain(mode SenderConstraint) Option {
 	return func(r *RP) {
-		r.senderConstrain = normalizeSenderConstrain(mode)
+		r.senderConstrain = normalizeSenderConstrain(string(mode))
 		r.senderConstrainExplicit = true
-	}
-}
-
-// WithFAPIProfile sets the FAPI profile for strict validation.
-// Supported values are "plain_fapi", "fapi2", "fapi1", etc.
-func WithFAPIProfile(profile string) Option {
-	return func(r *RP) {
-		r.fapiProfile = normalizeFAPIProfile(profile)
 	}
 }
 
@@ -399,6 +397,11 @@ const (
 	FAPI2SecurityProfile
 	// FAPI2MessageSigning selects FAPI 2.0 Message Signing defaults.
 	FAPI2MessageSigning
+	// PlainFAPI selects FAPI strict security validation without applying
+	// specific profile defaults for scopes or request methods. Use this
+	// when you need FAPI-level ID token validation but want to control
+	// scopes and other settings yourself.
+	PlainFAPI
 )
 
 func profileFromPublic(p Profile) profileType {
@@ -411,6 +414,8 @@ func profileFromPublic(p Profile) profileType {
 		return profileFAPI2SecurityProfile
 	case FAPI2MessageSigning:
 		return profileFAPI2MessageSigning
+	case PlainFAPI:
+		return profilePlainFAPI
 	default:
 		return profileOIDC
 	}
@@ -419,6 +424,9 @@ func profileFromPublic(p Profile) profileType {
 // WithProfile sets an RP behavior profile that applies sensible defaults
 // for scopes, discovery mode, and security settings. Profile defaults only
 // fill fields that the caller has not already set via explicit options.
+//
+// This is the preferred profile selector. Use the typed [Profile] constants
+// rather than raw strings.
 func WithProfile(profile Profile) Option {
 	return func(r *RP) {
 		r.profile = profileFromPublic(profile)

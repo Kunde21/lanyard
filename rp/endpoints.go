@@ -21,7 +21,7 @@ func (r *RP) tokenEndpoint(provider metadata.Provider) string {
 }
 
 func (r *RP) userInfoEndpoint(provider metadata.Provider) string {
-	if r.senderConstrain == SenderConstrainMTLS && provider.MTLSEndpointAliases.UserinfoEndpoint != "" {
+	if r.senderConstrain == SenderConstraintMTLS && provider.MTLSEndpointAliases.UserinfoEndpoint != "" {
 		return provider.MTLSEndpointAliases.UserinfoEndpoint
 	}
 	return provider.UserinfoEndpoint
@@ -32,5 +32,5 @@ func (r *RP) usesMTLSForPAR() bool {
 }
 
 func (r *RP) usesMTLSForTokenEndpoint() bool {
-	return r.resolvedAuthMethod == AuthMethodTLSClientAuth || r.senderConstrain == SenderConstrainMTLS
+	return r.resolvedAuthMethod == AuthMethodTLSClientAuth || r.senderConstrain == SenderConstraintMTLS
 }

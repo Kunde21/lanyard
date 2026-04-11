@@ -16,12 +16,12 @@ func TestShouldUseDPoP_RespectsExplicitSenderConstraint(t *testing.T) {
 		t.Fatalf("default shouldUseDPoP() mismatch (-want +got):\n%s", diff)
 	}
 
-	WithSenderConstrain("mtls")(r)
+	WithSenderConstrain(SenderConstraintMTLS)(r)
 	if diff := cmp.Diff(false, r.shouldUseDPoP()); diff != "" {
 		t.Fatalf("mtls shouldUseDPoP() mismatch (-want +got):\n%s", diff)
 	}
 
-	WithSenderConstrain("dpop")(r)
+	WithSenderConstrain(SenderConstraintDPoP)(r)
 	if diff := cmp.Diff(true, r.shouldUseDPoP()); diff != "" {
 		t.Fatalf("dpop shouldUseDPoP() mismatch (-want +got):\n%s", diff)
 	}

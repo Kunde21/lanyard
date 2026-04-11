@@ -33,8 +33,8 @@ func WithClientCredentialsLogger(logger *slog.Logger) ClientCredentialsOption {
 	}
 }
 
-// WithClientCredentialsOIDCClient sets the OIDC discovery and JWKS client.
-func WithClientCredentialsOIDCClient(client *metadata.Client) ClientCredentialsOption {
+// WithClientCredentialsMetadataClient sets the metadata discovery and JWKS client.
+func WithClientCredentialsMetadataClient(client *metadata.Client) ClientCredentialsOption {
 	return func(c *ClientCredentials) {
 		if client == nil {
 			return
@@ -81,9 +81,11 @@ func WithClientCredentialsKeyProvider(provider ClientKeyProvider) ClientCredenti
 }
 
 // WithClientCredentialsSenderConstrain sets the sender-constraining mode for DPoP or mTLS.
-func WithClientCredentialsSenderConstrain(mode string) ClientCredentialsOption {
+// Use the typed [SenderConstraint] constants: [SenderConstraintDPoP] or
+// [SenderConstraintMTLS].
+func WithClientCredentialsSenderConstrain(mode SenderConstraint) ClientCredentialsOption {
 	return func(c *ClientCredentials) {
-		c.senderConstrain = normalizeSenderConstrain(mode)
+		c.senderConstrain = normalizeSenderConstrain(string(mode))
 	}
 }
 
@@ -105,6 +107,8 @@ func withClientCredentialsRandReader(reader io.Reader) ClientCredentialsOption {
 	}
 }
 
+// WithClientCredentialsDPoPNonceTTL sets the TTL for cached DPoP nonces in
+// the client credentials flow.
 func WithClientCredentialsDPoPNonceTTL(ttl time.Duration) ClientCredentialsOption {
 	return func(c *ClientCredentials) {
 		if ttl > 0 {

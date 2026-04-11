@@ -237,7 +237,7 @@ func TestFetchUserInfo_DPoPAuthorization(t *testing.T) {
 		WithProviderMetadata(provider),
 		WithAuthMethod(AuthMethodPrivateKeyJWT),
 		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
-		WithSenderConstrain("dpop"),
+		WithSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -299,7 +299,7 @@ func TestFetchUserInfo_RetriesWithDpopNonce(t *testing.T) {
 		WithProviderMetadata(provider),
 		WithAuthMethod(AuthMethodPrivateKeyJWT),
 		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
-		WithSenderConstrain("dpop"),
+		WithSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -350,7 +350,7 @@ func TestFetchUserInfo_StoresNonceFromSuccessfulResponse(t *testing.T) {
 		WithProviderMetadata(provider),
 		WithAuthMethod(AuthMethodPrivateKeyJWT),
 		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
-		WithSenderConstrain("dpop"),
+		WithSenderConstrain(SenderConstraintDPoP),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
