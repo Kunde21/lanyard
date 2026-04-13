@@ -54,14 +54,14 @@ func (r *RP) providerForCallback(ctx context.Context, issuer string) (metadata.P
 }
 
 // HandleCallback validates callback state and performs token/userinfo processing.
-func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *http.Request) (*CallbackResult, error) {
+func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*CallbackResult, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: missing callback request", ErrInvalidState)
 	}
 
 	params := extractCallbackParams(req)
 
-	code, state, authzResponseIss, err := r.parseAuthorizationResponse(ctx, params)
+	code, state, authzResponseIss, err := r.parseAuthorizationResponse(req.Context(), params)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, fmt.Errorf("%w", ErrMissingCode)
 	}
 
-	data, ok, err := r.stateStore.ConsumeCorrelation(ctx, w, req, state)
+	data, ok, err := r.stateStore.ConsumeCorrelation(req.Context(), w, req, state)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to consume state: %v", ErrInvalidState, err)
 	}
@@ -95,7 +95,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 			}
 			idToken = decrypted
 		}
-		authzClaims, err := r.validateAuthorizationResponseIDToken(ctx, idToken, data.Nonce, code, state, r.provider.JWKSURI, r.provider.IDTokenSigningAlgValuesSupported)
+		authzClaims, err := r.validateAuthorizationResponseIDToken(req.Context(), idToken, data.Nonce, code, state, r.provider.JWKSURI, r.provider.IDTokenSigningAlgValuesSupported)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +120,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	issuer := expectedIssuer
 	r.issuer = issuer
 
-	provider, err := r.providerForCallback(ctx, issuer)
+	provider, err := r.providerForCallback(req.Context(), issuer)
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, fmt.Errorf("%w: provider missing token endpoint", ErrTokenExchangeFailed)
 	}
 
-	tokenResp, err := r.exchangeToken(ctx, tokenEndpoint, code, data.CodeVerifier)
+	tokenResp, err := r.exchangeToken(req.Context(), tokenEndpoint, code, data.CodeVerifier)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +148,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, fmt.Errorf("%w: token response missing id_token", ErrIDTokenValidationFailed)
 	}
 
-	claims, err := r.validateIDToken(ctx, tokenResp.IDToken, data.Nonce, provider.JWKSURI, provider.IDTokenSigningAlgValuesSupported)
+	claims, err := r.validateIDToken(req.Context(), tokenResp.IDToken, data.Nonce, provider.JWKSURI, provider.IDTokenSigningAlgValuesSupported)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func (r *RP) HandleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		transport = r.userInfoTokenTransport
 	}
 
-	userinfo, err := r.fetchUserInfo(ctx, userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
+	userinfo, err := r.fetchUserInfo(req.Context(), userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
 	if err != nil {
 		return nil, err
 	}

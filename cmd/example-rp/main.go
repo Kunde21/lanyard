@@ -19,8 +19,8 @@ import (
 )
 
 type flowHandler interface {
-	AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request, opts ...rp.AuthorizationURLOption) (string, error)
-	HandleCallback(ctx context.Context, w http.ResponseWriter, req *http.Request) (*rp.CallbackResult, error)
+	AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...rp.AuthorizationURLOption) (string, error)
+	HandleCallback(w http.ResponseWriter, req *http.Request) (*rp.CallbackResult, error)
 }
 
 func main() {
@@ -82,7 +82,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authURL, err := flow.AuthorizationURL(r.Context(), w, r)
+	authURL, err := flow.AuthorizationURL(w, r)
 	if err != nil {
 		slog.Info("login initialization failed", "err", err)
 		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
@@ -104,7 +104,7 @@ func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	authURL, err := flow.AuthorizationURL(r.Context(), w, r)
+	authURL, err := flow.AuthorizationURL(w, r)
 	if err != nil {
 		slog.Info("login initialization failed", "err", err)
 		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
@@ -115,7 +115,7 @@ func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 
 func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authURL, err := flow.AuthorizationURL(r.Context(), w, r)
+		authURL, err := flow.AuthorizationURL(w, r)
 		if err != nil {
 			slog.Info("login initialization failed", "err", err)
 			http.Error(w, "failed to initialize login", http.StatusInternalServerError)
@@ -153,7 +153,7 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := flow.HandleCallback(r.Context(), w, r)
+	result, err := flow.HandleCallback(w, r)
 	if err != nil {
 		slog.Info("callback processing failed", "err", err)
 		status := callbackStatus(err, resolved)
@@ -178,7 +178,7 @@ func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
 			return
 		}
 
-		result, err := flow.HandleCallback(r.Context(), w, r)
+		result, err := flow.HandleCallback(w, r)
 		if err != nil {
 			slog.Info("callback processing failed", "err", err)
 			status := callbackStatus(err, resolvedRPRequest{})

@@ -46,7 +46,7 @@ func ExampleNew() {
 	// Generate an authorization URL to redirect the browser.
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(context.Background())
-	authURL, err := rpClient.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := rpClient.AuthorizationURL(rec, req)
 	if err != nil {
 		fmt.Println(err)
 		return

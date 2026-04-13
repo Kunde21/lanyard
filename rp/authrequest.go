@@ -47,7 +47,7 @@ func buildAuthorizationRedirect(endpoint string, params url.Values) (string, err
 }
 
 // AuthorizationURL builds an authorization request URL and stores callback state.
-func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request, opts ...AuthorizationURLOption) (string, error) {
+func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...AuthorizationURLOption) (string, error) {
 	metadata := r.provider
 	authorizationEndpoint := r.authorizationEndpoint(metadata)
 	if authorizationEndpoint == "" {
@@ -101,12 +101,12 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 			}
 		}
 
-		parResp, err := r.pushAuthorizationRequest(ctx, parParams)
+		parResp, err := r.pushAuthorizationRequest(req.Context(), parParams)
 		if err != nil {
 			return "", err
 		}
 
-		if err := r.saveCorrelation(ctx, w, req, state, nonce, verifier, parResp); err != nil {
+		if err := r.saveCorrelation(req.Context(), w, req, state, nonce, verifier, parResp); err != nil {
 			return "", err
 		}
 
@@ -140,7 +140,7 @@ func (r *RP) AuthorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 		}
 	}
 
-	if err := r.saveCorrelation(ctx, w, req, state, nonce, verifier, nil); err != nil {
+	if err := r.saveCorrelation(req.Context(), w, req, state, nonce, verifier, nil); err != nil {
 		return "", err
 	}
 

@@ -76,8 +76,8 @@ func TestNewClientCredentials_Validation(t *testing.T) {
 			provider.Issuer = tc.issuer
 
 			_, err := NewClientCredentials(ctx, tc.issuer,
-			WithClientID(tc.clientID),
-			WithClientSecret(tc.clientSecret),
+				WithClientID(tc.clientID),
+				WithClientSecret(tc.clientSecret),
 				WithProviderMetadata(provider))
 
 			if tc.wantErr {
@@ -241,8 +241,8 @@ func TestClientCredentials_Token_Scopes(t *testing.T) {
 
 	t.Run("default scopes from constructor", func(t *testing.T) {
 		client, err := NewClientCredentials(ctx, "https://auth.example.com",
-		WithClientID("client-id"),
-		WithClientSecret("client-secret"),
+			WithClientID("client-id"),
+			WithClientSecret("client-secret"),
 			WithProviderMetadata(provider),
 			WithScopes("api:read", "api:write"))
 		if err != nil {
@@ -261,8 +261,8 @@ func TestClientCredentials_Token_Scopes(t *testing.T) {
 
 	t.Run("per-request scopes override", func(t *testing.T) {
 		client, err := NewClientCredentials(ctx, "https://auth.example.com",
-		WithClientID("client-id"),
-		WithClientSecret("client-secret"),
+			WithClientID("client-id"),
+			WithClientSecret("client-secret"),
 			WithProviderMetadata(provider),
 			WithScopes("api:read"))
 		if err != nil {
@@ -282,8 +282,8 @@ func TestClientCredentials_Token_Scopes(t *testing.T) {
 
 	t.Run("no scopes when none configured", func(t *testing.T) {
 		client, err := NewClientCredentials(ctx, "https://auth.example.com",
-		WithClientID("client-id"),
-		WithClientSecret("client-secret"),
+			WithClientID("client-id"),
+			WithClientSecret("client-secret"),
 			WithProviderMetadata(provider))
 		if err != nil {
 			t.Fatalf("failed to create client: %v", err)
@@ -346,8 +346,8 @@ func TestClientCredentials_Token_ErrorResponses(t *testing.T) {
 			provider := clientCredentialsProvider(server.URL, AuthMethodPost)
 
 			client, err := NewClientCredentials(ctx, "https://auth.example.com",
-		WithClientID("client-id"),
-		WithClientSecret("client-secret"),
+				WithClientID("client-id"),
+				WithClientSecret("client-secret"),
 				WithProviderMetadata(provider))
 			if err != nil {
 				t.Fatalf("failed to create client: %v", err)

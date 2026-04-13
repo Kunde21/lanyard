@@ -293,7 +293,7 @@ func TestBuildRPFromResolvedRequest_RequestURIModeUsesSharedStore(t *testing.T) 
 	}
 
 	rec := httptest.NewRecorder()
-	authURL, err := flow.AuthorizationURL(req.Context(), rec, req)
+	authURL, err := flow.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}

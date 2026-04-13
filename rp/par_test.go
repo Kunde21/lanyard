@@ -54,7 +54,7 @@ func TestAuthorizationURL_UsesClientAssertionFormFieldsForPAR(t *testing.T) {
 	}
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	w := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+	if _, err := r.AuthorizationURL(w, req); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 	values, err := url.ParseQuery(gotBody)
@@ -117,7 +117,7 @@ func TestAuthorizationURL_UsesMTLSAliasForPARWhenTLSClientAuth(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	w := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+	if _, err := r.AuthorizationURL(w, req); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 
@@ -155,7 +155,7 @@ func TestAuthorizationURL_OAuthOnlySkipsMTLSAliasForDerivedPAR(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	w := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+	if _, err := r.AuthorizationURL(w, req); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 
@@ -263,7 +263,7 @@ func TestPushAuthorizationRequest_IncludesAuthorizationDetailsWhenConfigured(t *
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	w := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+	if _, err := r.AuthorizationURL(w, req); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 
@@ -308,7 +308,7 @@ func TestPushAuthorizationRequest_SetAuthorizationDetailsOverridesConfiguredValu
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	w := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), w, req, SetAuthorizationDetails([]map[string]any{{"type": "payment_initiation"}})); err != nil {
+	if _, err := r.AuthorizationURL(w, req, SetAuthorizationDetails([]map[string]any{{"type": "payment_initiation"}})); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 
@@ -358,7 +358,7 @@ func TestPushAuthorizationRequest_SetAuthParamAddsCustomPARField(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	w := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), w, req, SetAuthParam("resource", "urn:example:api")); err != nil {
+	if _, err := r.AuthorizationURL(w, req, SetAuthParam("resource", "urn:example:api")); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 
@@ -416,7 +416,7 @@ func TestAuthorizationURL_SignedRequestObjectUsesRequestParameter(t *testing.T) 
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	w := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+	if _, err := r.AuthorizationURL(w, req); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 
@@ -478,7 +478,7 @@ func TestAuthorizationURL_PlainPARUnaffectedBySignedRequestMethod(t *testing.T) 
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	w := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), w, req); err != nil {
+	if _, err := r.AuthorizationURL(w, req); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 

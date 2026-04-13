@@ -24,11 +24,11 @@ type stubFlow struct {
 	callbackResp *rp.CallbackResult
 }
 
-func (s stubFlow) AuthorizationURL(_ context.Context, _ http.ResponseWriter, _ *http.Request, _ ...rp.AuthorizationURLOption) (string, error) {
+func (s stubFlow) AuthorizationURL(_ http.ResponseWriter, _ *http.Request, _ ...rp.AuthorizationURLOption) (string, error) {
 	return s.authURL, s.authErr
 }
 
-func (s stubFlow) HandleCallback(_ context.Context, _ http.ResponseWriter, req *http.Request) (*rp.CallbackResult, error) {
+func (s stubFlow) HandleCallback(_ http.ResponseWriter, req *http.Request) (*rp.CallbackResult, error) {
 	if req == nil {
 		return nil, rp.ErrInvalidState
 	}

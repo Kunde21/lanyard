@@ -34,7 +34,7 @@ func prepareFullFlowStartup(ctx context.Context, resolved resolvedRPRequest) (ru
 
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "https://rp.localhost/", nil).WithContext(ctx)
-	authURL, err := flow.AuthorizationURL(ctx, rec, req)
+	authURL, err := flow.AuthorizationURL(rec, req)
 	if err != nil {
 		return runtimeStartupResponse{}, fmt.Errorf("full-flow startup: authorization url failed: %w", err)
 	}

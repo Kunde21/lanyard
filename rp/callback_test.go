@@ -34,15 +34,15 @@ func TestHandleCallbackValidation(t *testing.T) {
 	}
 
 	rec, req := callbackRequest("code", "")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("missing state should return ErrInvalidState, got %v", err)
 	}
 	rec, req = callbackRequest("", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrMissingCode) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrMissingCode) {
 		t.Fatalf("missing code should return ErrMissingCode, got %v", err)
 	}
 	rec, req = callbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("unknown state should return ErrInvalidState, got %v", err)
 	}
 }
@@ -105,7 +105,7 @@ func TestHandleCallbackFailures(t *testing.T) {
 	tokenStatus = http.StatusBadRequest
 	tokenBody = `{"error":"invalid_grant"}`
 	rec, req := callbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrTokenExchangeFailed) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrTokenExchangeFailed) {
 		t.Fatalf("token error should return ErrTokenExchangeFailed, got %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestHandleCallbackFailures(t *testing.T) {
 	tokenStatus = 0
 	tokenBody = `{"access_token":"access","token_type":"Bearer","expires_in":3600}`
 	rec, req = callbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrIDTokenValidationFailed) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrIDTokenValidationFailed) {
 		t.Fatalf("missing id token should return ErrIDTokenValidationFailed, got %v", err)
 	}
 
@@ -127,7 +127,7 @@ func TestHandleCallbackFailures(t *testing.T) {
 	tokenBody = `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", badClaims) + `"}`
 	userInfoBody = `{"sub":"sub-123"}`
 	rec, req = callbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrIDTokenValidationFailed) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrIDTokenValidationFailed) {
 		t.Fatalf("invalid id token should return ErrIDTokenValidationFailed, got %v", err)
 	}
 
@@ -138,7 +138,7 @@ func TestHandleCallbackFailures(t *testing.T) {
 	tokenBody = `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", goodClaims) + `"}`
 	userInfoBody = `{"sub":"other"}`
 	rec, req = callbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrUserInfoValidationFailed) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrUserInfoValidationFailed) {
 		t.Fatalf("userinfo mismatch should return ErrUserInfoValidationFailed, got %v", err)
 	}
 }
@@ -193,12 +193,12 @@ func TestHandleCallbackStateReplayRejected(t *testing.T) {
 	}
 
 	rec, req := callbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); err != nil {
+	if _, err := r.HandleCallback(rec, req); err != nil {
 		t.Fatalf("first HandleCallback() failed: %v", err)
 	}
 
 	rec, req = callbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("replayed state should return ErrInvalidState, got %v", err)
 	}
 }
@@ -257,7 +257,7 @@ func TestHandleCallback_UsesMTLSAliasForTokenEndpoint(t *testing.T) {
 	}
 
 	rec, req := callbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); err != nil {
+	if _, err := r.HandleCallback(rec, req); err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
 
@@ -320,7 +320,7 @@ func TestHandleCallback_UsesMTLSAliasForUserInfoWhenSenderConstrainMTLS(t *testi
 	}
 
 	rec, req := callbackRequestWithIss("code", "state", issuer)
-	if _, err := r.HandleCallback(context.Background(), rec, req); err != nil {
+	if _, err := r.HandleCallback(rec, req); err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
 
@@ -379,7 +379,7 @@ func TestHandleCallback_RejectsInvalidAuthorizationResponseIssuer(t *testing.T) 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?"+query.Encode(), nil)
 	rec := httptest.NewRecorder()
 
-	_, err = r.HandleCallback(context.Background(), rec, req)
+	_, err = r.HandleCallback(rec, req)
 	if !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("HandleCallback() with invalid iss should return ErrInvalidState, got %v", err)
 	}
@@ -429,7 +429,7 @@ func TestHandleCallback_RejectsMissingAuthorizationResponseIssuerWhenValidationE
 	}
 
 	rec, req := callbackRequest("code", "state")
-	_, err = r.HandleCallback(context.Background(), rec, req)
+	_, err = r.HandleCallback(rec, req)
 	if !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("HandleCallback() without iss should return ErrInvalidState when issuer validation is enabled, got %v", err)
 	}
@@ -552,7 +552,7 @@ func TestHandleCallback_RejectsInvalidAuthorizationResponseIDTokenBeforeTokenExc
 	})
 
 	rec, req := callbackRequestWithIDToken("code", "state", "", authzIDToken)
-	_, err = r.HandleCallback(context.Background(), rec, req)
+	_, err = r.HandleCallback(rec, req)
 	if !errors.Is(err, ErrIDTokenValidationFailed) {
 		t.Fatalf("HandleCallback() error = %v, want ErrIDTokenValidationFailed", err)
 	}
@@ -624,7 +624,7 @@ func TestHandleCallback_RejectsAuthorizationResponseIDTokenWithOldIATBeforeToken
 	})
 
 	rec, req := callbackRequestWithIDToken("code", "state", "", authzIDToken)
-	_, err = r.HandleCallback(context.Background(), rec, req)
+	_, err = r.HandleCallback(rec, req)
 	if !errors.Is(err, ErrIDTokenValidationFailed) {
 		t.Fatalf("HandleCallback() error = %v, want ErrIDTokenValidationFailed", err)
 	}
@@ -671,7 +671,7 @@ func TestHandleCallback_AllowsOAuthOnlyTokenResponseWithoutIDToken(t *testing.T)
 	}
 
 	rec, req := callbackRequest("code", "state")
-	got, err := r.HandleCallback(context.Background(), rec, req)
+	got, err := r.HandleCallback(rec, req)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
@@ -728,7 +728,7 @@ func TestHandleCallback_UsesConfiguredProviderMetadataForOAuthOnly(t *testing.T)
 	}
 
 	rec, req := callbackRequestWithIss("code", "state", issuer)
-	got, err := r.HandleCallback(context.Background(), rec, req)
+	got, err := r.HandleCallback(rec, req)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
@@ -800,7 +800,7 @@ func TestHandleCallback_FAPISkipsUserInfo(t *testing.T) {
 	}
 
 	rec, req := callbackRequestWithIss("code", "state", issuer)
-	got, err := r.HandleCallback(context.Background(), rec, req)
+	got, err := r.HandleCallback(rec, req)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
@@ -1014,7 +1014,7 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -1066,7 +1066,7 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 	authzIDToken := signIDToken(t, signingKey, "kid-1", authzIDTokenClaims)
 
 	rec, req = callbackRequestWithIDToken(code, state, "", authzIDToken)
-	result, err := r.HandleCallback(context.Background(), rec, req)
+	result, err := r.HandleCallback(rec, req)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
@@ -1155,7 +1155,7 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -1211,7 +1211,7 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 	authzIDToken := signIDToken(t, signingKey, "kid-1", authzIDTokenClaims)
 
 	rec, req = callbackRequestWithIDToken(code, state, issuer, authzIDToken)
-	result, err := r.HandleCallback(context.Background(), rec, req)
+	result, err := r.HandleCallback(rec, req)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
@@ -1238,15 +1238,15 @@ func TestHandleCallback_FormPostValidation(t *testing.T) {
 	}
 
 	rec, req := formPostCallbackRequest("code", "")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("missing state should return ErrInvalidState, got %v", err)
 	}
 	rec, req = formPostCallbackRequest("", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrMissingCode) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrMissingCode) {
 		t.Fatalf("missing code should return ErrMissingCode, got %v", err)
 	}
 	rec, req = formPostCallbackRequest("code", "state")
-	if _, err := r.HandleCallback(context.Background(), rec, req); !errors.Is(err, ErrInvalidState) {
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("unknown state should return ErrInvalidState, got %v", err)
 	}
 }

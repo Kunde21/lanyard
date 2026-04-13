@@ -41,7 +41,7 @@ func TestAuthorizationURL(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestAuthorizationURLDoesNotRediscoverAfterNew(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	if _, err := r.AuthorizationURL(context.Background(), rec, req); err != nil {
+	if _, err := r.AuthorizationURL(rec, req); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
 
@@ -165,7 +165,7 @@ func TestAuthorizationURL_IncludesAuthorizationDetailsWhenConfigured(t *testing.
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestAuthorizationURL_SetAuthorizationDetailsOverridesConfiguredValue(t *tes
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req, SetAuthorizationDetails([]map[string]any{{"type": "payment_initiation", "locations": []string{"https://rs.example.com"}}}))
+	authURL, err := r.AuthorizationURL(rec, req, SetAuthorizationDetails([]map[string]any{{"type": "payment_initiation", "locations": []string{"https://rs.example.com"}}}))
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestAuthorizationURL_SetAuthParamAddsCustomQueryValue(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req, SetAuthParam("resource", "urn:example:api"))
+	authURL, err := r.AuthorizationURL(rec, req, SetAuthParam("resource", "urn:example:api"))
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -290,7 +290,7 @@ func TestAuthorizationURL_SignedRequestObjectByValueUsesRequestParameter(t *test
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -362,7 +362,7 @@ func TestAuthorizationURL_WithResponseMode(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestAuthorizationURL_NoResponseModeByDefault(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -447,7 +447,7 @@ func TestAuthorizationURL_WithRequestURIMode(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -526,7 +526,7 @@ func TestAuthorizationURL_WithRequestURIMode_IncludesResponseMode(t *testing.T) 
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -570,7 +570,7 @@ func TestAuthorizationURL_RequestURIHandlerNil_PreservesRequestByValue(t *testin
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
 	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(context.Background(), rec, req)
+	authURL, err := r.AuthorizationURL(rec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
