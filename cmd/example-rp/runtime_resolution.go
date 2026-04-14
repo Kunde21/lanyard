@@ -259,8 +259,10 @@ func authMethodForRuntime(cfg rpRuntimeConfig) (rp.AuthMethod, bool) {
 	switch strings.ToLower(strings.TrimSpace(cfg.ClientAuthType)) {
 	case "private_key_jwt":
 		return rp.AuthMethodPrivateKeyJWT, true
-	case "mtls", "tls_client_auth", "self_signed_tls_client_auth":
+	case "tls_client_auth", "mtls":
 		return rp.AuthMethodTLSClientAuth, true
+	case "self_signed_tls_client_auth":
+		return rp.AuthMethodSelfSignedTLSClientAuth, true
 	case "none":
 		return rp.AuthMethodNone, true
 	case "client_secret_jwt":

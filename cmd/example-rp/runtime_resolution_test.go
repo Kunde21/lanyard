@@ -213,6 +213,17 @@ func generateUnrelatedCAPool() (*x509.CertPool, error) {
 	return pool, nil
 }
 
+func TestAuthMethodForRuntime_SelfSignedTLSClientAuth(t *testing.T) {
+	cfg := rpRuntimeConfig{ClientAuthType: "self_signed_tls_client_auth"}
+	got, ok := authMethodForRuntime(cfg)
+	if !ok {
+		t.Fatalf("expected auth method to resolve")
+	}
+	if diff := cmp.Diff(rp.AuthMethodSelfSignedTLSClientAuth, got); diff != "" {
+		t.Fatalf("auth method mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestRequestMethodForRuntime_UsesSignedRequestObjectForOIDCCRequestTypes(t *testing.T) {
 	tests := []struct {
 		name        string
