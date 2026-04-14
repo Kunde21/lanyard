@@ -88,6 +88,10 @@ func (c *clientConfig) resolveAuthMethodFromProvider() error {
 			switch {
 			case methodSupported(AuthMethodPrivateKeyJWT, supported):
 				resolved = AuthMethodPrivateKeyJWT
+			case methodExactMatch(AuthMethodTLSClientAuth, supported):
+				resolved = AuthMethodTLSClientAuth
+			case methodExactMatch(AuthMethodSelfSignedTLSClientAuth, supported):
+				resolved = AuthMethodSelfSignedTLSClientAuth
 			case methodSupported(AuthMethodTLSClientAuth, supported):
 				resolved = AuthMethodTLSClientAuth
 			case methodSupported(AuthMethodPost, supported):
@@ -127,6 +131,11 @@ func (c *clientConfig) validateResolvedAuthMethod(method AuthMethod) error {
 		}
 		return nil
 	case AuthMethodTLSClientAuth:
+		if c.clientKeyProvider == nil || c.clientKeyProvider.TLSCertificate() == nil {
+			return fmt.Errorf("%w: tls certificate is required for token endpoint auth method %q", ErrInvalidConfiguration, method)
+		}
+		return nil
+	case AuthMethodSelfSignedTLSClientAuth:
 		if c.clientKeyProvider == nil || c.clientKeyProvider.TLSCertificate() == nil {
 			return fmt.Errorf("%w: tls certificate is required for token endpoint auth method %q", ErrInvalidConfiguration, method)
 		}

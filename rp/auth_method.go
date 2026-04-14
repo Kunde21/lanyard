@@ -8,12 +8,13 @@ import (
 type AuthMethod string
 
 const (
-	AuthMethodBasic           AuthMethod = "client_secret_basic"
-	AuthMethodPost            AuthMethod = "client_secret_post"
-	AuthMethodPrivateKeyJWT   AuthMethod = "private_key_jwt"
-	AuthMethodTLSClientAuth   AuthMethod = "tls_client_auth"
-	AuthMethodNone            AuthMethod = "none"
-	AuthMethodClientSecretJWT AuthMethod = "client_secret_jwt"
+	AuthMethodNone                    AuthMethod = "none"
+	AuthMethodBasic                   AuthMethod = "client_secret_basic"
+	AuthMethodPost                    AuthMethod = "client_secret_post"
+	AuthMethodClientSecretJWT         AuthMethod = "client_secret_jwt"
+	AuthMethodPrivateKeyJWT           AuthMethod = "private_key_jwt"
+	AuthMethodTLSClientAuth           AuthMethod = "tls_client_auth"
+	AuthMethodSelfSignedTLSClientAuth AuthMethod = "self_signed_tls_client_auth"
 )
 
 func (r *RP) resolveAuthMethod() error {
@@ -46,6 +47,16 @@ func normalizeSupportedAuthMethods(methods []string) []string {
 	return normalized
 }
 
+func methodExactMatch(method AuthMethod, supported []string) bool {
+	want := strings.ToLower(strings.TrimSpace(string(method)))
+	for _, current := range supported {
+		if current == want {
+			return true
+		}
+	}
+	return false
+}
+
 func methodSupported(method AuthMethod, supported []string) bool {
 	want := strings.ToLower(strings.TrimSpace(string(method)))
 	if want == "" {
@@ -58,9 +69,9 @@ func methodSupported(method AuthMethod, supported []string) bool {
 		}
 	}
 
-	if want == "tls_client_auth" {
+	if want == "tls_client_auth" || want == "self_signed_tls_client_auth" {
 		for _, current := range supported {
-			if current == "self_signed_tls_client_auth" {
+			if current == "tls_client_auth" || current == "self_signed_tls_client_auth" {
 				return true
 			}
 		}

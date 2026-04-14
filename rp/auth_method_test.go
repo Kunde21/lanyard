@@ -2,6 +2,7 @@ package rp
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"testing"
 
@@ -102,5 +103,87 @@ func providerForAuthMethods(methods ...string) metadata.Provider {
 		},
 		SubjectTypesSupported:            []string{"public"},
 		IDTokenSigningAlgValuesSupported: []string{"RS256"},
+	}
+}
+
+func TestAuthMethodSelfSignedTLSClientAuth_ConstantValue(t *testing.T) {
+	if diff := cmp.Diff(AuthMethod("self_signed_tls_client_auth"), AuthMethodSelfSignedTLSClientAuth); diff != "" {
+		t.Fatalf("constant mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestMethodSupported_SelfSignedTLSClientAuth(t *testing.T) {
+	tests := []struct {
+		name      string
+		method    AuthMethod
+		supported []string
+		want      bool
+	}{
+		{
+			name:      "exact match",
+			method:    AuthMethodSelfSignedTLSClientAuth,
+			supported: []string{"self_signed_tls_client_auth"},
+			want:      true,
+		},
+		{
+			name:      "self_signed matched when provider has tls_client_auth",
+			method:    AuthMethodSelfSignedTLSClientAuth,
+			supported: []string{"tls_client_auth"},
+			want:      true,
+		},
+		{
+			name:      "tls_client_auth matched when provider has self_signed",
+			method:    AuthMethodTLSClientAuth,
+			supported: []string{"self_signed_tls_client_auth"},
+			want:      true,
+		},
+		{
+			name:      "self_signed not matched by unrelated methods",
+			method:    AuthMethodSelfSignedTLSClientAuth,
+			supported: []string{"client_secret_post"},
+			want:      false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := methodSupported(tc.method, tc.supported)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Fatalf("methodSupported mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestNew_SelfSignedTLSClientAuth_RequiresClientKeyProviderWithTLSCert(t *testing.T) {
+	_, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(providerForAuthMethods("self_signed_tls_client_auth")),
+		WithAuthMethod(AuthMethodSelfSignedTLSClientAuth),
+	)
+	if err == nil {
+		t.Fatalf("New() expected error when no client key provider")
+	}
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("expected ErrInvalidConfiguration, got %v", err)
+	}
+}
+
+func TestNew_AutoNegotiatesSelfSignedTLSClientAuthWhenAdvertised(t *testing.T) {
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(providerForAuthMethods("self_signed_tls_client_auth")),
+		WithClientKeyProvider(NewStaticClientKeyProvider(nil, "", "", &tls.Certificate{})),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if diff := cmp.Diff(AuthMethodSelfSignedTLSClientAuth, r.resolvedAuthMethod); diff != "" {
+		t.Fatalf("resolved auth method mismatch (-want +got):\n%s", diff)
 	}
 }
