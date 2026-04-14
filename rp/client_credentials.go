@@ -117,6 +117,7 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 		}
 		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		form.Set("client_assertion", assertion)
+	case AuthMethodSelfSignedTLSClientAuth:
 	case AuthMethodPost:
 		form.Set("client_secret", c.clientSecret)
 	case AuthMethodBasic:
@@ -176,7 +177,7 @@ func (c *ClientCredentials) buildTokenRequest(ctx context.Context, method AuthMe
 	switch method {
 	case AuthMethodBasic:
 		req.SetBasicAuth(c.clientID, c.clientSecret)
-	case AuthMethodTLSClientAuth:
+	case AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth:
 	}
 
 	return req, nil

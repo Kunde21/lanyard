@@ -1250,3 +1250,66 @@ func TestHandleCallback_FormPostValidation(t *testing.T) {
 		t.Fatalf("unknown state should return ErrInvalidState, got %v", err)
 	}
 }
+
+func TestCallback_MTLSAliasForTokenEndpoint_SelfSignedTLSClientAuth(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+	issuer := ""
+	var tokenPath string
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithMTLSEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token", "/mtls/token":
+			tokenPath = r.URL.Path
+			claims := map[string]any{"iss": issuer, "sub": "sub-123", "aud": []string{"client-id"}, "exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "nonce-1"}
+			body := `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", claims) + `"}`
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		case "/userinfo", "/mtls/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"sub-123"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithAuthMethod(AuthMethodSelfSignedTLSClientAuth),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", &tls.Certificate{})),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	if _, err := r.HandleCallback(rec, req); err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+
+	if tokenPath != "/mtls/token" {
+		t.Fatalf("token path = %q, want /mtls/token", tokenPath)
+	}
+}

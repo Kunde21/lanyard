@@ -28,9 +28,9 @@ func (r *RP) userInfoEndpoint(provider metadata.Provider) string {
 }
 
 func (r *RP) usesMTLSForPAR() bool {
-	return r.resolvedAuthMethod == AuthMethodTLSClientAuth
+	return r.resolvedAuthMethod == AuthMethodTLSClientAuth || r.resolvedAuthMethod == AuthMethodSelfSignedTLSClientAuth
 }
 
 func (r *RP) usesMTLSForTokenEndpoint() bool {
-	return r.resolvedAuthMethod == AuthMethodTLSClientAuth || r.senderConstrain == SenderConstraintMTLS
+	return r.resolvedAuthMethod == AuthMethodTLSClientAuth || r.resolvedAuthMethod == AuthMethodSelfSignedTLSClientAuth || r.senderConstrain == SenderConstraintMTLS
 }

@@ -20,8 +20,7 @@ func (r *RP) buildTokenRequest(ctx context.Context, tokenEndpoint string, form u
 	switch method {
 	case AuthMethodBasic:
 		req.SetBasicAuth(r.clientID, r.clientSecret)
-	case AuthMethodTLSClientAuth:
-		// mTLS is handled by httpClient Transport
+	case AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth:
 	}
 
 	return req, nil
@@ -91,7 +90,7 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		form.Set("client_assertion", assertion)
 		form.Set("client_id", r.clientID)
-	case AuthMethodTLSClientAuth:
+	case AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth:
 		form.Set("client_id", r.clientID)
 	case AuthMethodNone:
 		form.Set("client_id", r.clientID)

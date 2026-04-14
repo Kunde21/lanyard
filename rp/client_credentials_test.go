@@ -832,3 +832,51 @@ func extractNonceFromDPoPProof(t *testing.T, proof string) string {
 	}
 	return payload.Nonce
 }
+
+func TestClientCredentials_Token_SelfSignedTLSClientAuth(t *testing.T) {
+	var requestBody string
+	var authHeader string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader = r.Header.Get("Authorization")
+		body, _ := io.ReadAll(r.Body)
+		requestBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "self-signed-mtls-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	provider := clientCredentialsProvider(server.URL, AuthMethodSelfSignedTLSClientAuth)
+
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithProviderMetadata(provider),
+		WithClientKeyProvider(NewStaticClientKeyProvider(nil, "", "", &tls.Certificate{})),
+		WithAuthMethod(AuthMethodSelfSignedTLSClientAuth))
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	token, err := client.Token(ctx)
+	if err != nil {
+		t.Fatalf("Token() error: %v", err)
+	}
+
+	if token.AccessToken != "self-signed-mtls-token" {
+		t.Errorf("expected self-signed-mtls-token, got: %s", token.AccessToken)
+	}
+	if authHeader != "" {
+		t.Errorf("expected no Authorization header for self_signed_tls_client_auth, got: %s", authHeader)
+	}
+	if !strings.Contains(requestBody, "client_id=client-id") {
+		t.Errorf("expected client_id in body, got: %s", requestBody)
+	}
+	if strings.Contains(requestBody, "client_secret=") {
+		t.Errorf("client_secret should not be in body for self_signed_tls_client_auth, got: %s", requestBody)
+	}
+}

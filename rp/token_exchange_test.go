@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -430,4 +431,59 @@ func testRSAKey(t *testing.T) *rsa.PrivateKey {
 		t.Fatalf("failed to generate RSA key: %v", err)
 	}
 	return key
+}
+
+func TestExchangeTokenRequestShape_SelfSignedTLSClientAuth(t *testing.T) {
+	var gotForm url.Values
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Token{
+			AccessToken: "access",
+			TokenType:   "Bearer",
+			ExpiresIn:   3600,
+			IDToken:     "idtoken",
+		})
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods("self_signed_tls_client_auth")
+	provider.TokenEndpoint = ts.URL
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodSelfSignedTLSClientAuth),
+		WithClientKeyProvider(NewStaticClientKeyProvider(nil, "", "", &tls.Certificate{})),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	if err != nil {
+		t.Fatalf("exchangeToken() failed: %v", err)
+	}
+
+	wantForm := map[string]string{
+		"grant_type":    "authorization_code",
+		"code":          "auth-code",
+		"redirect_uri":  "https://rp.test/callback",
+		"code_verifier": "verifier",
+		"client_id":     "client",
+	}
+	for key, want := range wantForm {
+		if gotForm.Get(key) != want {
+			t.Fatalf("form %q mismatch: want %q got %q", key, want, gotForm.Get(key))
+		}
+	}
+	if gotForm.Get("client_secret") != "" {
+		t.Fatalf("client_secret should not be present for self_signed_tls_client_auth")
+	}
 }
