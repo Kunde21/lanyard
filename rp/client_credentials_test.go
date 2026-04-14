@@ -857,7 +857,8 @@ func TestClientCredentials_Token_SelfSignedTLSClientAuth(t *testing.T) {
 		WithClientID("client-id"),
 		WithProviderMetadata(provider),
 		WithClientKeyProvider(NewStaticClientKeyProvider(nil, "", "", &tls.Certificate{})),
-		WithAuthMethod(AuthMethodSelfSignedTLSClientAuth))
+		WithAuthMethod(AuthMethodSelfSignedTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS))
 	if err != nil {
 		t.Fatalf("failed to create client: %v", err)
 	}

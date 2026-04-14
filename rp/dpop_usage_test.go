@@ -6,6 +6,12 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestIsDPoPSupported_SelfSignedTLSClientAuth(t *testing.T) {
+	if !isDPoPSupported(AuthMethodSelfSignedTLSClientAuth) {
+		t.Fatalf("isDPoPSupported should return true for self_signed_tls_client_auth")
+	}
+}
+
 func TestShouldUseDPoP_RespectsExplicitSenderConstraint(t *testing.T) {
 	r := &RP{
 		clientConfig: clientConfig{

@@ -192,7 +192,7 @@ func isUseDPoPNonce(resp *http.Response) bool {
 }
 
 func isDPoPSupported(method AuthMethod) bool {
-	return method == AuthMethodPrivateKeyJWT || method == AuthMethodTLSClientAuth
+	return method == AuthMethodPrivateKeyJWT || method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth
 }
 
 func (r *RP) cachedDPoPNonce(rawURL string) string {
