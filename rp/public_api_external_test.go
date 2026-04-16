@@ -31,6 +31,7 @@ func TestPublicAPIOptionNames(t *testing.T) {
 	_ = rp.WithSenderConstrain(rp.SenderConstraintMTLS)
 	_ = rp.WithSenderConstrain(rp.SenderConstraintNone)
 	_ = rp.AuthMethodSelfSignedTLSClientAuth
+	_ = rp.ErrRefreshTokenFailed
 
 	tok := rp.Token{
 		AccessToken:  "at",

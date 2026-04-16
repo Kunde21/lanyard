@@ -18,6 +18,13 @@
 // [NewClientCredentials] and request a shared [Token] with
 // [ClientCredentials.Token].
 //
+// # Token refresh
+//
+// When the authorization code flow returns a refresh token, use
+// [RP.RefreshToken] to exchange it for a fresh [Token] without user
+// interaction. The method respects the same auth method and DPoP
+// configuration as the original flow.
+//
 // # Provider discovery
 //
 // For configuration validation or provider inspection before construction, use

@@ -23,6 +23,8 @@ var (
 	ErrAuthMethodNotSupported = errors.New("auth method not supported")
 	// ErrClientCredentialsFailed indicates client credentials token request failed.
 	ErrClientCredentialsFailed = errors.New("client credentials token request failed")
+	// ErrRefreshTokenFailed indicates a refresh token request failed.
+	ErrRefreshTokenFailed = errors.New("refresh token request failed")
 )
 
 // AuthMethodError indicates token endpoint auth method selection/validation failure.
