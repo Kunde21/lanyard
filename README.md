@@ -2,6 +2,17 @@
 
 Lanyard is a Go OpenID Connect (OIDC) and OAuth 2.0 relying party library.
 
+## API Documentation
+
+The source-of-truth API documentation is the Go package documentation:
+
+*   `github.com/Kunde21/lanyard/rp` for relying-party flows and token APIs
+*   `github.com/Kunde21/lanyard/metadata` for discovery and authorization server metadata
+*   `github.com/Kunde21/lanyard/jwks` for remote JWKS retrieval
+*   `github.com/Kunde21/lanyard/cache` for the default in-memory cache
+
+README examples are introductory. Prefer `go doc` or pkg.go.dev for exact signatures, defaults, and option behavior.
+
 ## Capabilities
 
 Lanyard implements a fully featured OIDC relying party (RP) with support for the Authorization Code flow with PKCE.
@@ -95,9 +106,9 @@ func setupRP(ctx context.Context) (*rp.RP, error) {
 	return rp.New(
 		ctx,
 		"https://issuer.example.com",
-		"client-id",
-		"client-secret",
-		"https://rp.example.com/callback",
+		rp.WithClientID("client-id"),
+		rp.WithClientSecret("client-secret"),
+		rp.WithRedirectURI("https://rp.example.com/callback"),
 		rp.WithStateStore(stateStore),
 		rp.WithScopes("openid", "profile", "email"),
 	)
@@ -107,7 +118,7 @@ func setupRP(ctx context.Context) (*rp.RP, error) {
 
 func handleLogin(rpClient *rp.RP) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authURL, err := rpClient.AuthorizationURL(r.Context(), w, r)
+		authURL, err := rpClient.AuthorizationURL(w, r)
 		if err != nil {
 			http.Error(w, "login failed", http.StatusInternalServerError)
 			return
@@ -118,7 +129,7 @@ func handleLogin(rpClient *rp.RP) http.HandlerFunc {
 
 func handleCallback(rpClient *rp.RP) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		result, err := rpClient.HandleCallback(r.Context(), w, r)
+		result, err := rpClient.HandleCallback(w, r)
 		if err != nil {
 			http.Error(w, "callback failed", http.StatusBadRequest)
 			return
@@ -141,19 +152,21 @@ import (
 
 func newRP(ctx context.Context) (*rp.RP, error) {
 	provider := metadata.Provider{
-		Issuer:                "https://issuer.example.com",
-		AuthorizationEndpoint: "https://issuer.example.com/authorize",
-		TokenEndpoint:         "https://issuer.example.com/token",
-		UserinfoEndpoint:      "https://issuer.example.com/userinfo",
-		JWKSURI:               "https://issuer.example.com/jwks.json",
+		AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:                "https://issuer.example.com",
+			AuthorizationEndpoint: "https://issuer.example.com/authorize",
+			TokenEndpoint:         "https://issuer.example.com/token",
+			JWKSURI:               "https://issuer.example.com/jwks.json",
+		},
+		UserinfoEndpoint: "https://issuer.example.com/userinfo",
 	}
 
 	return rp.New(
 		ctx,
 		provider.Issuer,
-		"client-id",
-		"client-secret",
-		"https://rp.example.com/callback",
+		rp.WithClientID("client-id"),
+		rp.WithClientSecret("client-secret"),
+		rp.WithRedirectURI("https://rp.example.com/callback"),
 		rp.WithProviderMetadata(provider),
 	)
 }
@@ -195,17 +208,19 @@ import (
 func main() {
 	ctx := context.Background()
 	provider := metadata.Provider{
-		Issuer:        "https://auth.example.com",
-		TokenEndpoint: "https://auth.example.com/token",
+		AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:        "https://auth.example.com",
+			TokenEndpoint: "https://auth.example.com/token",
+		},
 	}
 
 	client, err := rp.NewClientCredentials(
 		ctx,
 		provider.Issuer,
-		"client-id",
-		"client-secret",
-		rp.WithClientCredentialsProviderMetadata(provider),
-		rp.WithClientCredentialsScopes("api:read", "api:write"),
+		rp.WithClientID("client-id"),
+		rp.WithClientSecret("client-secret"),
+		rp.WithProviderMetadata(provider),
+		rp.WithScopes("api:read", "api:write"),
 	)
 	if err != nil {
 		panic(err)

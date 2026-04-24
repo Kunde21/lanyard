@@ -16,10 +16,12 @@ import (
 	"github.com/go-jose/go-jose/v4"
 )
 
+// ClientCredentials performs OAuth 2.0 client credentials token requests.
 type ClientCredentials struct {
 	clientConfig
 }
 
+// NewClientCredentials creates a client credentials token source for issuer.
 func NewClientCredentials(ctx context.Context, issuer string, opts ...Option) (*ClientCredentials, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -64,6 +66,7 @@ func (c *ClientCredentials) validate() error {
 	return nil
 }
 
+// Token requests an access token using the client credentials grant.
 func (c *ClientCredentials) Token(ctx context.Context) (*Token, error) {
 	method, allowFallback := c.authMethodState()
 

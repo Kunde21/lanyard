@@ -216,6 +216,7 @@ func defaultClientConfig(issuer string) clientConfig {
 	}
 }
 
+// Option configures an [RP] or [ClientCredentials] instance.
 type Option interface {
 	apply(optionTarget)
 }

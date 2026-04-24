@@ -7,8 +7,11 @@ import (
 )
 
 var (
-	ErrInvalidFormat   = errors.New("invalid URL format")
-	ErrInvalidHTTPS    = errors.New("URL must be an absolute https URL")
+	// ErrInvalidFormat reports a URL string that cannot be parsed.
+	ErrInvalidFormat = errors.New("invalid URL format")
+	// ErrInvalidHTTPS reports a URL that is not absolute HTTPS with a host.
+	ErrInvalidHTTPS = errors.New("URL must be an absolute https URL")
+	// ErrQueryOrFragment reports a URL containing query or fragment components.
 	ErrQueryOrFragment = errors.New("URL must not include query or fragment")
 )
 

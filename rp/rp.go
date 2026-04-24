@@ -18,7 +18,6 @@ import (
 
 const defaultClockSkew = 5 * time.Minute
 
-// RP is an OpenID Connect relying party for the Authorization Code flow.
 type requestMethodType int
 
 const (
@@ -66,6 +65,7 @@ func (r requestMethodType) isSigned() bool {
 	return r == requestMethodSignedNonRepudiation
 }
 
+// RP is an OpenID Connect relying party for the Authorization Code flow.
 type RP struct {
 	clientConfig
 

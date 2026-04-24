@@ -12,24 +12,28 @@ import (
 	"github.com/Kunde21/lanyard/metadata"
 )
 
+// WithClientID sets the OAuth client identifier.
 func WithClientID(id string) Option {
 	return optionFunc(func(c *clientConfig) {
 		c.clientID = strings.TrimSpace(id)
 	})
 }
 
+// WithClientSecret sets the OAuth client secret.
 func WithClientSecret(secret string) Option {
 	return optionFunc(func(c *clientConfig) {
 		c.clientSecret = secret
 	})
 }
 
+// WithRedirectURI sets the browser-flow redirect URI.
 func WithRedirectURI(uri string) Option {
 	return rpOptionFunc(func(r *RP) {
 		r.redirectURI = strings.TrimSpace(uri)
 	})
 }
 
+// AuthorizationURLOption configures a single authorization URL request.
 type AuthorizationURLOption func(*authorizationURLConfig)
 
 type authorizationURLConfig struct {
@@ -37,6 +41,7 @@ type authorizationURLConfig struct {
 	parameters           url.Values
 }
 
+// WithMetadataClient sets the metadata client used for discovery and JWKS setup.
 func WithMetadataClient(client *metadata.Client) Option {
 	return optionFunc(func(c *clientConfig) {
 		if client != nil {
@@ -45,6 +50,7 @@ func WithMetadataClient(client *metadata.Client) Option {
 	})
 }
 
+// WithLogger sets the structured logger used by discovery and token requests.
 func WithLogger(logger *slog.Logger) Option {
 	return optionFunc(func(c *clientConfig) {
 		if logger != nil {
@@ -53,6 +59,7 @@ func WithLogger(logger *slog.Logger) Option {
 	})
 }
 
+// WithHTTPClient sets the HTTP client used for discovery and token requests.
 func WithHTTPClient(client *http.Client) Option {
 	return optionFunc(func(c *clientConfig) {
 		if client != nil {
@@ -61,6 +68,7 @@ func WithHTTPClient(client *http.Client) Option {
 	})
 }
 
+// WithScopes sets default OAuth scopes.
 func WithScopes(scopes ...string) Option {
 	return scopesOption{scopes: append([]string(nil), scopes...)}
 }
@@ -79,6 +87,7 @@ func (o scopesOption) apply(t optionTarget) {
 	}
 }
 
+// WithClockSkew sets the allowed clock skew for token validation.
 func WithClockSkew(skew time.Duration) Option {
 	return rpOptionFunc(func(r *RP) {
 		if skew >= 0 {
@@ -87,6 +96,7 @@ func WithClockSkew(skew time.Duration) Option {
 	})
 }
 
+// WithProviderMetadata supplies provider metadata and can skip discovery when complete.
 func WithProviderMetadata(provider metadata.Provider) Option {
 	return providerMetadataOption{provider: provider}
 }
@@ -105,6 +115,7 @@ func (o providerMetadataOption) apply(t optionTarget) {
 	}
 }
 
+// WithAuthorizationEndpoint sets or overrides the authorization endpoint.
 func WithAuthorizationEndpoint(endpoint string) Option {
 	return rpOptionFunc(func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
@@ -118,6 +129,7 @@ func WithAuthorizationEndpoint(endpoint string) Option {
 	})
 }
 
+// WithTokenEndpoint sets or overrides the token endpoint.
 func WithTokenEndpoint(endpoint string) Option {
 	return rpOptionFunc(func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
@@ -131,6 +143,7 @@ func WithTokenEndpoint(endpoint string) Option {
 	})
 }
 
+// WithUserInfoEndpoint sets or overrides the UserInfo endpoint.
 func WithUserInfoEndpoint(endpoint string) Option {
 	return rpOptionFunc(func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
@@ -142,6 +155,7 @@ func WithUserInfoEndpoint(endpoint string) Option {
 	})
 }
 
+// WithJWKSURI sets or overrides the JWKS URI.
 func WithJWKSURI(uri string) Option {
 	return rpOptionFunc(func(r *RP) {
 		uri = strings.TrimSpace(uri)
@@ -155,6 +169,7 @@ func WithJWKSURI(uri string) Option {
 	})
 }
 
+// WithPushedAuthorizationRequestEndpoint sets or overrides the PAR endpoint.
 func WithPushedAuthorizationRequestEndpoint(endpoint string) Option {
 	return rpOptionFunc(func(r *RP) {
 		endpoint = strings.TrimSpace(endpoint)
@@ -168,6 +183,7 @@ func WithPushedAuthorizationRequestEndpoint(endpoint string) Option {
 	})
 }
 
+// WithMTLSEndpointAliases sets mutual-TLS endpoint aliases.
 func WithMTLSEndpointAliases(aliases metadata.MTLSEndpointAliases) Option {
 	return rpOptionFunc(func(r *RP) {
 		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, metadata.Provider{
@@ -177,6 +193,7 @@ func WithMTLSEndpointAliases(aliases metadata.MTLSEndpointAliases) Option {
 	})
 }
 
+// WithProviderIssuer sets or overrides the provider issuer in configured metadata.
 func WithProviderIssuer(issuer string) Option {
 	return rpOptionFunc(func(r *RP) {
 		issuer = strings.TrimSpace(issuer)
@@ -190,12 +207,14 @@ func WithProviderIssuer(issuer string) Option {
 	})
 }
 
+// WithAuthMethod sets the token endpoint client authentication method.
 func WithAuthMethod(method AuthMethod) Option {
 	return optionFunc(func(c *clientConfig) {
 		c.authMethod = method
 	})
 }
 
+// WithStateStore sets the browser-flow state store.
 func WithStateStore(store StateStore) Option {
 	return rpOptionFunc(func(r *RP) {
 		if store != nil {
@@ -204,12 +223,14 @@ func WithStateStore(store StateStore) Option {
 	})
 }
 
+// WithUserInfoTokenTransport sets how access tokens are sent to the UserInfo endpoint.
 func WithUserInfoTokenTransport(transport UserInfoTokenTransport) Option {
 	return rpOptionFunc(func(r *RP) {
 		r.userInfoTokenTransport = normalizeUserInfoTokenTransport(transport)
 	})
 }
 
+// WithClientKeyProvider sets the private key provider for signed client authentication and DPoP.
 func WithClientKeyProvider(provider ClientKeyProvider) Option {
 	return optionFunc(func(c *clientConfig) {
 		if provider != nil {
@@ -218,6 +239,7 @@ func WithClientKeyProvider(provider ClientKeyProvider) Option {
 	})
 }
 
+// WithRequirePAR controls whether authorization requests must use PAR.
 func WithRequirePAR(require bool) Option {
 	return rpOptionFunc(func(r *RP) {
 		r.requirePAR = require
@@ -225,18 +247,21 @@ func WithRequirePAR(require bool) Option {
 	})
 }
 
+// WithSenderConstrain selects DPoP, mTLS, or no sender constraining.
 func WithSenderConstrain(mode SenderConstraint) Option {
 	return optionFunc(func(c *clientConfig) {
 		c.senderConstrain = normalizeSenderConstrain(string(mode))
 	})
 }
 
+// WithValidateAuthorizationResponseIssuer controls callback issuer validation.
 func WithValidateAuthorizationResponseIssuer(validate bool) Option {
 	return rpOptionFunc(func(r *RP) {
 		r.validateAuthorizationResponseIssuer = validate
 	})
 }
 
+// WithAllowUnsecuredIDTokens controls whether unsigned ID tokens are accepted.
 func WithAllowUnsecuredIDTokens(allow bool) Option {
 	return rpOptionFunc(func(r *RP) {
 		r.allowUnsecuredIDTokens = allow
@@ -259,6 +284,7 @@ func withRandReader(reader io.Reader) Option {
 	})
 }
 
+// WithDPoPNonceTTL sets how long DPoP nonces are cached per endpoint.
 func WithDPoPNonceTTL(ttl time.Duration) Option {
 	return optionFunc(func(c *clientConfig) {
 		if ttl > 0 {
@@ -267,6 +293,7 @@ func WithDPoPNonceTTL(ttl time.Duration) Option {
 	})
 }
 
+// WithAuthorizationDetails sets default Rich Authorization Request details.
 func WithAuthorizationDetails(details []map[string]any) Option {
 	return rpOptionFunc(func(r *RP) {
 		authorizationDetails, ok := marshalAuthorizationDetails(details)
@@ -277,6 +304,7 @@ func WithAuthorizationDetails(details []map[string]any) Option {
 	})
 }
 
+// SetAuthorizationDetails sets Rich Authorization Request details for one authorization URL.
 func SetAuthorizationDetails(details []map[string]any) AuthorizationURLOption {
 	return func(cfg *authorizationURLConfig) {
 		if cfg == nil {
@@ -290,6 +318,7 @@ func SetAuthorizationDetails(details []map[string]any) AuthorizationURLOption {
 	}
 }
 
+// SetAuthParam sets an extra authorization request parameter.
 func SetAuthParam(key, value string) AuthorizationURLOption {
 	return func(cfg *authorizationURLConfig) {
 		if cfg == nil {
@@ -317,6 +346,7 @@ func marshalAuthorizationDetails(details []map[string]any) (string, bool) {
 	return string(b), true
 }
 
+// WithResponseMode sets the authorization response mode.
 func WithResponseMode(mode string) Option {
 	return rpOptionFunc(func(r *RP) {
 		if r != nil {
@@ -326,6 +356,7 @@ func WithResponseMode(mode string) Option {
 	})
 }
 
+// WithResponseType sets the authorization response type.
 func WithResponseType(responseType string) Option {
 	return rpOptionFunc(func(r *RP) {
 		if r != nil {
@@ -335,6 +366,7 @@ func WithResponseType(responseType string) Option {
 	})
 }
 
+// WithRequestMethod sets the authorization request object mode.
 func WithRequestMethod(method string) Option {
 	return rpOptionFunc(func(r *RP) {
 		if r != nil {
@@ -344,8 +376,10 @@ func WithRequestMethod(method string) Option {
 	})
 }
 
+// RequestURIHandler stores a signed request object and returns its request_uri.
 type RequestURIHandler func(signedJWT string) (requestURI string, err error)
 
+// WithRequestURIMode enables request_uri mode using handler.
 func WithRequestURIMode(handler RequestURIHandler) Option {
 	return rpOptionFunc(func(r *RP) {
 		if r != nil {
@@ -354,14 +388,21 @@ func WithRequestURIMode(handler RequestURIHandler) Option {
 	})
 }
 
+// Profile selects a behavior profile for relying-party defaults.
 type Profile int
 
 const (
+	// OIDC selects OpenID Connect defaults.
 	OIDC Profile = iota
+	// OAuth2 selects OAuth 2.0-only defaults.
 	OAuth2
+	// FAPI1Adv selects FAPI 1.0 Advanced defaults.
 	FAPI1Adv
+	// FAPI2SecurityProfile selects FAPI 2.0 Security Profile defaults.
 	FAPI2SecurityProfile
+	// FAPI2MessageSigning selects FAPI 2.0 Message Signing defaults.
 	FAPI2MessageSigning
+	// PlainFAPI selects unsigned request defaults for FAPI-style testing.
 	PlainFAPI
 )
 
@@ -382,6 +423,7 @@ func profileFromPublic(p Profile) profileType {
 	}
 }
 
+// WithProfile applies default behavior for the selected profile.
 func WithProfile(profile Profile) Option {
 	return rpOptionFunc(func(r *RP) {
 		r.profile = profileFromPublic(profile)
@@ -389,12 +431,17 @@ func WithProfile(profile Profile) Option {
 	})
 }
 
+// DiscoveryMode selects how provider metadata discovery is performed.
 type DiscoveryMode int
 
 const (
+	// DiscoveryAuto chooses the discovery mode from configured scopes and metadata.
 	DiscoveryAuto DiscoveryMode = iota
+	// DiscoveryOIDC forces OpenID Connect provider discovery.
 	DiscoveryOIDC
+	// DiscoveryOAuth2 forces OAuth 2.0 authorization server discovery.
 	DiscoveryOAuth2
+	// DiscoveryDisabled disables metadata discovery.
 	DiscoveryDisabled
 )
 
@@ -411,6 +458,7 @@ func discoveryModeFromPublic(m DiscoveryMode) discoveryModeType {
 	}
 }
 
+// WithDiscoveryMode configures provider metadata discovery behavior.
 func WithDiscoveryMode(mode DiscoveryMode) Option {
 	return rpOptionFunc(func(r *RP) {
 		r.discoveryMode = discoveryModeFromPublic(mode)

@@ -5,15 +5,23 @@ import (
 	"strings"
 )
 
+// AuthMethod identifies a token endpoint client authentication method.
 type AuthMethod string
 
 const (
-	AuthMethodNone                    AuthMethod = "none"
-	AuthMethodBasic                   AuthMethod = "client_secret_basic"
-	AuthMethodPost                    AuthMethod = "client_secret_post"
-	AuthMethodClientSecretJWT         AuthMethod = "client_secret_jwt"
-	AuthMethodPrivateKeyJWT           AuthMethod = "private_key_jwt"
-	AuthMethodTLSClientAuth           AuthMethod = "tls_client_auth"
+	// AuthMethodNone disables client authentication at the token endpoint.
+	AuthMethodNone AuthMethod = "none"
+	// AuthMethodBasic uses client_secret_basic authentication.
+	AuthMethodBasic AuthMethod = "client_secret_basic"
+	// AuthMethodPost uses client_secret_post authentication.
+	AuthMethodPost AuthMethod = "client_secret_post"
+	// AuthMethodClientSecretJWT uses client_secret_jwt authentication.
+	AuthMethodClientSecretJWT AuthMethod = "client_secret_jwt"
+	// AuthMethodPrivateKeyJWT uses private_key_jwt authentication.
+	AuthMethodPrivateKeyJWT AuthMethod = "private_key_jwt"
+	// AuthMethodTLSClientAuth uses tls_client_auth authentication.
+	AuthMethodTLSClientAuth AuthMethod = "tls_client_auth"
+	// AuthMethodSelfSignedTLSClientAuth uses self_signed_tls_client_auth authentication.
 	AuthMethodSelfSignedTLSClientAuth AuthMethod = "self_signed_tls_client_auth"
 )
 
