@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -425,6 +426,44 @@ func TestClientCredentials_Token_Fallback(t *testing.T) {
 
 	if requestCount != 1 {
 		t.Errorf("expected 1 request after fallback (cached method), got: %d", requestCount)
+	}
+}
+
+func TestClientCredentials_Token_FallbackFailureUsesRetryPreview(t *testing.T) {
+	requestCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requestCount++
+		if requestCount == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = io.WriteString(w, `{"error":"invalid_client"}`)
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, "retry failed")
+	}))
+	defer server.Close()
+
+	ctx := context.Background()
+	provider := clientCredentialsProvider(server.URL)
+
+	client, err := NewClientCredentials(ctx, "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+		WithProviderMetadata(provider))
+	if err != nil {
+		t.Fatalf("failed to create client: %v", err)
+	}
+
+	_, err = client.Token(ctx)
+	if !errors.Is(err, ErrClientCredentialsFailed) {
+		t.Fatalf("expected ErrClientCredentialsFailed, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "token endpoint returned status 400: retry failed") {
+		t.Fatalf("expected retry preview in error, got: %v", err)
+	}
+	if diff := cmp.Diff(2, requestCount); diff != "" {
+		t.Fatalf("request count mismatch (-want +got):\n%s", diff)
 	}
 }
 

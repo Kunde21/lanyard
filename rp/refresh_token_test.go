@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/Kunde21/lanyard/metadata"
@@ -332,6 +333,50 @@ func TestRefreshToken_FallbackPostToBasic(t *testing.T) {
 	}
 	if diff := cmp.Diff(2, requests); diff != "" {
 		t.Fatalf("expected 2 requests (fallback), got %d", requests)
+	}
+}
+
+func TestRefreshToken_FallbackFailureUsesRetryPreview(t *testing.T) {
+	requests := 0
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = fmt.Fprint(w, `{"error":"invalid_client"}`)
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprint(w, "retry failed")
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = ts.URL
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.RefreshToken(context.Background(), "rt")
+	if !errors.Is(err, ErrRefreshTokenFailed) {
+		t.Fatalf("expected ErrRefreshTokenFailed, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "token endpoint returned status 400: retry failed") {
+		t.Fatalf("expected retry preview in error, got: %v", err)
+	}
+	if diff := cmp.Diff(2, requests); diff != "" {
+		t.Fatalf("request count mismatch (-want +got):\n%s", diff)
 	}
 }
 

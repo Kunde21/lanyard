@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -387,6 +388,47 @@ func TestExchangeTokenFallbackFromPostToBasicAndCaches(t *testing.T) {
 	}
 	if diff := cmp.Diff("Basic "+base64.StdEncoding.EncodeToString([]byte("client:secret")), requests[2].authorization); diff != "" {
 		t.Fatalf("third authorization header mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestExchangeTokenFallbackFailureUsesRetryPreview(t *testing.T) {
+	requests := 0
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		if requests == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = fmt.Fprint(w, `{"error":"invalid_client"}`)
+			return
+		}
+
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprint(w, "retry failed")
+	}))
+	defer ts.Close()
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(providerForAuthMethods()),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	if !errors.Is(err, ErrTokenExchangeFailed) {
+		t.Fatalf("expected ErrTokenExchangeFailed, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "token endpoint returned status 400: retry failed") {
+		t.Fatalf("expected retry preview in error, got: %v", err)
+	}
+	if diff := cmp.Diff(2, requests); diff != "" {
+		t.Fatalf("request count mismatch (-want +got):\n%s", diff)
 	}
 }
 
