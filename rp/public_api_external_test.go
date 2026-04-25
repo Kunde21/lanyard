@@ -58,6 +58,23 @@ func TestPublicAPIOptionNames(t *testing.T) {
 	)
 }
 
+func TestPublicAPIOptionTypeAssignments(t *testing.T) {
+	var opt rp.Option
+	opt = rp.WithClientID("client-id")
+	opt = rp.WithClientSecret("secret")
+	opt = rp.WithScopes("read")
+	opt = rp.WithProviderMetadata(metadata.Provider{})
+	opt = rp.WithRedirectURI("https://rp.example.com/callback")
+	opt = rp.WithProfile(rp.OIDC)
+	_ = opt
+
+	var authOpt rp.AuthCodeOption
+	authOpt = rp.WithRedirectURI("https://rp.example.com/callback")
+	authOpt = rp.WithProfile(rp.OIDC)
+	authOpt = rp.WithRequirePAR(true)
+	_ = authOpt
+}
+
 func TestPublicAPIRemovedSymbols(t *testing.T) {
 	t.Log("WithFAPIProfile, WithOIDCClient, WithClientCredentialsOIDCClient, WithDiscoveryOIDCClient, WithClientCredentialsProviderMetadata, WithClientCredentialsSenderConstrain, and string-taking sender-constrain signatures have been removed")
 }

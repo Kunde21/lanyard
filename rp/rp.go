@@ -71,12 +71,7 @@ type RP struct {
 
 	redirectURI string
 
-	scopesExplicit bool
-
 	stateStore CorrelationStore
-
-	configuredProvider    metadata.Provider
-	configuredProviderSet bool
 
 	userInfoTokenTransport UserInfoTokenTransport
 
@@ -124,7 +119,10 @@ func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 	r := newRP(issuer)
 
 	for _, opt := range opts {
-		opt.apply(r)
+		opt.applyConfig(&r.clientConfig)
+		if authOpt, ok := opt.(AuthCodeOption); ok {
+			authOpt.applyAuthCode(r)
+		}
 	}
 
 	r.applyProfileDefaults()

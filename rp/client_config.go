@@ -15,18 +15,21 @@ import (
 )
 
 type clientConfig struct {
-	issuer       string
-	clientID     string
-	clientSecret string
-	scopes       []string
-	authMethod   AuthMethod
+	issuer         string
+	clientID       string
+	clientSecret   string
+	scopes         []string
+	scopesExplicit bool
+	authMethod     AuthMethod
 
 	httpClient     *http.Client
 	logger         *slog.Logger
 	metadataClient *metadata.Client
 
-	provider    metadata.Provider
-	providerSet bool
+	provider              metadata.Provider
+	providerSet           bool
+	configuredProvider    metadata.Provider
+	configuredProviderSet bool
 
 	clientKeyProvider ClientKeyProvider
 
@@ -41,8 +44,6 @@ type clientConfig struct {
 
 	dpopNonces *dpopNonceStore
 }
-
-func (c *clientConfig) config() *clientConfig { return c }
 
 func (c *clientConfig) initDefaults() {
 	if c.dpopNonces == nil {
@@ -216,23 +217,22 @@ func defaultClientConfig(issuer string) clientConfig {
 	}
 }
 
-// Option configures an [RP] or [ClientCredentials] instance.
+// Option configures shared RP and client credentials settings.
 type Option interface {
-	apply(optionTarget)
+	applyConfig(*clientConfig)
 }
 
-type optionTarget interface {
-	config() *clientConfig
+// AuthCodeOption configures authorization-code RP behavior.
+type AuthCodeOption interface {
+	Option
+	applyAuthCode(*RP)
 }
 
 type optionFunc func(*clientConfig)
 
-func (f optionFunc) apply(t optionTarget) { f(t.config()) }
+func (f optionFunc) applyConfig(c *clientConfig) { f(c) }
 
-type rpOptionFunc func(*RP)
+type authCodeOptionFunc func(*RP)
 
-func (f rpOptionFunc) apply(t optionTarget) {
-	if r, ok := t.(*RP); ok {
-		f(r)
-	}
-}
+func (f authCodeOptionFunc) applyConfig(*clientConfig) {}
+func (f authCodeOptionFunc) applyAuthCode(r *RP)       { f(r) }

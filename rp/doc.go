@@ -33,11 +33,12 @@
 //
 // # Options
 //
-// Key option families:
-//   - [WithMetadataClient] injects a [metadata.Client] for discovery and JWKS.
-//   - [WithProfile] selects the RP behavior profile.
-//   - [WithSenderConstrain] enables DPoP or mTLS sender constraining.
-//   - [WithProviderMetadata] supplies partial or full provider metadata.
+// [New] and [NewClientCredentials] both accept [Option] values for shared
+// client configuration such as [WithClientID], [WithClientSecret],
+// [WithMetadataClient], [WithScopes], [WithProviderMetadata], and
+// [WithSenderConstrain]. Browser-flow-only options such as [WithRedirectURI],
+// [WithStateStore], [WithProfile], and [WithRequirePAR] also satisfy
+// [AuthCodeOption] and are rejected by [NewClientCredentials].
 //
 // State store implementations for the browser flow are available under the
 // rp/store packages, including rp/store/memory and rp/store/cookie.

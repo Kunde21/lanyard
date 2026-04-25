@@ -26,6 +26,20 @@ func TestClientCredentials_TokenSourceInterface(t *testing.T) {
 	var _ TokenSource = (*ClientCredentials)(nil)
 }
 
+func TestNewClientCredentialsRejectsAuthCodeOptions(t *testing.T) {
+	_, err := NewClientCredentials(context.Background(), "https://issuer.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.example.com/callback"),
+	)
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("NewClientCredentials() error = %v, want ErrInvalidConfiguration", err)
+	}
+	if !strings.Contains(err.Error(), "auth-code option") {
+		t.Fatalf("NewClientCredentials() error = %v, want auth-code option message", err)
+	}
+}
+
 func TestNewClientCredentials_Validation(t *testing.T) {
 	tests := []struct {
 		name         string

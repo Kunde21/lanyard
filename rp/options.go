@@ -27,8 +27,8 @@ func WithClientSecret(secret string) Option {
 }
 
 // WithRedirectURI sets the browser-flow redirect URI.
-func WithRedirectURI(uri string) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithRedirectURI(uri string) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		r.redirectURI = strings.TrimSpace(uri)
 	})
 }
@@ -77,19 +77,17 @@ type scopesOption struct {
 	scopes []string
 }
 
-func (o scopesOption) apply(t optionTarget) {
+func (o scopesOption) applyConfig(c *clientConfig) {
 	if len(o.scopes) == 0 {
 		return
 	}
-	t.config().scopes = append([]string(nil), o.scopes...)
-	if r, ok := t.(*RP); ok {
-		r.scopesExplicit = true
-	}
+	c.scopes = append([]string(nil), o.scopes...)
+	c.scopesExplicit = true
 }
 
 // WithClockSkew sets the allowed clock skew for token validation.
-func WithClockSkew(skew time.Duration) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithClockSkew(skew time.Duration) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		if skew >= 0 {
 			r.clockSkew = skew
 		}
@@ -105,14 +103,11 @@ type providerMetadataOption struct {
 	provider metadata.Provider
 }
 
-func (o providerMetadataOption) apply(t optionTarget) {
-	merged := mergeConfiguredProvider(t.config().provider, o.provider)
-	t.config().provider = merged
-	t.config().providerSet = true
-	if r, ok := t.(*RP); ok {
-		r.configuredProvider = mergeConfiguredProvider(r.configuredProvider, o.provider)
-		r.configuredProviderSet = true
-	}
+func (o providerMetadataOption) applyConfig(c *clientConfig) {
+	c.provider = mergeConfiguredProvider(c.provider, o.provider)
+	c.providerSet = true
+	c.configuredProvider = mergeConfiguredProvider(c.configuredProvider, o.provider)
+	c.configuredProviderSet = true
 }
 
 // WithAuthMethod sets the token endpoint client authentication method.
@@ -123,8 +118,8 @@ func WithAuthMethod(method AuthMethod) Option {
 }
 
 // WithStateStore sets the browser-flow state store.
-func WithStateStore(store StateStore) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithStateStore(store StateStore) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		if store != nil {
 			r.stateStore = store
 		}
@@ -132,8 +127,8 @@ func WithStateStore(store StateStore) Option {
 }
 
 // WithCorrelationStore sets the browser-flow callback correlation store.
-func WithCorrelationStore(store CorrelationStore) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithCorrelationStore(store CorrelationStore) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		if store != nil {
 			r.stateStore = store
 		}
@@ -141,8 +136,8 @@ func WithCorrelationStore(store CorrelationStore) Option {
 }
 
 // WithUserInfoTokenTransport sets how access tokens are sent to the UserInfo endpoint.
-func WithUserInfoTokenTransport(transport UserInfoTokenTransport) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithUserInfoTokenTransport(transport UserInfoTokenTransport) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		r.userInfoTokenTransport = normalizeUserInfoTokenTransport(transport)
 	})
 }
@@ -157,8 +152,8 @@ func WithClientKeyProvider(provider ClientKeyProvider) Option {
 }
 
 // WithRequirePAR controls whether authorization requests must use PAR.
-func WithRequirePAR(require bool) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithRequirePAR(require bool) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		r.requirePAR = require
 		r.requirePARExplicit = true
 	})
@@ -172,15 +167,15 @@ func WithSenderConstrain(mode SenderConstraint) Option {
 }
 
 // WithValidateAuthorizationResponseIssuer controls callback issuer validation.
-func WithValidateAuthorizationResponseIssuer(validate bool) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithValidateAuthorizationResponseIssuer(validate bool) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		r.validateAuthorizationResponseIssuer = validate
 	})
 }
 
 // WithAllowUnsecuredIDTokens controls whether unsigned ID tokens are accepted.
-func WithAllowUnsecuredIDTokens(allow bool) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithAllowUnsecuredIDTokens(allow bool) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		r.allowUnsecuredIDTokens = allow
 	})
 }
@@ -211,8 +206,8 @@ func WithDPoPNonceTTL(ttl time.Duration) Option {
 }
 
 // WithAuthorizationDetails sets default Rich Authorization Request details.
-func WithAuthorizationDetails(details []map[string]any) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithAuthorizationDetails(details []map[string]any) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		authorizationDetails, ok := marshalAuthorizationDetails(details)
 		if !ok {
 			return
@@ -264,8 +259,8 @@ func marshalAuthorizationDetails(details []map[string]any) (string, bool) {
 }
 
 // WithResponseMode sets the authorization response mode.
-func WithResponseMode(mode string) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithResponseMode(mode string) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		if r != nil {
 			r.responseMode = strings.TrimSpace(mode)
 			r.responseModeExplicit = true
@@ -274,8 +269,8 @@ func WithResponseMode(mode string) Option {
 }
 
 // WithResponseType sets the authorization response type.
-func WithResponseType(responseType string) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithResponseType(responseType string) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		if r != nil {
 			r.responseType = strings.TrimSpace(responseType)
 			r.responseTypeExplicit = true
@@ -284,8 +279,8 @@ func WithResponseType(responseType string) Option {
 }
 
 // WithRequestMethod sets the authorization request object mode.
-func WithRequestMethod(method string) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithRequestMethod(method string) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		if r != nil {
 			r.requestMethod = normalizeRequestMethod(method)
 			r.requestMethodExplicit = true
@@ -297,8 +292,8 @@ func WithRequestMethod(method string) Option {
 type RequestURIHandler func(signedJWT string) (requestURI string, err error)
 
 // WithRequestURIMode enables request_uri mode using handler.
-func WithRequestURIMode(handler RequestURIHandler) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithRequestURIMode(handler RequestURIHandler) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		if r != nil {
 			r.requestURIHandler = handler
 		}
@@ -341,8 +336,8 @@ func profileFromPublic(p Profile) profileType {
 }
 
 // WithProfile applies default behavior for the selected profile.
-func WithProfile(profile Profile) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithProfile(profile Profile) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		r.profile = profileFromPublic(profile)
 		r.profileExplicit = true
 	})
@@ -376,8 +371,8 @@ func discoveryModeFromPublic(m DiscoveryMode) discoveryModeType {
 }
 
 // WithDiscoveryMode configures provider metadata discovery behavior.
-func WithDiscoveryMode(mode DiscoveryMode) Option {
-	return rpOptionFunc(func(r *RP) {
+func WithDiscoveryMode(mode DiscoveryMode) AuthCodeOption {
+	return authCodeOptionFunc(func(r *RP) {
 		r.discoveryMode = discoveryModeFromPublic(mode)
 		r.discoveryModeExplicit = true
 	})

@@ -24,7 +24,10 @@ func NewClientCredentials(ctx context.Context, issuer string, opts ...Option) (*
 	}
 
 	for _, opt := range opts {
-		opt.apply(c)
+		if _, ok := opt.(AuthCodeOption); ok {
+			return nil, fmt.Errorf("%w: auth-code option is not valid for client credentials", ErrInvalidConfiguration)
+		}
+		opt.applyConfig(&c.clientConfig)
 	}
 
 	c.clientConfig.initDefaults()
