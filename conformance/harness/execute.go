@@ -195,15 +195,9 @@ func (jr *jobRunner) executeModule(ctx context.Context, module PlanModule, planI
 	jr.logf("  test start: job=%s plan=%s module=%s alias=%s", jr.job.JobID, jr.job.PlanName, module.Name, alias)
 
 	moduleVariant := mergeModuleVariant(module.Variant, jr.cfg.ForcedVariants)
-	planVariant := mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants)
 	createVariant := moduleVariant
 	testPlanID := planID
 	var testConfig map[string]any
-	if action != "full_flow" {
-		testPlanID = ""
-		testConfig = buildStandaloneModuleConfig(alias, planVariant, jr.cfg.WaitTimeoutSeconds)
-		createVariant = mergeVariantMaps(stringMapToAnyMap(planVariant), moduleVariant)
-	}
 	instance, err := jr.client.CreateTestInstance(ctx, module.Name, testPlanID, createVariant, testConfig)
 	if err != nil {
 		failTest(&res, "ERROR", "FAILED", fmt.Sprintf("create test instance failed: %v", err))

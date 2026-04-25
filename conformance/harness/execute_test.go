@@ -704,6 +704,75 @@ func TestExecuteModule_DiscoveryModulesSkipFrontChannelTrigger(t *testing.T) {
 	}
 }
 
+func TestExecuteModule_DiscoveryModuleKeepsPlanAssociation(t *testing.T) {
+	var gotPlanID string
+	var gotTestName string
+	runtimeRegistered := false
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/api/runner":
+			gotPlanID = r.URL.Query().Get("plan")
+			gotTestName = r.URL.Query().Get("test")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"test-1"}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/info/test-1":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"test-1","status":"FINISHED","result":"PASSED","alias":"suite-alias"}`))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer ts.Close()
+
+	client := newSuiteClient(ts.URL)
+	client.http = ts.Client()
+
+	job := RunJob{
+		JobID:    "job-001",
+		Alias:    "job-alias",
+		PlanName: "oidcc-client-config-certification-test-plan",
+		PlanVariant: map[string]string{
+			"client_auth_type":    "none",
+			"request_type":        "request_uri",
+			"client_registration": "static_client",
+			"response_mode":       "form_post",
+		},
+	}
+
+	jr := newJobRunner(client, harnessConfig{ArtifactsDir: t.TempDir(), SuiteURL: "https://suite.localhost", TestTimeout: 2 * time.Second}, job, t.Logf)
+	jr.runtimeClient = &stubRuntimeClient{
+		registerFn: func(_ context.Context, req rpRuntimeRequest) (rpRuntimeResponse, error) {
+			runtimeRegistered = true
+			if req.StartupAction != "discovery_only" {
+				t.Fatalf("StartupAction = %q, want %q", req.StartupAction, "discovery_only")
+			}
+			return rpRuntimeResponse{}, nil
+		},
+		deleteFn: func(context.Context, string) error {
+			return nil
+		},
+	}
+
+	res := jr.executeModule(context.Background(), PlanModule{Name: "oidcc-client-test-discovery-openid-config"}, "plan-123", 0)
+
+	if gotTestName != "oidcc-client-test-discovery-openid-config" {
+		t.Fatalf("test name = %q, want %q", gotTestName, "oidcc-client-test-discovery-openid-config")
+	}
+	if gotPlanID != "plan-123" {
+		t.Fatalf("plan id = %q, want %q", gotPlanID, "plan-123")
+	}
+	if !runtimeRegistered {
+		t.Fatal("expected runtime registration")
+	}
+	if res.Status != "FINISHED" {
+		t.Fatalf("status = %q, want %q", res.Status, "FINISHED")
+	}
+	if res.Result != "PASSED" {
+		t.Fatalf("result = %q, want %q", res.Result, "PASSED")
+	}
+}
+
 func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_ContainsX5C(t *testing.T) {
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type":    "self_signed_tls_client_auth",

@@ -5,3 +5,4 @@ conformance/artifacts/
 artifacts/
 /example-rp
 /conformance-harness.test
+/.worktrees/
