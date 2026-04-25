@@ -11,6 +11,13 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+var (
+	_ rpstore.CorrelationStore = (*Store)(nil)
+	_ rpstore.StateScopeStore  = (*Store)(nil)
+	_ rpstore.ValueStore       = (*Store)(nil)
+	_ rpstore.StateStore       = (*Store)(nil)
+)
+
 func TestStoreSaveLoadDeleteCorrelation(t *testing.T) {
 	store := New(time.Minute)
 	now := time.Now().UTC()

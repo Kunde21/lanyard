@@ -223,6 +223,15 @@ func WithStateStore(store StateStore) Option {
 	})
 }
 
+// WithCorrelationStore sets the browser-flow callback correlation store.
+func WithCorrelationStore(store CorrelationStore) Option {
+	return rpOptionFunc(func(r *RP) {
+		if store != nil {
+			r.stateStore = store
+		}
+	})
+}
+
 // WithUserInfoTokenTransport sets how access tokens are sent to the UserInfo endpoint.
 func WithUserInfoTokenTransport(transport UserInfoTokenTransport) Option {
 	return rpOptionFunc(func(r *RP) {

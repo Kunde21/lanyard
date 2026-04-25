@@ -31,19 +31,33 @@ type StateScope struct {
 	Values      map[string][]byte
 }
 
-// StateStore persists RP callback correlation data and caller-owned state values.
+// CorrelationStore persists RP-managed callback correlation data.
 //
 // Implementations may require HTTP request/response access for persistence operations.
 // Mutating operations receive both request and response writer so implementations can
 // persist updates (for example by writing session cookies).
-type StateStore interface {
+type CorrelationStore interface {
 	SaveCorrelation(ctx context.Context, w http.ResponseWriter, req *http.Request, state string, correlation CallbackCorrelation) error
 	ConsumeCorrelation(ctx context.Context, w http.ResponseWriter, req *http.Request, state string) (CallbackCorrelation, bool, error)
+}
+
+// StateScopeStore persists and loads complete state scopes.
+type StateScopeStore interface {
 	LoadState(ctx context.Context, req *http.Request, state string) (StateScope, bool, error)
 	DeleteState(ctx context.Context, w http.ResponseWriter, req *http.Request, state string) error
+}
 
+// ValueStore persists caller-owned values scoped by state.
+type ValueStore interface {
 	SaveValue(ctx context.Context, w http.ResponseWriter, req *http.Request, state, name string, value []byte) error
 	LoadValue(ctx context.Context, req *http.Request, state, name string) ([]byte, bool, error)
 	DeleteValue(ctx context.Context, w http.ResponseWriter, req *http.Request, state, name string) error
 	ConsumeValue(ctx context.Context, w http.ResponseWriter, req *http.Request, state, name string) ([]byte, bool, error)
+}
+
+// StateStore persists RP callback correlation data and caller-owned state values.
+type StateStore interface {
+	CorrelationStore
+	StateScopeStore
+	ValueStore
 }

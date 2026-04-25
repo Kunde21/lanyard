@@ -10,8 +10,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Kunde21/lanyard/metadata"
+	"github.com/Kunde21/lanyard/rp/store/memory"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -27,12 +29,14 @@ func TestAuthorizationURL(t *testing.T) {
 	defer ts.Close()
 	issuer = ts.URL
 
+	stateStore := memory.New(10 * time.Minute)
 	r, err := New(
 		context.Background(),
 		issuer,
 		WithClientID("client-123"), WithClientSecret("secret"),
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
+		WithStateStore(stateStore),
 		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
 	)
 	if err != nil {
@@ -81,7 +85,7 @@ func TestAuthorizationURL(t *testing.T) {
 	}
 
 	state := q.Get("state")
-	stored, ok, err := r.stateStore.LoadState(context.Background(), nil, state)
+	stored, ok, err := stateStore.LoadState(context.Background(), nil, state)
 	if err != nil {
 		t.Fatalf("LoadState() failed: %v", err)
 	}

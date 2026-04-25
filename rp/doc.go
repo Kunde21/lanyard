@@ -6,7 +6,8 @@
 //
 // Construct an [RP] with [New], redirect users to [RP.AuthorizationURL], then
 // finish the authorization code flow with [RP.HandleCallback]. A default
-// in-memory state store is created when [WithStateStore] is not provided.
+// in-memory state store is created when neither [WithStateStore] nor
+// [WithCorrelationStore] is provided.
 //
 // Use [WithProfile] to select a behavior profile (such as [OIDC], [OAuth2],
 // [FAPI1Adv], [FAPI2SecurityProfile], [FAPI2MessageSigning], or [PlainFAPI]).

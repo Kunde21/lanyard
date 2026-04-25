@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Kunde21/lanyard/metadata"
+	"github.com/Kunde21/lanyard/rp/store/memory"
 	jose "github.com/go-jose/go-jose/v4"
 )
 
@@ -994,6 +995,7 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 	defer ts.Close()
 	issuer = ts.URL
 
+	stateStore := memory.New(10 * time.Minute)
 	r, err := New(
 		context.Background(),
 		issuer,
@@ -1001,6 +1003,7 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 		WithClientSecret("secret"),
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
+		WithStateStore(stateStore),
 		WithProfile(PlainFAPI),
 		WithResponseType("code id_token"),
 		WithRequestMethod("signed_non_repudiation"),
@@ -1040,7 +1043,7 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 		t.Fatal("state must be present")
 	}
 
-	stored, ok, err := r.stateStore.LoadState(context.Background(), nil, state)
+	stored, ok, err := stateStore.LoadState(context.Background(), nil, state)
 	if err != nil {
 		t.Fatalf("LoadState() failed: %v", err)
 	}
@@ -1133,6 +1136,7 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 	defer ts.Close()
 	issuer = ts.URL
 
+	stateStore := memory.New(10 * time.Minute)
 	r, err := New(
 		context.Background(),
 		issuer,
@@ -1140,6 +1144,7 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 		WithClientSecret("secret"),
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
+		WithStateStore(stateStore),
 		WithProfile(PlainFAPI),
 		WithResponseType("code id_token"),
 		WithRequestMethod("signed_non_repudiation"),
@@ -1184,7 +1189,7 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 	}
 
 	state := base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("a", 32)))
-	stored, ok, err := r.stateStore.LoadState(context.Background(), nil, state)
+	stored, ok, err := stateStore.LoadState(context.Background(), nil, state)
 	if err != nil {
 		t.Fatalf("LoadState() failed: %v", err)
 	}

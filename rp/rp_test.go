@@ -13,9 +13,20 @@ import (
 	"time"
 
 	"github.com/Kunde21/lanyard/metadata"
+	rpstore "github.com/Kunde21/lanyard/rp/store"
 	"github.com/Kunde21/lanyard/rp/store/memory"
 	"github.com/google/go-cmp/cmp"
 )
+
+type correlationOnlyStore struct{}
+
+func (correlationOnlyStore) SaveCorrelation(context.Context, http.ResponseWriter, *http.Request, string, rpstore.CallbackCorrelation) error {
+	return nil
+}
+
+func (correlationOnlyStore) ConsumeCorrelation(context.Context, http.ResponseWriter, *http.Request, string) (rpstore.CallbackCorrelation, bool, error) {
+	return rpstore.CallbackCorrelation{}, false, nil
+}
 
 func TestNew_Validation(t *testing.T) {
 	tests := []struct {
@@ -89,6 +100,27 @@ func TestNew_DefaultsAndOptions(t *testing.T) {
 	}
 	if diff := cmp.Diff(UserInfoTokenTransportBody, got.userInfoTokenTransport); diff != "" {
 		t.Fatalf("userinfo transport mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestNew_WithCorrelationStoreAcceptsNarrowStore(t *testing.T) {
+	customStateStore := correlationOnlyStore{}
+
+	got, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithCorrelationStore(customStateStore),
+		WithProviderMetadata(providerForAuthMethods()),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if got.stateStore != customStateStore {
+		t.Fatalf("stateStore mismatch")
 	}
 }
 

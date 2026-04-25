@@ -11,6 +11,13 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+var (
+	_ rpstore.CorrelationStore = (*Store)(nil)
+	_ rpstore.StateScopeStore  = (*Store)(nil)
+	_ rpstore.ValueStore       = (*Store)(nil)
+	_ rpstore.StateStore       = (*Store)(nil)
+)
+
 func TestStoreSaveWritesCookieAndLoadsCorrelation(t *testing.T) {
 	store, err := New([]byte("01234567890123456789012345678901"), []byte("abcdef0123456789abcdef0123456789"))
 	if err != nil {

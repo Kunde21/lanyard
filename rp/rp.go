@@ -73,7 +73,7 @@ type RP struct {
 
 	scopesExplicit bool
 
-	stateStore StateStore
+	stateStore CorrelationStore
 
 	configuredProvider    metadata.Provider
 	configuredProviderSet bool
@@ -107,10 +107,11 @@ type RP struct {
 // New creates a browser-flow relying party that is ready to generate an
 // authorization URL immediately after construction.
 //
-// If no state store is provided via [WithStateStore], New creates a default
-// in-memory state store from rp/store/memory with a 10-minute TTL. If no
-// metadata client is provided via [WithMetadataClient], New constructs a
-// default [metadata.Client] with the configured HTTP client and logger.
+// If no state store is provided via [WithStateStore] or [WithCorrelationStore],
+// New creates a default in-memory state store from rp/store/memory with a
+// 10-minute TTL. If no metadata client is provided via [WithMetadataClient],
+// New constructs a default [metadata.Client] with the configured HTTP client and
+// logger.
 //
 // Provider metadata is discovered automatically unless [WithProviderMetadata]
 // supplies complete metadata or [WithDiscoveryMode] is set to
