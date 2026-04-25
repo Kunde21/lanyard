@@ -18,6 +18,75 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestBuildTokenRequestEnvelope(t *testing.T) {
+	tests := []struct {
+		name              string
+		method            AuthMethod
+		form              url.Values
+		wantAuthorization string
+	}{
+		{
+			name:   "basic auth header",
+			method: AuthMethodBasic,
+			form: url.Values{
+				"grant_type": {"authorization_code"},
+			},
+			wantAuthorization: "Basic " + base64.StdEncoding.EncodeToString([]byte("client:secret")),
+		},
+		{
+			name:   "post auth keeps form credentials",
+			method: AuthMethodPost,
+			form: url.Values{
+				"grant_type":    {"client_credentials"},
+				"client_id":     {"client"},
+				"client_secret": {"secret"},
+			},
+		},
+		{
+			name:   "self signed tls auth keeps caller supplied client id",
+			method: AuthMethodSelfSignedTLSClientAuth,
+			form: url.Values{
+				"grant_type": {"client_credentials"},
+				"client_id":  {"client"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := buildTokenRequestEnvelope(context.Background(), "https://issuer.test/token", tc.form, tc.method, "client", "secret")
+			if err != nil {
+				t.Fatalf("buildTokenRequestEnvelope() failed: %v", err)
+			}
+
+			if diff := cmp.Diff(http.MethodPost, req.Method); diff != "" {
+				t.Fatalf("method mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff("https://issuer.test/token", req.URL.String()); diff != "" {
+				t.Fatalf("url mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff("application/x-www-form-urlencoded", req.Header.Get("Content-Type")); diff != "" {
+				t.Fatalf("content type mismatch (-want +got):\n%s", diff)
+			}
+			if diff := cmp.Diff(tc.wantAuthorization, req.Header.Get("Authorization")); diff != "" {
+				t.Fatalf("authorization mismatch (-want +got):\n%s", diff)
+			}
+
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("ReadAll() failed: %v", err)
+			}
+			gotForm, err := url.ParseQuery(string(body))
+			if err != nil {
+				t.Fatalf("ParseQuery() failed: %v", err)
+			}
+			if diff := cmp.Diff(tc.form, gotForm); diff != "" {
+				t.Fatalf("form mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestExchangeTokenRequestShape(t *testing.T) {
 	var gotContentType string
 	var gotAuthorization string

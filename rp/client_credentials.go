@@ -171,19 +171,7 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 }
 
 func (c *ClientCredentials) buildTokenRequest(ctx context.Context, method AuthMethod, form url.Values) (*http.Request, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.provider.TokenEndpoint, strings.NewReader(form.Encode()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to build token request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	switch method {
-	case AuthMethodBasic:
-		req.SetBasicAuth(c.clientID, c.clientSecret)
-	case AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth:
-	}
-
-	return req, nil
+	return buildTokenRequestEnvelope(ctx, c.provider.TokenEndpoint, form, method, c.clientID, c.clientSecret)
 }
 
 func (c *ClientCredentials) buildClientAssertion() (string, error) {

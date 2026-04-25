@@ -11,6 +11,10 @@ import (
 )
 
 func (r *RP) buildTokenRequest(ctx context.Context, tokenEndpoint string, form url.Values, method AuthMethod) (*http.Request, error) {
+	return buildTokenRequestEnvelope(ctx, tokenEndpoint, form, method, r.clientID, r.clientSecret)
+}
+
+func buildTokenRequestEnvelope(ctx context.Context, tokenEndpoint string, form url.Values, method AuthMethod, clientID, clientSecret string) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to build token request: %w", err)
@@ -19,7 +23,7 @@ func (r *RP) buildTokenRequest(ctx context.Context, tokenEndpoint string, form u
 
 	switch method {
 	case AuthMethodBasic:
-		req.SetBasicAuth(r.clientID, r.clientSecret)
+		req.SetBasicAuth(clientID, clientSecret)
 	case AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth:
 	}
 
