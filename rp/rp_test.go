@@ -246,6 +246,139 @@ func TestNew_WithProviderMetadataMissingAuthorizationEndpoint_ReturnsError(t *te
 	}
 }
 
+func TestMergeConfiguredProvider(t *testing.T) {
+	tests := []struct {
+		name string
+		dst  metadata.Provider
+		src  metadata.Provider
+		want metadata.Provider
+	}{
+		{
+			name: "copies present fields",
+			dst: metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+				AuthorizationEndpoint: "https://existing.test/authorize",
+			}},
+			src:  providerWithMergeFields("https://src.test"),
+			want: providerWithMergeFields("https://src.test"),
+		},
+		{
+			name: "ignores empty fields",
+			dst:  providerWithMergeFields("https://dst.test"),
+			src: metadata.Provider{
+				AuthorizationServer: metadata.AuthorizationServer{
+					AuthorizationEndpoint:             " ",
+					TokenEndpoint:                     " ",
+					JWKSURI:                           " ",
+					Issuer:                            " ",
+					ResponseTypesSupported:            []string{},
+					TokenEndpointAuthMethodsSupported: []string{},
+					CodeChallengeMethodsSupported:     []string{},
+					ResponseModesSupported:            []string{},
+					TokenEndpointAuthSigningAlgValuesSupported: []string{},
+					MTLSEndpointAliases: metadata.MTLSEndpointAliases{
+						TokenEndpoint:                      " ",
+						UserinfoEndpoint:                   " ",
+						PushedAuthorizationRequestEndpoint: " ",
+					},
+				},
+				UserinfoEndpoint:                       " ",
+				PushedAuthorizationRequestEndpoint:     " ",
+				SubjectTypesSupported:                  []string{},
+				IDTokenSigningAlgValuesSupported:       []string{},
+				RequestObjectSigningAlgValuesSupported: []string{},
+				AuthorizationSigningAlgValuesSupported: []string{},
+				IDTokenEncryptionAlgValuesSupported:    []string{},
+				IDTokenEncryptionEncValuesSupported:    []string{},
+			},
+			want: providerWithMergeFields("https://dst.test"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergeConfiguredProvider(tt.dst, tt.src)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("mergeConfiguredProvider() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func TestMergeProviderMissing(t *testing.T) {
+	tests := []struct {
+		name string
+		dst  metadata.Provider
+		src  metadata.Provider
+		want metadata.Provider
+	}{
+		{
+			name: "fills missing fields",
+			dst:  metadata.Provider{},
+			src:  providerWithMergeFields("https://src.test"),
+			want: providerWithMergeFields("https://src.test"),
+		},
+		{
+			name: "preserves existing fields",
+			dst:  providerWithMergeFields("https://dst.test"),
+			src:  providerWithMergeFields("https://src.test"),
+			want: providerWithMergeFields("https://dst.test"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mergeProviderMissing(tt.dst, tt.src)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("mergeProviderMissing() mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
+func providerWithMergeFields(base string) metadata.Provider {
+	raw := []byte(fmt.Sprintf(`{"issuer":%q}`, base))
+	return metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:                 base,
+			AuthorizationEndpoint:  base + "/authorize",
+			TokenEndpoint:          base + "/token",
+			JWKSURI:                base + "/jwks",
+			ResponseTypesSupported: []string{"code"},
+			TokenEndpointAuthMethodsSupported: []string{
+				"client_secret_basic",
+			},
+			TokenEndpointAuthSigningAlgValuesSupported: []string{"RS256"},
+			MTLSEndpointAliases: metadata.MTLSEndpointAliases{
+				TokenEndpoint:                      base + "/mtls/token",
+				UserinfoEndpoint:                   base + "/mtls/userinfo",
+				PushedAuthorizationRequestEndpoint: base + "/mtls/par",
+			},
+			CodeChallengeMethodsSupported: []string{"S256"},
+			ResponseModesSupported:        []string{"query"},
+			Raw:                           raw,
+		},
+		UserinfoEndpoint:                 base + "/userinfo",
+		SubjectTypesSupported:            []string{"public"},
+		IDTokenSigningAlgValuesSupported: []string{"RS256"},
+		RequestObjectSigningAlgValuesSupported: []string{
+			"PS256",
+		},
+		AuthorizationSigningAlgValuesSupported: []string{"ES256"},
+		PushedAuthorizationRequestEndpoint:     base + "/par",
+		IDTokenEncryptionAlgValuesSupported:    []string{"RSA-OAEP"},
+		IDTokenEncryptionEncValuesSupported:    []string{"A128CBC-HS256"},
+		Raw:                                    raw,
+	}
+}
+
+func providerWithEndpoints(authorizationEndpoint, tokenEndpoint, jwksURI string) metadata.Provider {
+	return metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		AuthorizationEndpoint: authorizationEndpoint,
+		TokenEndpoint:         tokenEndpoint,
+		JWKSURI:               jwksURI,
+	}}
+}
+
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -267,8 +400,11 @@ func TestNew_WithProfile_StoresProfileOnRP(t *testing.T) {
 		WithScopes("accounts"),
 		WithProfile(OAuth2),
 		WithDiscoveryMode(DiscoveryDisabled),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithTokenEndpoint("https://issuer.test/token"),
+		WithProviderMetadata(providerWithEndpoints(
+			"https://issuer.test/authorize",
+			"https://issuer.test/token",
+			"",
+		)),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -295,8 +431,11 @@ func TestNew_WithDiscoveryMode_DiscoveryDisabledStoredOnRP(t *testing.T) {
 		WithHTTPClient(failOnRequest),
 		WithScopes("accounts"),
 		WithDiscoveryMode(DiscoveryDisabled),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithTokenEndpoint("https://issuer.test/token"),
+		WithProviderMetadata(providerWithEndpoints(
+			"https://issuer.test/authorize",
+			"https://issuer.test/token",
+			"",
+		)),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -428,27 +567,7 @@ func TestNew_WithProviderMetadata_SkipsDiscoveryWhenMetadataIsComplete(t *testin
 	}
 }
 
-func TestNew_WithAuthorizationEndpoint_StoresPartialMetadata(t *testing.T) {
-	failOnRequest := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
-		return nil, errors.New("unexpected network request")
-	})}
-
-	_, err := New(
-		context.Background(),
-		"https://issuer.test",
-		WithClientID("client"),
-		WithClientSecret("secret"),
-		WithRedirectURI("https://rp.test/callback"),
-		WithHTTPClient(failOnRequest),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithScopes("accounts"),
-	)
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
-	}
-}
-
-func TestNew_WithTokenEndpoint_StoresPartialMetadata(t *testing.T) {
+func TestNew_WithProviderMetadata_StoresPartialMetadata(t *testing.T) {
 	failOnRequest := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("unexpected network request")
 	})}
@@ -460,43 +579,28 @@ func TestNew_WithTokenEndpoint_StoresPartialMetadata(t *testing.T) {
 		WithClientSecret("secret"),
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithTokenEndpoint("https://issuer.test/token"),
+		WithProviderMetadata(providerWithEndpoints(
+			"https://issuer.test/authorize",
+			"https://issuer.test/token",
+			"https://issuer.test/jwks",
+		)),
 		WithScopes("accounts"),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
+	}
+	if diff := cmp.Diff("https://issuer.test/authorize", got.provider.AuthorizationEndpoint); diff != "" {
+		t.Fatalf("authorization endpoint mismatch (-want +got):\n%s", diff)
 	}
 	if diff := cmp.Diff("https://issuer.test/token", got.provider.TokenEndpoint); diff != "" {
 		t.Fatalf("token endpoint mismatch (-want +got):\n%s", diff)
-	}
-}
-
-func TestNew_WithJWKSURI_StoresPartialMetadata(t *testing.T) {
-	failOnRequest := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
-		return nil, errors.New("unexpected network request")
-	})}
-
-	got, err := New(
-		context.Background(),
-		"https://issuer.test",
-		WithClientID("client"),
-		WithClientSecret("secret"),
-		WithRedirectURI("https://rp.test/callback"),
-		WithHTTPClient(failOnRequest),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithJWKSURI("https://issuer.test/jwks"),
-		WithScopes("accounts"),
-	)
-	if err != nil {
-		t.Fatalf("New() failed: %v", err)
 	}
 	if diff := cmp.Diff("https://issuer.test/jwks", got.provider.JWKSURI); diff != "" {
 		t.Fatalf("jwks uri mismatch (-want +got):\n%s", diff)
 	}
 }
 
-func TestNew_GranularOptions_MergeWithDiscovery(t *testing.T) {
+func TestNew_WithProviderMetadata_MergesWithDiscovery(t *testing.T) {
 	requestCount := 0
 	issuer := ""
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -525,7 +629,9 @@ func TestNew_GranularOptions_MergeWithDiscovery(t *testing.T) {
 		WithClientSecret("secret"),
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
-		WithAuthorizationEndpoint("https://custom.test/authorize"),
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			AuthorizationEndpoint: "https://custom.test/authorize",
+		}}),
 		WithScopes("openid"),
 	)
 	if err != nil {
@@ -728,7 +834,9 @@ func TestNew_ExplicitProviderFieldsOverrideDiscoveredValues(t *testing.T) {
 		WithClientSecret("secret"),
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
-		WithAuthorizationEndpoint("https://custom.test/authorize"),
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			AuthorizationEndpoint: "https://custom.test/authorize",
+		}}),
 		WithScopes("openid"),
 	)
 	if err != nil {
@@ -749,7 +857,7 @@ func TestNew_ExplicitProviderFieldsOverrideDiscoveredValues(t *testing.T) {
 	}
 }
 
-func TestNew_WithProviderMetadataThenGranularOption_LastExplicitValueWins(t *testing.T) {
+func TestNew_WithProviderMetadata_LastExplicitValueWins(t *testing.T) {
 	failOnRequest := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("unexpected network request")
 	})}
@@ -766,12 +874,14 @@ func TestNew_WithProviderMetadataThenGranularOption_LastExplicitValueWins(t *tes
 			TokenEndpoint:         "https://bulk.test/token",
 			JWKSURI:               "https://bulk.test/jwks",
 		}}),
-		WithAuthorizationEndpoint("https://granular.test/authorize"),
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			AuthorizationEndpoint: "https://second.test/authorize",
+		}}),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
-	if diff := cmp.Diff("https://granular.test/authorize", got.provider.AuthorizationEndpoint); diff != "" {
+	if diff := cmp.Diff("https://second.test/authorize", got.provider.AuthorizationEndpoint); diff != "" {
 		t.Fatalf("authorization endpoint mismatch (-want +got):\n%s", diff)
 	}
 	if diff := cmp.Diff("https://bulk.test/token", got.provider.TokenEndpoint); diff != "" {
@@ -782,7 +892,7 @@ func TestNew_WithProviderMetadataThenGranularOption_LastExplicitValueWins(t *tes
 	}
 }
 
-func TestNew_WithGranularOptionThenProviderMetadata_UnrelatedFieldsAccumulate(t *testing.T) {
+func TestNew_WithProviderMetadata_UnrelatedFieldsAccumulate(t *testing.T) {
 	failOnRequest := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("unexpected network request")
 	})}
@@ -794,7 +904,9 @@ func TestNew_WithGranularOptionThenProviderMetadata_UnrelatedFieldsAccumulate(t 
 		WithClientSecret("secret"),
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
-		WithAuthorizationEndpoint("https://granular.test/authorize"),
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			AuthorizationEndpoint: "https://first.test/authorize",
+		}}),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
 			TokenEndpoint: "https://bulk.test/token",
 			JWKSURI:       "https://bulk.test/jwks",
@@ -803,7 +915,7 @@ func TestNew_WithGranularOptionThenProviderMetadata_UnrelatedFieldsAccumulate(t 
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
-	if diff := cmp.Diff("https://granular.test/authorize", got.provider.AuthorizationEndpoint); diff != "" {
+	if diff := cmp.Diff("https://first.test/authorize", got.provider.AuthorizationEndpoint); diff != "" {
 		t.Fatalf("authorization endpoint mismatch (-want +got):\n%s", diff)
 	}
 	if diff := cmp.Diff("https://bulk.test/token", got.provider.TokenEndpoint); diff != "" {
@@ -814,7 +926,7 @@ func TestNew_WithGranularOptionThenProviderMetadata_UnrelatedFieldsAccumulate(t 
 	}
 }
 
-func TestNew_WithGranularAndBulkMetadata_LastExplicitValueWinsForSameField(t *testing.T) {
+func TestNew_WithProviderMetadata_EmptyFieldsDoNotEraseEarlierValues(t *testing.T) {
 	failOnRequest := &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("unexpected network request")
 	})}
@@ -826,18 +938,27 @@ func TestNew_WithGranularAndBulkMetadata_LastExplicitValueWinsForSameField(t *te
 		WithClientSecret("secret"),
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
-		WithAuthorizationEndpoint("https://first.test/authorize"),
 		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
-			AuthorizationEndpoint: "https://second.test/authorize",
+			AuthorizationEndpoint: "https://first.test/authorize",
+			TokenEndpoint:         "https://first.test/token",
+			JWKSURI:               "https://first.test/jwks",
+		}}),
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			AuthorizationEndpoint: " ",
 			TokenEndpoint:         "https://second.test/token",
-			JWKSURI:               "https://second.test/jwks",
 		}}),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
-	if diff := cmp.Diff("https://second.test/authorize", got.provider.AuthorizationEndpoint); diff != "" {
+	if diff := cmp.Diff("https://first.test/authorize", got.provider.AuthorizationEndpoint); diff != "" {
 		t.Fatalf("authorization endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("https://second.test/token", got.provider.TokenEndpoint); diff != "" {
+		t.Fatalf("token endpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("https://first.test/jwks", got.provider.JWKSURI); diff != "" {
+		t.Fatalf("jwks uri mismatch (-want +got):\n%s", diff)
 	}
 }
 
@@ -896,9 +1017,11 @@ func TestWithProfile_OIDC_DefaultsOpenIDScope(t *testing.T) {
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(OIDC),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithTokenEndpoint("https://issuer.test/token"),
-		WithJWKSURI("https://issuer.test/jwks"),
+		WithProviderMetadata(providerWithEndpoints(
+			"https://issuer.test/authorize",
+			"https://issuer.test/token",
+			"https://issuer.test/jwks",
+		)),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -923,8 +1046,11 @@ func TestWithProfile_OAuth2_DoesNotForceOpenIDScope(t *testing.T) {
 		WithProfile(OAuth2),
 		WithScopes("accounts"),
 		WithDiscoveryMode(DiscoveryDisabled),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithTokenEndpoint("https://issuer.test/token"),
+		WithProviderMetadata(providerWithEndpoints(
+			"https://issuer.test/authorize",
+			"https://issuer.test/token",
+			"",
+		)),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -950,8 +1076,11 @@ func TestWithProfile_FAPI1Adv_DefaultsCanBeOverridden(t *testing.T) {
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI1Adv),
 		WithScopes("accounts"),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithTokenEndpoint("https://issuer.test/token"),
+		WithProviderMetadata(providerWithEndpoints(
+			"https://issuer.test/authorize",
+			"https://issuer.test/token",
+			"",
+		)),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -974,9 +1103,11 @@ func TestWithProfile_FAPI2_SetsSignedRequestMethod(t *testing.T) {
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI2MessageSigning),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithTokenEndpoint("https://issuer.test/token"),
-		WithJWKSURI("https://issuer.test/jwks"),
+		WithProviderMetadata(providerWithEndpoints(
+			"https://issuer.test/authorize",
+			"https://issuer.test/token",
+			"https://issuer.test/jwks",
+		)),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
@@ -1000,9 +1131,11 @@ func TestWithProfile_FAPI1Adv_SignedRequestMethodCanBeOverridden(t *testing.T) {
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI1Adv),
 		WithRequestMethod(""),
-		WithAuthorizationEndpoint("https://issuer.test/authorize"),
-		WithTokenEndpoint("https://issuer.test/token"),
-		WithJWKSURI("https://issuer.test/jwks"),
+		WithProviderMetadata(providerWithEndpoints(
+			"https://issuer.test/authorize",
+			"https://issuer.test/token",
+			"https://issuer.test/jwks",
+		)),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)

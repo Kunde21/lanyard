@@ -160,139 +160,84 @@ func (r *RP) authorizationResponseType() string {
 	return "code"
 }
 
+type providerMergeMode int
+
+const (
+	providerMergeFillMissing providerMergeMode = iota
+	providerMergeOverridePresent
+)
+
 func mergeProviderMissing(dst, src metadata.Provider) metadata.Provider {
-	merged := dst
-	if merged.AuthorizationEndpoint == "" {
-		merged.AuthorizationEndpoint = src.AuthorizationEndpoint
-	}
-	if merged.TokenEndpoint == "" {
-		merged.TokenEndpoint = src.TokenEndpoint
-	}
-	if merged.JWKSURI == "" {
-		merged.JWKSURI = src.JWKSURI
-	}
-	if merged.UserinfoEndpoint == "" {
-		merged.UserinfoEndpoint = src.UserinfoEndpoint
-	}
-	if merged.PushedAuthorizationRequestEndpoint == "" {
-		merged.PushedAuthorizationRequestEndpoint = src.PushedAuthorizationRequestEndpoint
-	}
-	if merged.Issuer == "" {
-		merged.Issuer = src.Issuer
-	}
-	if len(merged.ResponseTypesSupported) == 0 {
-		merged.ResponseTypesSupported = src.ResponseTypesSupported
-	}
-	if len(merged.IDTokenSigningAlgValuesSupported) == 0 {
-		merged.IDTokenSigningAlgValuesSupported = src.IDTokenSigningAlgValuesSupported
-	}
-	if len(merged.SubjectTypesSupported) == 0 {
-		merged.SubjectTypesSupported = src.SubjectTypesSupported
-	}
-	if len(merged.TokenEndpointAuthMethodsSupported) == 0 {
-		merged.TokenEndpointAuthMethodsSupported = src.TokenEndpointAuthMethodsSupported
-	}
-	if len(merged.RequestObjectSigningAlgValuesSupported) == 0 {
-		merged.RequestObjectSigningAlgValuesSupported = src.RequestObjectSigningAlgValuesSupported
-	}
-	if len(merged.AuthorizationSigningAlgValuesSupported) == 0 {
-		merged.AuthorizationSigningAlgValuesSupported = src.AuthorizationSigningAlgValuesSupported
-	}
-	if merged.MTLSEndpointAliases.TokenEndpoint == "" {
-		merged.MTLSEndpointAliases.TokenEndpoint = src.MTLSEndpointAliases.TokenEndpoint
-	}
-	if merged.MTLSEndpointAliases.UserinfoEndpoint == "" {
-		merged.MTLSEndpointAliases.UserinfoEndpoint = src.MTLSEndpointAliases.UserinfoEndpoint
-	}
-	if merged.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint == "" {
-		merged.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint = src.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint
-	}
-	if len(merged.CodeChallengeMethodsSupported) == 0 {
-		merged.CodeChallengeMethodsSupported = src.CodeChallengeMethodsSupported
-	}
-	if len(merged.ResponseModesSupported) == 0 {
-		merged.ResponseModesSupported = src.ResponseModesSupported
-	}
-	if len(merged.TokenEndpointAuthSigningAlgValuesSupported) == 0 {
-		merged.TokenEndpointAuthSigningAlgValuesSupported = src.TokenEndpointAuthSigningAlgValuesSupported
-	}
-	if len(merged.IDTokenEncryptionAlgValuesSupported) == 0 {
-		merged.IDTokenEncryptionAlgValuesSupported = src.IDTokenEncryptionAlgValuesSupported
-	}
-	if len(merged.IDTokenEncryptionEncValuesSupported) == 0 {
-		merged.IDTokenEncryptionEncValuesSupported = src.IDTokenEncryptionEncValuesSupported
-	}
-	if merged.Raw == nil {
-		merged.Raw = src.Raw
-	}
-	merged.AuthorizationServer.Raw = merged.Raw
-	return merged
+	return mergeProvider(dst, src, providerMergeFillMissing)
 }
 
 func mergeConfiguredProvider(dst, src metadata.Provider) metadata.Provider {
+	return mergeProvider(dst, src, providerMergeOverridePresent)
+}
+
+func mergeProvider(dst, src metadata.Provider, mode providerMergeMode) metadata.Provider {
 	merged := dst
-	if strings.TrimSpace(src.AuthorizationEndpoint) != "" {
-		merged.AuthorizationEndpoint = src.AuthorizationEndpoint
+	mergeString := func(dst *string, src string) {
+		switch mode {
+		case providerMergeFillMissing:
+			if *dst == "" {
+				*dst = src
+			}
+		case providerMergeOverridePresent:
+			if strings.TrimSpace(src) != "" {
+				*dst = src
+			}
+		}
 	}
-	if strings.TrimSpace(src.TokenEndpoint) != "" {
-		merged.TokenEndpoint = src.TokenEndpoint
+	mergeStrings := func(dst *[]string, src []string) {
+		switch mode {
+		case providerMergeFillMissing:
+			if len(*dst) == 0 {
+				*dst = src
+			}
+		case providerMergeOverridePresent:
+			if len(src) > 0 {
+				*dst = append([]string(nil), src...)
+			}
+		}
 	}
-	if strings.TrimSpace(src.JWKSURI) != "" {
-		merged.JWKSURI = src.JWKSURI
-	}
-	if strings.TrimSpace(src.UserinfoEndpoint) != "" {
-		merged.UserinfoEndpoint = src.UserinfoEndpoint
-	}
-	if strings.TrimSpace(src.PushedAuthorizationRequestEndpoint) != "" {
-		merged.PushedAuthorizationRequestEndpoint = src.PushedAuthorizationRequestEndpoint
-	}
-	if strings.TrimSpace(src.Issuer) != "" {
-		merged.Issuer = src.Issuer
-	}
-	if len(src.ResponseTypesSupported) > 0 {
-		merged.ResponseTypesSupported = append([]string(nil), src.ResponseTypesSupported...)
-	}
-	if len(src.IDTokenSigningAlgValuesSupported) > 0 {
-		merged.IDTokenSigningAlgValuesSupported = append([]string(nil), src.IDTokenSigningAlgValuesSupported...)
-	}
-	if len(src.SubjectTypesSupported) > 0 {
-		merged.SubjectTypesSupported = append([]string(nil), src.SubjectTypesSupported...)
-	}
-	if len(src.TokenEndpointAuthMethodsSupported) > 0 {
-		merged.TokenEndpointAuthMethodsSupported = append([]string(nil), src.TokenEndpointAuthMethodsSupported...)
-	}
-	if len(src.RequestObjectSigningAlgValuesSupported) > 0 {
-		merged.RequestObjectSigningAlgValuesSupported = append([]string(nil), src.RequestObjectSigningAlgValuesSupported...)
-	}
-	if len(src.AuthorizationSigningAlgValuesSupported) > 0 {
-		merged.AuthorizationSigningAlgValuesSupported = append([]string(nil), src.AuthorizationSigningAlgValuesSupported...)
-	}
-	if strings.TrimSpace(src.MTLSEndpointAliases.TokenEndpoint) != "" {
-		merged.MTLSEndpointAliases.TokenEndpoint = src.MTLSEndpointAliases.TokenEndpoint
-	}
-	if strings.TrimSpace(src.MTLSEndpointAliases.UserinfoEndpoint) != "" {
-		merged.MTLSEndpointAliases.UserinfoEndpoint = src.MTLSEndpointAliases.UserinfoEndpoint
-	}
-	if strings.TrimSpace(src.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint) != "" {
-		merged.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint = src.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint
-	}
-	if len(src.CodeChallengeMethodsSupported) > 0 {
-		merged.CodeChallengeMethodsSupported = append([]string(nil), src.CodeChallengeMethodsSupported...)
-	}
-	if len(src.ResponseModesSupported) > 0 {
-		merged.ResponseModesSupported = append([]string(nil), src.ResponseModesSupported...)
-	}
-	if len(src.TokenEndpointAuthSigningAlgValuesSupported) > 0 {
-		merged.TokenEndpointAuthSigningAlgValuesSupported = append([]string(nil), src.TokenEndpointAuthSigningAlgValuesSupported...)
-	}
-	if len(src.IDTokenEncryptionAlgValuesSupported) > 0 {
-		merged.IDTokenEncryptionAlgValuesSupported = append([]string(nil), src.IDTokenEncryptionAlgValuesSupported...)
-	}
-	if len(src.IDTokenEncryptionEncValuesSupported) > 0 {
-		merged.IDTokenEncryptionEncValuesSupported = append([]string(nil), src.IDTokenEncryptionEncValuesSupported...)
-	}
-	if src.Raw != nil {
-		merged.Raw = src.Raw
+
+	mergeString(&merged.AuthorizationEndpoint, src.AuthorizationEndpoint)
+	mergeString(&merged.TokenEndpoint, src.TokenEndpoint)
+	mergeString(&merged.JWKSURI, src.JWKSURI)
+	mergeString(&merged.UserinfoEndpoint, src.UserinfoEndpoint)
+	mergeString(&merged.PushedAuthorizationRequestEndpoint, src.PushedAuthorizationRequestEndpoint)
+	mergeString(&merged.Issuer, src.Issuer)
+	mergeStrings(&merged.ResponseTypesSupported, src.ResponseTypesSupported)
+	mergeStrings(&merged.IDTokenSigningAlgValuesSupported, src.IDTokenSigningAlgValuesSupported)
+	mergeStrings(&merged.SubjectTypesSupported, src.SubjectTypesSupported)
+	mergeStrings(&merged.TokenEndpointAuthMethodsSupported, src.TokenEndpointAuthMethodsSupported)
+	mergeStrings(&merged.RequestObjectSigningAlgValuesSupported, src.RequestObjectSigningAlgValuesSupported)
+	mergeStrings(&merged.AuthorizationSigningAlgValuesSupported, src.AuthorizationSigningAlgValuesSupported)
+	mergeString(&merged.MTLSEndpointAliases.TokenEndpoint, src.MTLSEndpointAliases.TokenEndpoint)
+	mergeString(&merged.MTLSEndpointAliases.UserinfoEndpoint, src.MTLSEndpointAliases.UserinfoEndpoint)
+	mergeString(
+		&merged.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint,
+		src.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint,
+	)
+	mergeStrings(&merged.CodeChallengeMethodsSupported, src.CodeChallengeMethodsSupported)
+	mergeStrings(&merged.ResponseModesSupported, src.ResponseModesSupported)
+	mergeStrings(
+		&merged.TokenEndpointAuthSigningAlgValuesSupported,
+		src.TokenEndpointAuthSigningAlgValuesSupported,
+	)
+	mergeStrings(&merged.IDTokenEncryptionAlgValuesSupported, src.IDTokenEncryptionAlgValuesSupported)
+	mergeStrings(&merged.IDTokenEncryptionEncValuesSupported, src.IDTokenEncryptionEncValuesSupported)
+
+	switch mode {
+	case providerMergeFillMissing:
+		if merged.Raw == nil {
+			merged.Raw = src.Raw
+		}
+	case providerMergeOverridePresent:
+		if src.Raw != nil {
+			merged.Raw = src.Raw
+		}
 	}
 	merged.AuthorizationServer.Raw = merged.Raw
 	return merged
