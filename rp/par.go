@@ -153,19 +153,18 @@ func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*
 	return &parResp, nil
 }
 
-func (r *RP) buildClientAssertion(audience string) (string, error) {
-	if r.clientKeyProvider == nil {
+func buildPrivateKeyClientAssertion(clientID, audience string, keyProvider ClientKeyProvider, now time.Time, randReader io.Reader) (string, error) {
+	if keyProvider == nil {
 		return "", fmt.Errorf("%w: client key provider not configured", ErrInvalidConfiguration)
 	}
 
-	now := time.Now()
 	claims := map[string]any{
-		"iss": r.clientID,
-		"sub": r.clientID,
+		"iss": clientID,
+		"sub": clientID,
 		"aud": audience,
 		"iat": now.Unix(),
 		"exp": now.Add(5 * time.Minute).Unix(),
-		"jti": generateJTI(r.randReader),
+		"jti": generateJTI(randReader),
 	}
 
 	payload, err := json.Marshal(claims)
@@ -173,22 +172,15 @@ func (r *RP) buildClientAssertion(audience string) (string, error) {
 		return "", fmt.Errorf("failed to marshal claims: %w", err)
 	}
 
-	var alg jose.SignatureAlgorithm
-	switch r.clientKeyProvider.SigningAlgorithm() {
-	case "PS256":
-		alg = jose.PS256
-	case "RS256":
-		alg = jose.RS256
-	case "ES256":
-		alg = jose.ES256
-	default:
-		return "", fmt.Errorf("unsupported signing algorithm: %s", r.clientKeyProvider.SigningAlgorithm())
+	alg := signatureAlgorithm(keyProvider.SigningAlgorithm())
+	if alg == "" {
+		return "", fmt.Errorf("unsupported signing algorithm: %s", keyProvider.SigningAlgorithm())
 	}
 
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: alg, Key: r.clientKeyProvider.PrivateKey()}, &jose.SignerOptions{
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: alg, Key: keyProvider.PrivateKey()}, &jose.SignerOptions{
 		ExtraHeaders: map[jose.HeaderKey]interface{}{
 			"typ": "JWT",
-			"kid": r.clientKeyProvider.KeyID(),
+			"kid": keyProvider.KeyID(),
 		},
 	})
 	if err != nil {
@@ -201,6 +193,10 @@ func (r *RP) buildClientAssertion(audience string) (string, error) {
 	}
 
 	return sig.CompactSerialize()
+}
+
+func (r *RP) buildClientAssertion(audience string) (string, error) {
+	return buildPrivateKeyClientAssertion(r.clientID, audience, r.clientKeyProvider, time.Now(), r.randReader)
 }
 
 func generateJTI(reader io.Reader) string {

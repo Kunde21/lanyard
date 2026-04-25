@@ -15,7 +15,9 @@ import (
 	"testing"
 
 	"github.com/Kunde21/lanyard/metadata"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestAuthorizationURL_UsesClientAssertionFormFieldsForPAR(t *testing.T) {
@@ -66,6 +68,15 @@ func TestAuthorizationURL_UsesClientAssertionFormFieldsForPAR(t *testing.T) {
 	if len(parts) != 3 {
 		t.Fatalf("client_assertion is not a compact JWT: %q", assertion)
 	}
+
+	parsed, err := jose.ParseSigned(assertion, []jose.SignatureAlgorithm{jose.PS256})
+	if err != nil {
+		t.Fatalf("ParseSigned(client_assertion) failed: %v", err)
+	}
+	if _, err := parsed.Verify(&privateKey.PublicKey); err != nil {
+		t.Fatalf("Verify(client_assertion) failed: %v", err)
+	}
+
 	claimsJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		t.Fatalf("DecodeString(claims) failed: %v", err)
@@ -77,8 +88,17 @@ func TestAuthorizationURL_UsesClientAssertionFormFieldsForPAR(t *testing.T) {
 	if got := values.Get("client_assertion_type"); got != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
 		t.Fatalf("client_assertion_type = %q", got)
 	}
-	if got := claims["aud"]; got != "https://issuer.test" {
-		t.Fatalf("client_assertion aud = %#v, want issuer audience", got)
+	wantClaims := map[string]any{
+		"iss": "client",
+		"sub": "client",
+		"aud": "https://issuer.test",
+	}
+	if !cmp.Equal(wantClaims, claims, cmpopts.IgnoreMapEntries(func(k string, v any) bool {
+		return k == "exp" || k == "iat" || k == "jti"
+	})) {
+		t.Fatalf("client_assertion claims mismatch (-want +got):\n%s", cmp.Diff(wantClaims, claims, cmpopts.IgnoreMapEntries(func(k string, v any) bool {
+			return k == "exp" || k == "iat" || k == "jti"
+		})))
 	}
 	if authz := values.Get("client_id"); authz != "client" {
 		t.Fatalf("client_id = %q, want client", authz)

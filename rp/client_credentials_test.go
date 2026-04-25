@@ -11,10 +11,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/Kunde21/lanyard/metadata"
+	"github.com/go-jose/go-jose/v4"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -445,11 +447,11 @@ func TestClientCredentials_Token_PrivateKeyJWT(t *testing.T) {
 	ctx := context.Background()
 	provider := clientCredentialsProvider(server.URL, AuthMethodPrivateKeyJWT)
 
-	// Generate a real RSA key for testing
-	keyProvider, err := createTestKeyProvider()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		t.Fatalf("failed to create test key provider: %v", err)
+		t.Fatalf("GenerateKey() failed: %v", err)
 	}
+	keyProvider := NewStaticClientKeyProvider(privateKey, "test-key", "RS256", nil)
 
 	client, err := NewClientCredentials(ctx, "https://auth.example.com",
 		WithClientID("client-id"),
@@ -469,11 +471,53 @@ func TestClientCredentials_Token_PrivateKeyJWT(t *testing.T) {
 		t.Errorf("expected jwt-token, got: %s", token.AccessToken)
 	}
 
-	if !strings.Contains(requestBody, "client_assertion_type=urn%3Aietf%3Aparams%3Aoauth%3Aclient-assertion-type%3Ajwt-bearer") {
-		t.Errorf("expected client_assertion_type in body, got: %s", requestBody)
+	values, err := url.ParseQuery(requestBody)
+	if err != nil {
+		t.Fatalf("ParseQuery(requestBody) failed: %v", err)
 	}
-	if !strings.Contains(requestBody, "client_assertion=") {
-		t.Errorf("expected client_assertion in body, got: %s", requestBody)
+
+	if got := values.Get("client_assertion_type"); got != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
+		t.Fatalf("client_assertion_type = %q, want jwt-bearer", got)
+	}
+
+	assertion := values.Get("client_assertion")
+	if assertion == "" {
+		t.Fatal("client_assertion is empty")
+	}
+	parts := strings.Split(assertion, ".")
+	if len(parts) != 3 {
+		t.Fatalf("client_assertion should be a compact JWT with 3 parts, got %d: %q", len(parts), assertion)
+	}
+
+	parsed, err := jose.ParseSigned(assertion, []jose.SignatureAlgorithm{jose.RS256})
+	if err != nil {
+		t.Fatalf("ParseSigned(client_assertion) failed: %v", err)
+	}
+
+	payload, err := parsed.Verify(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatalf("Verify(client_assertion) failed: %v", err)
+	}
+
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("Unmarshal(client_assertion claims) failed: %v", err)
+	}
+
+	wantClaims := map[string]any{
+		"iss": "client-id",
+		"sub": "client-id",
+		"aud": server.URL,
+	}
+	if !cmp.Equal(wantClaims, claims, cmpopts.IgnoreMapEntries(func(k string, v any) bool {
+		return k == "exp" || k == "iat" || k == "jti"
+	})) {
+		t.Fatalf("client_assertion claims mismatch (-want +got):\n%s", cmp.Diff(wantClaims, claims, cmpopts.IgnoreMapEntries(func(k string, v any) bool {
+			return k == "exp" || k == "iat" || k == "jti"
+		})))
+	}
+	if claims["jti"] == "" {
+		t.Fatal("client_assertion jti is empty")
 	}
 }
 

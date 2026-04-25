@@ -2,18 +2,12 @@ package rp
 
 import (
 	"context"
-	"crypto"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
-
-	"github.com/go-jose/go-jose/v4"
 )
 
 // ClientCredentials performs OAuth 2.0 client credentials token requests.
@@ -175,62 +169,5 @@ func (c *ClientCredentials) buildTokenRequest(ctx context.Context, method AuthMe
 }
 
 func (c *ClientCredentials) buildClientAssertion() (string, error) {
-	now := c.now()
-	jti := make([]byte, 16)
-	if _, err := io.ReadFull(c.randReader, jti); err != nil {
-		return "", fmt.Errorf("failed to generate jti: %w", err)
-	}
-
-	header := map[string]any{
-		"typ": "JWT",
-		"alg": c.clientKeyProvider.SigningAlgorithm(),
-		"kid": c.clientKeyProvider.KeyID(),
-	}
-	claims := map[string]any{
-		"iss": c.clientID,
-		"sub": c.clientID,
-		"aud": c.provider.TokenEndpoint,
-		"exp": now.Add(5 * time.Minute).Unix(),
-		"iat": now.Unix(),
-		"jti": base64.RawURLEncoding.EncodeToString(jti),
-	}
-
-	headerJSON, err := json.Marshal(header)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal header: %w", err)
-	}
-	claimsJSON, err := json.Marshal(claims)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal claims: %w", err)
-	}
-
-	headerB64 := base64.RawURLEncoding.EncodeToString(headerJSON)
-	claimsB64 := base64.RawURLEncoding.EncodeToString(claimsJSON)
-	payload := headerB64 + "." + claimsB64
-
-	signature, err := signClientAssertion(payload, c.clientKeyProvider.SigningAlgorithm(), c.clientKeyProvider.PrivateKey())
-	if err != nil {
-		return "", fmt.Errorf("failed to sign assertion: %w", err)
-	}
-
-	return payload + "." + signature, nil
-}
-
-func signClientAssertion(input, alg string, privateKey crypto.PrivateKey) (string, error) {
-	joseAlg := signatureAlgorithm(alg)
-	if joseAlg == "" {
-		return "", fmt.Errorf("unsupported algorithm: %s", alg)
-	}
-
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: joseAlg, Key: privateKey}, nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to create signer: %w", err)
-	}
-
-	sig, err := signer.Sign([]byte(input))
-	if err != nil {
-		return "", fmt.Errorf("failed to sign: %w", err)
-	}
-
-	return sig.CompactSerialize()
+	return buildPrivateKeyClientAssertion(c.clientID, c.provider.TokenEndpoint, c.clientKeyProvider, c.now(), c.randReader)
 }
