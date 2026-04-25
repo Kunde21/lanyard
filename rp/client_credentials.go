@@ -2,9 +2,7 @@ package rp
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -62,33 +60,17 @@ func (c *ClientCredentials) validate() error {
 
 // Token requests an access token using the client credentials grant.
 func (c *ClientCredentials) Token(ctx context.Context) (*Token, error) {
-	method, allowFallback := c.authMethodState()
-
-	token, status, preview, err := c.requestToken(ctx, method)
+	token, err := executeTokenGrant(&c.clientConfig, func(method AuthMethod) (tokenGrantResult, error) {
+		tokenResp, status, preview, err := c.requestToken(ctx, method)
+		if tokenResp == nil {
+			return tokenGrantResult{status: status, preview: preview}, err
+		}
+		return tokenGrantResult{token: *tokenResp, status: status, preview: preview}, err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrClientCredentialsFailed, err)
 	}
-	if status == http.StatusOK {
-		if allowFallback {
-			c.setAuthMethodState(method, false)
-		}
-		return token, nil
-	}
-
-	if allowFallback && method == AuthMethodPost && shouldFallbackToBasic(status) {
-		retryToken, retryStatus, retryPreview, retryErr := c.requestToken(ctx, AuthMethodBasic)
-		if retryErr != nil {
-			return nil, fmt.Errorf("%w: %v", ErrClientCredentialsFailed, retryErr)
-		}
-		if retryStatus == http.StatusOK {
-			c.setAuthMethodState(AuthMethodBasic, false)
-			return retryToken, nil
-		}
-
-		return nil, fmt.Errorf("%w: token endpoint returned status %d: %s", ErrClientCredentialsFailed, retryStatus, retryPreview)
-	}
-
-	return nil, fmt.Errorf("%w: token endpoint returned status %d: %s", ErrClientCredentialsFailed, status, preview)
+	return &token, nil
 }
 
 func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod) (*Token, int, string, error) {
@@ -122,35 +104,22 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 
 	useDPoP := c.clientConfig.shouldUseDPoP()
 
-	var token Token
-	_, status, preview, err := doRequestWithDPoPRetry(dpopRequestConfig{
+	token, status, preview, err := executeTokenRequest(tokenRequestExecution{
 		buildRequest: func() (*http.Request, error) {
 			return c.buildTokenRequest(ctx, method, form)
 		},
 		attachDPoP: func(req *http.Request, nonce string) error {
 			return c.clientConfig.attachDPoPProof(req, nonce)
 		},
-		handleResponse: func(body io.Reader) error {
-			payload, err := io.ReadAll(body)
-			if err != nil {
-				return fmt.Errorf("failed to read token response: %w", err)
-			}
-			return parseTokenResponse(payload, &token)
-		},
 		storeNonce: func(resp *http.Response) {
 			c.clientConfig.extractAndStoreDPoPNonce(resp, c.provider.TokenEndpoint)
 		},
-		successStatus: http.StatusOK,
-		httpClient:    c.httpClient,
-		useDPoP:       useDPoP,
-		cachedNonce:   c.clientConfig.cachedDPoPNonce(c.provider.TokenEndpoint),
+		httpClient:  c.httpClient,
+		useDPoP:     useDPoP,
+		cachedNonce: c.clientConfig.cachedDPoPNonce(c.provider.TokenEndpoint),
 	})
 	if err != nil {
-		var decodeErr *jsonDecodeError
-		if errors.As(err, &decodeErr) {
-			return nil, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
-		}
-		return nil, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+		return nil, 0, "", err
 	}
 
 	if status != http.StatusOK {

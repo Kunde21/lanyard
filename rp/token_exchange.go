@@ -30,34 +30,94 @@ func buildTokenRequestEnvelope(ctx context.Context, tokenEndpoint string, form u
 	return req, nil
 }
 
-func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier string) (Token, error) {
-	method, allowFallback := r.authMethodState()
+type tokenGrantResult struct {
+	token   Token
+	status  int
+	preview string
+}
 
-	tokenResp, status, preview, err := r.exchangeTokenOnce(ctx, tokenEndpoint, code, verifier, method, "")
+type tokenGrantExecutor func(method AuthMethod) (tokenGrantResult, error)
+
+type tokenRequestExecution struct {
+	buildRequest func() (*http.Request, error)
+	attachDPoP   func(req *http.Request, nonce string) error
+	storeNonce   func(resp *http.Response)
+	httpClient   *http.Client
+	useDPoP      bool
+	cachedNonce  string
+}
+
+func executeTokenGrant(config *clientConfig, run tokenGrantExecutor) (Token, error) {
+	method, allowFallback := config.authMethodState()
+
+	result, err := run(method)
+	if err != nil {
+		return Token{}, err
+	}
+	if result.status == http.StatusOK {
+		if allowFallback {
+			config.setAuthMethodState(method, false)
+		}
+		return result.token, nil
+	}
+
+	if allowFallback && method == AuthMethodPost && shouldFallbackToBasic(result.status) {
+		retryResult, retryErr := run(AuthMethodBasic)
+		if retryErr != nil {
+			return Token{}, retryErr
+		}
+		if retryResult.status == http.StatusOK {
+			config.setAuthMethodState(AuthMethodBasic, false)
+			return retryResult.token, nil
+		}
+
+		return Token{}, tokenEndpointStatusError(retryResult.status, retryResult.preview)
+	}
+
+	return Token{}, tokenEndpointStatusError(result.status, result.preview)
+}
+
+func tokenEndpointStatusError(status int, preview string) error {
+	return fmt.Errorf("token endpoint returned status %d: %s", status, preview)
+}
+
+func executeTokenRequest(cfg tokenRequestExecution) (Token, int, string, error) {
+	var tokenResp Token
+	_, status, preview, err := doRequestWithDPoPRetry(dpopRequestConfig{
+		buildRequest: cfg.buildRequest,
+		attachDPoP:   cfg.attachDPoP,
+		handleResponse: func(body io.Reader) error {
+			payload, err := io.ReadAll(body)
+			if err != nil {
+				return fmt.Errorf("failed to read token response: %w", err)
+			}
+			return parseTokenResponse(payload, &tokenResp)
+		},
+		storeNonce:    cfg.storeNonce,
+		successStatus: http.StatusOK,
+		httpClient:    cfg.httpClient,
+		useDPoP:       cfg.useDPoP,
+		cachedNonce:   cfg.cachedNonce,
+	})
+	if err != nil {
+		var decodeErr *jsonDecodeError
+		if errors.As(err, &decodeErr) {
+			return Token{}, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
+		}
+		return Token{}, 0, "", fmt.Errorf("failed to execute token request: %w", err)
+	}
+	return tokenResp, status, preview, nil
+}
+
+func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier string) (Token, error) {
+	tokenResp, err := executeTokenGrant(&r.clientConfig, func(method AuthMethod) (tokenGrantResult, error) {
+		tokenResp, status, preview, err := r.exchangeTokenOnce(ctx, tokenEndpoint, code, verifier, method, "")
+		return tokenGrantResult{token: tokenResp, status: status, preview: preview}, err
+	})
 	if err != nil {
 		return Token{}, fmt.Errorf("%w: %v", ErrTokenExchangeFailed, err)
 	}
-	if status == http.StatusOK {
-		if allowFallback {
-			r.setAuthMethodState(method, false)
-		}
-		return tokenResp, nil
-	}
-
-	if allowFallback && method == AuthMethodPost && shouldFallbackToBasic(status) {
-		retryResp, retryStatus, retryPreview, retryErr := r.exchangeTokenOnce(ctx, tokenEndpoint, code, verifier, AuthMethodBasic, "")
-		if retryErr != nil {
-			return Token{}, fmt.Errorf("%w: %v", ErrTokenExchangeFailed, retryErr)
-		}
-		if retryStatus == http.StatusOK {
-			r.setAuthMethodState(AuthMethodBasic, false)
-			return retryResp, nil
-		}
-
-		return Token{}, fmt.Errorf("%w: token endpoint returned status %d: %s", ErrTokenExchangeFailed, retryStatus, retryPreview)
-	}
-
-	return Token{}, fmt.Errorf("%w: token endpoint returned status %d: %s", ErrTokenExchangeFailed, status, preview)
+	return tokenResp, nil
 }
 
 func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifier string, method AuthMethod, dpopAccessToken string) (Token, int, string, error) {
@@ -105,38 +165,20 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 		// client_id not included in form when using Basic auth (only in Authorization header)
 	}
 
-	var tokenResp Token
-	_, status, preview, err := doRequestWithDPoPRetry(dpopRequestConfig{
+	return executeTokenRequest(tokenRequestExecution{
 		buildRequest: func() (*http.Request, error) {
 			return r.buildTokenRequest(ctx, tokenEndpoint, form, method)
 		},
 		attachDPoP: func(req *http.Request, nonce string) error {
 			return r.attachDPoPProof(req, dpopAccessToken, nonce)
 		},
-		handleResponse: func(body io.Reader) error {
-			payload, err := io.ReadAll(body)
-			if err != nil {
-				return fmt.Errorf("failed to read token response: %w", err)
-			}
-			return parseTokenResponse(payload, &tokenResp)
-		},
 		storeNonce: func(resp *http.Response) {
 			r.extractAndStoreDPoPNonce(resp, tokenEndpoint)
 		},
-		successStatus: http.StatusOK,
-		httpClient:    r.httpClient,
-		useDPoP:       useDPoP,
-		cachedNonce:   r.cachedDPoPNonce(tokenEndpoint),
+		httpClient:  r.httpClient,
+		useDPoP:     useDPoP,
+		cachedNonce: r.cachedDPoPNonce(tokenEndpoint),
 	})
-	if err != nil {
-		var decodeErr *jsonDecodeError
-		if errors.As(err, &decodeErr) {
-			return Token{}, 0, "", fmt.Errorf("failed to decode token response: %w", decodeErr.Err)
-		}
-		return Token{}, 0, "", fmt.Errorf("failed to execute token request: %w", err)
-	}
-
-	return tokenResp, status, preview, nil
 }
 
 func shouldFallbackToBasic(status int) bool {
