@@ -5,6 +5,7 @@ import (
 )
 
 func TestConformancePublicJWKS_SelfSignedTlsClientAuth_ContainsX5C(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	jwks, err := conformancePublicJWKS("self_signed_tls_client_auth")
 	if err != nil {
 		t.Fatalf("conformancePublicJWKS() error: %v", err)
@@ -34,6 +35,7 @@ func TestConformancePublicJWKS_SelfSignedTlsClientAuth_ContainsX5C(t *testing.T)
 }
 
 func TestConformancePublicJWKS_ClientSecretBasic_NoX5C(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	jwks, err := conformancePublicJWKS("client_secret_basic")
 	if err != nil {
 		t.Fatalf("conformancePublicJWKS() error: %v", err)
@@ -52,6 +54,7 @@ func TestConformancePublicJWKS_ClientSecretBasic_NoX5C(t *testing.T) {
 }
 
 func TestConformancePublicJWKS_EmptyAuthType_NoX5C(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	jwks, err := conformancePublicJWKS("")
 	if err != nil {
 		t.Fatalf("conformancePublicJWKS() error: %v", err)

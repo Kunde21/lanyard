@@ -342,6 +342,7 @@ func TestBuildRPFromResolvedRequest_RequestURIModeUsesSharedStore(t *testing.T) 
 }
 
 func TestLoadRequestObjectKeyProvider_ReturnsAsymmetricSignerForSignedRequestTypes(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	provider, err := loadRequestObjectKeyProvider("client_secret_basic", "", "request_object")
 	if err != nil {
 		t.Fatalf("loadRequestObjectKeyProvider() failed: %v", err)

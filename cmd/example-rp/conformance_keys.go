@@ -15,9 +15,23 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"testing"
 
 	"github.com/Kunde21/lanyard/rp"
 )
+
+const conformanceCertsSetupMsg = "Set RP_CONFORMANCE_CERTS_DIR or run: bash conformance/scripts/setup.sh"
+
+func skipIfConformanceCertsMissing(t *testing.T) {
+	t.Helper()
+	certsDir := strings.TrimSpace(os.Getenv("RP_CONFORMANCE_CERTS_DIR"))
+	if certsDir == "" {
+		certsDir = "conformance/certs"
+	}
+	if _, err := resolveConformanceCertsDir(certsDir); err != nil {
+		t.Skipf("conformance certs dir not found: %v. %s", err, conformanceCertsSetupMsg)
+	}
+}
 
 var (
 	conformanceKeyOnce    sync.Once

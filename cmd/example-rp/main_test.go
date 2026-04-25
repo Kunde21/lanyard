@@ -86,6 +86,7 @@ func TestLoginRedirects(t *testing.T) {
 }
 
 func TestConformanceJWKSHandler(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	alias := "alias-jwks"
 	if err := conformanceRuntimes.Register(rpRuntimeConfig{
 		Alias:       alias,

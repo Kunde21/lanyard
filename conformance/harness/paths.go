@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"testing"
 )
 
 func repoRoot() (string, error) {
@@ -54,4 +55,17 @@ func repoPath(parts ...string) (string, error) {
 	}
 	all := append([]string{root}, parts...)
 	return filepath.Join(all...), nil
+}
+
+const conformanceCertsSetupMsg = "Set LANYARD_REPO_ROOT or run: bash conformance/scripts/setup.sh"
+
+func skipIfConformanceCertsMissing(t *testing.T) {
+	t.Helper()
+	dir, err := repoPath("conformance/certs")
+	if err != nil {
+		t.Skipf("conformance certs dir not found: %v. %s", err, conformanceCertsSetupMsg)
+	}
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		t.Skipf("conformance certs dir missing at %q. %s", dir, conformanceCertsSetupMsg)
+	}
 }

@@ -464,6 +464,7 @@ func TestNewJobRunner_IsolatesMutableExecutionState(t *testing.T) {
 }
 
 func TestBuildPlanConfig_RARAddsAuthorizationDetailsTypesSupported(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type":           "private_key_jwt",
 		"authorization_request_type": "rar",
@@ -481,6 +482,7 @@ func TestBuildPlanConfig_RARAddsAuthorizationDetailsTypesSupported(t *testing.T)
 }
 
 func TestBuildPlanConfig_FAPI1EncryptedIDTokenClientMetadata(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type":         "private_key_jwt",
 		"fapi_auth_request_method": "by_value",
@@ -576,6 +578,7 @@ func TestIsNegativeTestModule(t *testing.T) {
 }
 
 func TestBuildPlanConfig_OIDCConfigPrivateKeyJWT(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type":    "private_key_jwt",
 		"request_type":        "plain_http_request",
@@ -774,6 +777,7 @@ func TestExecuteModule_DiscoveryModuleKeepsPlanAssociation(t *testing.T) {
 }
 
 func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_ContainsX5C(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type":    "self_signed_tls_client_auth",
 		"request_type":        "plain_http_request",
@@ -830,6 +834,7 @@ func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_ContainsX5C(t *testin
 }
 
 func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_RequestObject_ContainsX5C(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type":    "self_signed_tls_client_auth",
 		"request_type":        "request_object",
@@ -880,6 +885,7 @@ func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_RequestObject_Contain
 }
 
 func TestBuildPlanConfig_OIDCConfigPrivateKeyJWT_NoX5C(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type":    "private_key_jwt",
 		"request_type":        "plain_http_request",
@@ -912,6 +918,7 @@ func TestBuildPlanConfig_OIDCConfigPrivateKeyJWT_NoX5C(t *testing.T) {
 }
 
 func TestBuildStandaloneModuleConfig_SelfSignedTlsClientAuth_ContainsX5C(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	cfg := buildStandaloneModuleConfig("alias-test", map[string]string{
 		"client_auth_type": "self_signed_tls_client_auth",
 		"request_type":     "plain_http_request",

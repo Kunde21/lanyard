@@ -57,6 +57,7 @@ func TestBuildRPRuntimeRequest_UsesDistinctAliasAndProfileValues(t *testing.T) {
 }
 
 func TestBuildPlanConfig_FAPI2IncludesStaticClientConfigWithoutRegistrationVariant(t *testing.T) {
+	skipIfConformanceCertsMissing(t)
 	cfg := buildPlanConfig(map[string]string{
 		"client_auth_type": "private_key_jwt",
 		"fapi_profile":     "plain_fapi",
