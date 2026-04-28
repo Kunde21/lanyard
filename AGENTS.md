@@ -115,15 +115,14 @@ cmpopts.EquateErrors()
 - Validate all inputs
 - Use constant-time comparison for secrets
 
-## Common Tasks
+## Planning and Research Documents
 
-Add go-cmp to test dependencies:
-```bash
-go get github.com/google/go-cmp/cmp
-go get github.com/google/go-cmp/cmp/cmpopts
-```
+All planning and research markdown documents must live under the `thoughts/` directory tree. See [thoughts/README.md](thoughts/README.md) for the directory structure and usage.
 
+Do **not** create `docs/`, `docs/plans/`, `.opencode/plans/`, or any other top-level directory for planning or research documents.
+
+## Common Tasks  
 Run before committing:
 ```bash
-gofumpt ./... && go vet ./... && go test ./...
+gofumpt -w . && go vet ./... && go test ./...
 ```
