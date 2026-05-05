@@ -20,6 +20,7 @@ type CallbackCorrelation struct {
 	ClientSecret           string
 	RequestURI             string
 	UsedPAR                bool
+	Resources              []string
 	UserInfoTokenTransport string
 }
 

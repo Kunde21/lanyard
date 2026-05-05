@@ -226,7 +226,7 @@ func TestPushAuthorizationRequest_RetriesWithDpopNonce(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	params := r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "", nil)
+	params := r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "", nil, nil)
 	parResp, err := r.pushAuthorizationRequest(context.Background(), params)
 	if err != nil {
 		t.Fatalf("pushAuthorizationRequest() failed: %v", err)
@@ -512,5 +512,52 @@ func TestAuthorizationURL_PlainPARUnaffectedBySignedRequestMethod(t *testing.T) 
 	}
 	if values.Get("response_type") != "code" {
 		t.Error("plain PAR should contain 'response_type' parameter")
+	}
+}
+
+func TestAuthorizationURL_PARPushesResources(t *testing.T) {
+	var gotBody string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("ReadAll(body) failed: %v", err)
+		}
+		gotBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:test:request-uri", "expires_in": 90})
+	}))
+	defer ts.Close()
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(providerWithAuthorizationAndPAR(ts.URL, "client_secret_basic")),
+		WithRequirePAR(true),
+		WithResources("https://api.example.com/", "https://payments.example.com/"),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	w := httptest.NewRecorder()
+	if _, err := r.AuthorizationURL(w, req); err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+
+	values, err := url.ParseQuery(gotBody)
+	if err != nil {
+		t.Fatalf("ParseQuery(body) failed: %v", err)
+	}
+
+	want := []string{"https://api.example.com/", "https://payments.example.com/"}
+	if diff := cmp.Diff(want, values["resource"]); diff != "" {
+		t.Fatalf("PAR resource mismatch (-want +got):\n%s", diff)
 	}
 }

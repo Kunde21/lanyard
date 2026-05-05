@@ -23,6 +23,7 @@ type requestObjectClaims struct {
 	CodeChallenge        string            `json:"code_challenge,omitempty"`
 	CodeChallengeMethod  string            `json:"code_challenge_method,omitempty"`
 	AuthorizationDetails json.RawMessage   `json:"authorization_details,omitempty"`
+	Resource             []string          `json:"resource,omitempty"`
 	ResponseMode         string            `json:"response_mode,omitempty"`
 	IssuedAt             int64             `json:"iat"`
 	NotBefore            int64             `json:"nbf"`
@@ -31,7 +32,7 @@ type requestObjectClaims struct {
 	Extra                map[string]string `json:"-"`
 }
 
-func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDetails string, extra url.Values) (string, error) {
+func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDetails string, resources []string, extra url.Values) (string, error) {
 	now := r.now()
 	parsedAuthorizationDetails, err := parseAuthorizationDetailsClaim(authorizationDetails)
 	if err != nil {
@@ -49,6 +50,7 @@ func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDeta
 		CodeChallenge:        challenge,
 		CodeChallengeMethod:  "S256",
 		AuthorizationDetails: parsedAuthorizationDetails,
+		Resource:             append([]string(nil), resources...),
 		IssuedAt:             now.Unix(),
 		NotBefore:            now.Unix(),
 		Expiration:           now.Add(5 * time.Minute).Unix(),
@@ -85,7 +87,7 @@ func isStandardRequestObjectClaim(key string) bool {
 	switch strings.ToLower(key) {
 	case "iss", "aud", "client_id", "response_type", "redirect_uri",
 		"scope", "state", "nonce", "code_challenge", "code_challenge_method",
-		"authorization_details", "response_mode", "iat", "nbf", "exp", "jti":
+		"authorization_details", "response_mode", "resource", "iat", "nbf", "exp", "jti":
 		return true
 	}
 	return false
@@ -173,6 +175,9 @@ func claimsToMap(claims requestObjectClaims) map[string]any {
 	}
 	if claims.ResponseMode != "" {
 		m["response_mode"] = claims.ResponseMode
+	}
+	if len(claims.Resource) > 0 {
+		m["resource"] = claims.Resource
 	}
 	for k, v := range claims.Extra {
 		m[k] = v

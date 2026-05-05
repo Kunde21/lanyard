@@ -37,7 +37,7 @@ func TestBuildSignedRequestObject_ContainsExpectedClaims(t *testing.T) {
 		responseMode: "query.jwt",
 	}
 
-	signed, err := r.buildSignedRequestObject("test-state", "test-nonce", "challenge-value", "", nil)
+	signed, err := r.buildSignedRequestObject("test-state", "test-nonce", "challenge-value", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestBuildSignedRequestObject_OmitsNonceWithoutOpenIDScope(t *testing.T) {
 		redirectURI: "https://rp.example.com/callback",
 	}
 
-	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestBuildSignedRequestObject_UsesConfiguredResponseType(t *testing.T) {
 		responseType: "code id_token",
 	}
 
-	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestBuildSignedRequestObject_RequiresKeyProvider(t *testing.T) {
 		redirectURI: "https://rp.example.com/callback",
 	}
 
-	_, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
+	_, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil)
 	if err == nil {
 		t.Fatal("expected error without key provider")
 	}
@@ -178,7 +178,7 @@ func TestBuildSignedRequestObject_ES256(t *testing.T) {
 		redirectURI: "https://rp.example.com/callback",
 	}
 
-	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil)
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestBuildSignedRequestObject_AuthorizationDetails(t *testing.T) {
 	}
 
 	details := `[{"type":"account_information"}]`
-	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", details, nil)
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", details, nil, nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -286,5 +286,43 @@ func verifyRequestObjectSignature(t *testing.T, signed string, pubKey any) {
 	_, err = parsed.Verify(pubKey)
 	if err != nil {
 		t.Fatalf("failed to verify request object signature: %v", err)
+	}
+}
+
+func TestBuildSignedRequestObject_IncludesResourceArray(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	provider := NewStaticClientKeyProvider(key, "test-kid-1", "PS256", nil)
+	fixedNow := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	r := &RP{
+		clientConfig: clientConfig{
+			issuer:            "https://example.com",
+			clientID:          "client-1",
+			scopes:            []string{"openid"},
+			clientKeyProvider: provider,
+			now:               func() time.Time { return fixedNow },
+			randReader:        strings.NewReader("01234567890123456789012345678901"),
+		},
+		redirectURI: "https://rp.example.com/callback",
+	}
+
+	signed, err := r.buildSignedRequestObject(
+		"state", "nonce", "challenge", "",
+		[]string{"https://api.example.com/", "https://payments.example.com/"},
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("buildSignedRequestObject() failed: %v", err)
+	}
+
+	claims := decodeRequestObjectPayload(t, signed)
+
+	want := []any{"https://api.example.com/", "https://payments.example.com/"}
+	if diff := cmp.Diff(want, claims["resource"]); diff != "" {
+		t.Fatalf("resource claim mismatch (-want +got):\n%s", diff)
 	}
 }

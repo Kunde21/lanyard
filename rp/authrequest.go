@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func (r *RP) saveCorrelation(ctx context.Context, w http.ResponseWriter, req *http.Request, state, nonce, verifier string, parResp *parResponse) error {
+func (r *RP) saveCorrelation(ctx context.Context, w http.ResponseWriter, req *http.Request, state, nonce, verifier string, resources []string, parResp *parResponse) error {
 	correlation := CallbackCorrelation{
 		Nonce:                  nonce,
 		CodeVerifier:           verifier,
@@ -19,6 +19,7 @@ func (r *RP) saveCorrelation(ctx context.Context, w http.ResponseWriter, req *ht
 		ClientID:               r.clientID,
 		ClientSecret:           r.clientSecret,
 		UserInfoTokenTransport: string(r.userInfoTokenTransport),
+		Resources:              append([]string(nil), resources...),
 	}
 	if parResp != nil {
 		correlation.Expiry = r.now().Add(time.Duration(parResp.ExpiresIn) * time.Second)
@@ -63,6 +64,14 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 			opt(&cfg)
 		}
 	}
+	if cfg.err != nil {
+		return "", cfg.err
+	}
+
+	selectedResources := r.resources
+	if cfg.resources != nil {
+		selectedResources = cfg.resources
+	}
 
 	if err := r.resolveAuthMethod(); err != nil {
 		return "", err
@@ -85,12 +94,12 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 		return "", err
 	}
 
-	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails, cfg.parameters)
+	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails, selectedResources, cfg.parameters)
 
 	if r.shouldUsePAR() {
 		parParams := params
 		if r.requestMethod.isSigned() {
-			signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, cfg.parameters)
+			signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.parameters)
 			if err != nil {
 				return "", err
 			}
@@ -106,7 +115,7 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 			return "", err
 		}
 
-		if err := r.saveCorrelation(req.Context(), w, req, state, nonce, verifier, parResp); err != nil {
+		if err := r.saveCorrelation(req.Context(), w, req, state, nonce, verifier, selectedResources, parResp); err != nil {
 			return "", err
 		}
 
@@ -115,7 +124,7 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 
 	redirectParams := params
 	if r.requestMethod.isSigned() {
-		signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, cfg.parameters)
+		signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.parameters)
 		if err != nil {
 			return "", err
 		}
@@ -140,7 +149,7 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 		}
 	}
 
-	if err := r.saveCorrelation(req.Context(), w, req, state, nonce, verifier, nil); err != nil {
+	if err := r.saveCorrelation(req.Context(), w, req, state, nonce, verifier, selectedResources, nil); err != nil {
 		return "", err
 	}
 
