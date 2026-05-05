@@ -128,6 +128,10 @@ func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 	r.applyProfileDefaults()
 	r.initDefaults()
 
+	if len(r.optionErrors) > 0 {
+		return nil, r.optionErrors[0]
+	}
+
 	if err := r.validate(); err != nil {
 		return nil, err
 	}

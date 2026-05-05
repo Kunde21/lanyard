@@ -32,6 +32,10 @@ func NewClientCredentials(ctx context.Context, issuer string, opts ...Option) (*
 
 	c.clientConfig.initDefaults()
 
+	if len(c.optionErrors) > 0 {
+		return nil, c.optionErrors[0]
+	}
+
 	if err := c.validate(); err != nil {
 		return nil, err
 	}

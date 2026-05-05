@@ -39,6 +39,8 @@ type AuthorizationURLOption func(*authorizationURLConfig)
 type authorizationURLConfig struct {
 	authorizationDetails string
 	parameters           url.Values
+	resources            []string
+	err                  error
 }
 
 // WithMetadataClient sets the metadata client used for discovery and JWKS setup.
@@ -228,6 +230,39 @@ func SetAuthorizationDetails(details []map[string]any) AuthorizationURLOption {
 		}
 		cfg.authorizationDetails = authorizationDetails
 	}
+}
+
+// SetResources sets OAuth 2.0 resource indicators for one authorization request.
+func SetResources(resources ...string) AuthorizationURLOption {
+	return func(cfg *authorizationURLConfig) {
+		if cfg == nil {
+			return
+		}
+		normalized, err := normalizeResources(resources)
+		if err != nil {
+			cfg.err = err
+			return
+		}
+		cfg.resources = normalized
+	}
+}
+
+// WithResources sets default OAuth 2.0 resource indicators (RFC 8707).
+func WithResources(resources ...string) Option {
+	return resourcesOption{resources: append([]string(nil), resources...)}
+}
+
+type resourcesOption struct {
+	resources []string
+}
+
+func (o resourcesOption) applyConfig(c *clientConfig) {
+	normalized, err := normalizeResources(o.resources)
+	if err != nil {
+		c.optionErrors = append(c.optionErrors, err)
+		return
+	}
+	c.resources = normalized
 }
 
 // SetAuthParam sets an extra authorization request parameter.
