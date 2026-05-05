@@ -21,6 +21,9 @@ type clientConfig struct {
 	scopes         []string
 	scopesExplicit bool
 	authMethod     AuthMethod
+	resources      []string
+
+	optionErrors []error
 
 	httpClient     *http.Client
 	logger         *slog.Logger

@@ -166,3 +166,36 @@ func tokenScopesFromContext(ctx context.Context) []string {
 	scopes, _ := ctx.Value(tokenScopesKey{}).([]string)
 	return scopes
 }
+
+type tokenResourcesKey struct{}
+
+type resourceContextValue struct {
+	resources []string
+	err       error
+}
+
+// WithTokenResources returns a context with per-request resource indicators for
+// token requests that support request-time overrides (RFC 8707).
+func WithTokenResources(ctx context.Context, resources ...string) context.Context {
+	if ctx == nil {
+		return nil
+	}
+	normalized, err := normalizeResources(resources)
+	if err != nil {
+		return context.WithValue(ctx, tokenResourcesKey{}, resourceContextValue{err: err})
+	}
+	return context.WithValue(ctx, tokenResourcesKey{}, resourceContextValue{resources: normalized})
+}
+
+func tokenResourcesFromContext(ctx context.Context) []string {
+	resources, _ := tokenResourcesAndErrorFromContext(ctx)
+	return resources
+}
+
+func tokenResourcesAndErrorFromContext(ctx context.Context) ([]string, error) {
+	if ctx == nil {
+		return nil, nil
+	}
+	value, _ := ctx.Value(tokenResourcesKey{}).(resourceContextValue)
+	return value.resources, value.err
+}
