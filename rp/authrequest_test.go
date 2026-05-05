@@ -15,6 +15,7 @@ import (
 	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp/store/memory"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestAuthorizationURL(t *testing.T) {
@@ -590,5 +591,117 @@ func TestAuthorizationURL_RequestURIHandlerNil_PreservesRequestByValue(t *testin
 	}
 	if q.Get("request_uri") != "" {
 		t.Fatal("request_uri must not be present when requestURIHandler is nil")
+	}
+}
+
+func TestAuthorizationURL_IncludesConfiguredResourceIndicators(t *testing.T) {
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithResources("https://api.example.com/", "https://payments.example.com/"),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	authURL, err := r.AuthorizationURL(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil))
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse() failed: %v", err)
+	}
+
+	want := []string{"https://api.example.com/", "https://payments.example.com/"}
+	if diff := cmp.Diff(want, parsed.Query()["resource"]); diff != "" {
+		t.Fatalf("resource query mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestAuthorizationURL_SetResourcesOverridesConfiguredResources(t *testing.T) {
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithResources("https://api.example.com/"),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	authURL, err := r.AuthorizationURL(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil),
+		SetResources("https://payments.example.com/"),
+	)
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+	parsed, err := url.Parse(authURL)
+	if err != nil {
+		t.Fatalf("url.Parse() failed: %v", err)
+	}
+
+	want := []string{"https://payments.example.com/"}
+	if diff := cmp.Diff(want, parsed.Query()["resource"]); diff != "" {
+		t.Fatalf("resource query mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestAuthorizationURL_SetResourcesInvalidReturnsError(t *testing.T) {
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		WithClientID("client-123"), WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.AuthorizationURL(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil),
+		SetResources("not-a-uri"),
+	)
+	if !cmp.Equal(ErrInvalidConfiguration, err, cmpopts.EquateErrors()) {
+		t.Fatalf("AuthorizationURL() error = %v, want ErrInvalidConfiguration", err)
+	}
+	if !strings.Contains(err.Error(), "resource must be an absolute URI") {
+		t.Fatalf("AuthorizationURL() error = %v, want resource validation message", err)
 	}
 }

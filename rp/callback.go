@@ -130,7 +130,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, fmt.Errorf("%w: provider missing token endpoint", ErrTokenExchangeFailed)
 	}
 
-	tokenResp, err := r.exchangeToken(req.Context(), tokenEndpoint, code, data.CodeVerifier)
+	tokenResp, err := r.exchangeToken(req.Context(), tokenEndpoint, code, data.CodeVerifier, data.Resources)
 	if err != nil {
 		return nil, err
 	}

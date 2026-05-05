@@ -254,7 +254,7 @@ func (s *Store) isExpired(entry stateEntry, now time.Time) bool {
 }
 
 func isZeroCorrelation(c rpstore.CallbackCorrelation) bool {
-	return c == (rpstore.CallbackCorrelation{})
+	return c.Nonce == "" && c.CodeVerifier == "" && c.CreatedAt.IsZero() && c.Expiry.IsZero() && c.Issuer == "" && c.ClientID == "" && c.ClientSecret == "" && c.RequestURI == "" && !c.UsedPAR && len(c.Resources) == 0 && c.UserInfoTokenTransport == ""
 }
 
 func cloneValues(values map[string][]byte) map[string][]byte {

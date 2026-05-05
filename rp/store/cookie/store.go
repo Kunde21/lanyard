@@ -44,14 +44,15 @@ type payloadState struct {
 }
 
 type payloadCorrelation struct {
-	Nonce                  string `json:"nonce,omitempty"`
-	CodeVerifier           string `json:"code_verifier,omitempty"`
-	CreatedAt              int64  `json:"created_at,omitempty"`
-	Expiry                 int64  `json:"expiry,omitempty"`
-	Issuer                 string `json:"issuer,omitempty"`
-	RequestURI             string `json:"request_uri,omitempty"`
-	UsedPAR                bool   `json:"used_par,omitempty"`
-	UserInfoTokenTransport string `json:"userinfo_token_transport,omitempty"`
+	Nonce                  string   `json:"nonce,omitempty"`
+	CodeVerifier           string   `json:"code_verifier,omitempty"`
+	CreatedAt              int64    `json:"created_at,omitempty"`
+	Expiry                 int64    `json:"expiry,omitempty"`
+	Issuer                 string   `json:"issuer,omitempty"`
+	RequestURI             string   `json:"request_uri,omitempty"`
+	UsedPAR                bool     `json:"used_par,omitempty"`
+	Resources              []string `json:"resources,omitempty"`
+	UserInfoTokenTransport string   `json:"userinfo_token_transport,omitempty"`
 }
 
 // New creates a cookie-backed state store.
@@ -510,6 +511,7 @@ func toPayloadCorrelation(correlation rpstore.CallbackCorrelation) *payloadCorre
 		Issuer:                 correlation.Issuer,
 		RequestURI:             correlation.RequestURI,
 		UsedPAR:                correlation.UsedPAR,
+		Resources:              correlation.Resources,
 		UserInfoTokenTransport: correlation.UserInfoTokenTransport,
 	}
 }
@@ -523,6 +525,7 @@ func fromPayloadCorrelation(correlation payloadCorrelation) rpstore.CallbackCorr
 		Issuer:                 correlation.Issuer,
 		RequestURI:             correlation.RequestURI,
 		UsedPAR:                correlation.UsedPAR,
+		Resources:              correlation.Resources,
 		UserInfoTokenTransport: correlation.UserInfoTokenTransport,
 	}
 }

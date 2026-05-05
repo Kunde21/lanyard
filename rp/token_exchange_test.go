@@ -123,7 +123,7 @@ func TestExchangeTokenRequestShape(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	got, err := r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	got, err := r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if err != nil {
 		t.Fatalf("exchangeToken() failed: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestExchangeToken_PreservesRawPayload(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	token, err := r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	token, err := r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if err != nil {
 		t.Fatalf("exchangeToken() failed: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestExchangeTokenNon200PreviewBounded(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if err == nil {
 		t.Fatalf("exchangeToken() expected error")
 	}
@@ -264,7 +264,7 @@ func TestExchangeTokenRequestShapePostAuth(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if err != nil {
 		t.Fatalf("exchangeToken() failed: %v", err)
 	}
@@ -343,7 +343,7 @@ func TestExchangeTokenFallbackFromPostToBasicAndCaches(t *testing.T) {
 		t.Fatalf("allowMethodFallback should be true when metadata omits supported methods")
 	}
 
-	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if err != nil {
 		t.Fatalf("first exchangeToken() failed: %v", err)
 	}
@@ -378,7 +378,7 @@ func TestExchangeTokenFallbackFromPostToBasicAndCaches(t *testing.T) {
 		t.Fatalf("allowMethodFallback should be false after successful fallback")
 	}
 
-	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code-2", "verifier")
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code-2", "verifier", nil)
 	if err != nil {
 		t.Fatalf("second exchangeToken() failed: %v", err)
 	}
@@ -420,7 +420,7 @@ func TestExchangeTokenFallbackFailureUsesRetryPreview(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if !errors.Is(err, ErrTokenExchangeFailed) {
 		t.Fatalf("expected ErrTokenExchangeFailed, got: %v", err)
 	}
@@ -478,7 +478,7 @@ func TestExchangeToken_RetriesWithDpopNonce(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if err != nil {
 		t.Fatalf("exchangeToken() failed: %v", err)
 	}
@@ -521,7 +521,7 @@ func TestExchangeToken_StoresNonceFromSuccessfulResponse(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if err != nil {
 		t.Fatalf("exchangeToken() failed: %v", err)
 	}
@@ -577,7 +577,7 @@ func TestExchangeTokenRequestShape_SelfSignedTLSClientAuth(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier")
+	_, err = r.exchangeToken(context.Background(), ts.URL, "auth-code", "verifier", nil)
 	if err != nil {
 		t.Fatalf("exchangeToken() failed: %v", err)
 	}

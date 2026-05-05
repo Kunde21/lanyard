@@ -109,9 +109,9 @@ func executeTokenRequest(cfg tokenRequestExecution) (Token, int, string, error) 
 	return tokenResp, status, preview, nil
 }
 
-func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier string) (Token, error) {
+func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier string, resources []string) (Token, error) {
 	tokenResp, err := executeTokenGrant(&r.clientConfig, func(method AuthMethod) (tokenGrantResult, error) {
-		tokenResp, status, preview, err := r.exchangeTokenOnce(ctx, tokenEndpoint, code, verifier, method, "")
+		tokenResp, status, preview, err := r.exchangeTokenOnce(ctx, tokenEndpoint, code, verifier, method, "", resources)
 		return tokenGrantResult{token: tokenResp, status: status, preview: preview}, err
 	})
 	if err != nil {
@@ -120,12 +120,13 @@ func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier st
 	return tokenResp, nil
 }
 
-func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifier string, method AuthMethod, dpopAccessToken string) (Token, int, string, error) {
+func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifier string, method AuthMethod, dpopAccessToken string, resources []string) (Token, int, string, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
 	form.Set("redirect_uri", r.redirectURI)
 	form.Set("code_verifier", verifier)
+	addResourceParameters(form, resources)
 
 	useDPoP := r.shouldUseDPoP()
 
