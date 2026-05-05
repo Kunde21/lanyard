@@ -91,6 +91,15 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 	if len(scopes) > 0 {
 		form.Set("scope", strings.Join(scopes, " "))
 	}
+
+	resources := c.resources
+	if overrideResources, overrideErr := tokenResourcesAndErrorFromContext(ctx); overrideErr != nil {
+		return nil, 0, "", overrideErr
+	} else if len(overrideResources) > 0 {
+		resources = overrideResources
+	}
+	addResourceParameters(form, resources)
+
 	if method != AuthMethodBasic {
 		form.Set("client_id", c.clientID)
 	}

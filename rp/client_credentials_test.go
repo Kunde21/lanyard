@@ -978,3 +978,104 @@ func TestClientCredentials_Token_SelfSignedTLSClientAuth(t *testing.T) {
 		t.Errorf("client_secret should not be in body for self_signed_tls_client_auth, got: %s", requestBody)
 	}
 }
+
+func TestClientCredentials_Token_IncludesConfiguredResources(t *testing.T) {
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "test-access-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClientCredentials(context.Background(), "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+		WithProviderMetadata(clientCredentialsProvider(server.URL, AuthMethodPost)),
+		WithAuthMethod(AuthMethodPost),
+		WithResources("https://api.example.com/", "https://payments.example.com/"),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+
+	if _, err := client.Token(context.Background()); err != nil {
+		t.Fatalf("Token() failed: %v", err)
+	}
+
+	want := []string{"https://api.example.com/", "https://payments.example.com/"}
+	if diff := cmp.Diff(want, gotForm["resource"]); diff != "" {
+		t.Fatalf("resource form mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestClientCredentials_Token_ContextResourcesOverrideConfiguredResources(t *testing.T) {
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "test-access-token",
+			"token_type":   "Bearer",
+			"expires_in":   3600,
+		})
+	}))
+	defer server.Close()
+
+	client, err := NewClientCredentials(context.Background(), "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+		WithProviderMetadata(clientCredentialsProvider(server.URL, AuthMethodPost)),
+		WithAuthMethod(AuthMethodPost),
+		WithResources("https://api.example.com/"),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+
+	ctx := WithTokenResources(context.Background(), "https://payments.example.com/")
+	if _, err := client.Token(ctx); err != nil {
+		t.Fatalf("Token() failed: %v", err)
+	}
+
+	want := []string{"https://payments.example.com/"}
+	if diff := cmp.Diff(want, gotForm["resource"]); diff != "" {
+		t.Fatalf("resource form mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestClientCredentials_Token_InvalidContextResourceDoesNotCallEndpoint(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client, err := NewClientCredentials(context.Background(), "https://auth.example.com",
+		WithClientID("client-id"),
+		WithClientSecret("client-secret"),
+		WithProviderMetadata(clientCredentialsProvider(server.URL, AuthMethodPost)),
+		WithAuthMethod(AuthMethodPost),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+
+	_, err = client.Token(WithTokenResources(context.Background(), "not-a-uri"))
+	if !cmp.Equal(ErrClientCredentialsFailed, err, cmpopts.EquateErrors()) {
+		t.Fatalf("Token() error = %v, want ErrClientCredentialsFailed", err)
+	}
+	if !strings.Contains(err.Error(), "resource must be an absolute URI") {
+		t.Fatalf("Token() error = %v, want resource validation message", err)
+	}
+	if calls != 0 {
+		t.Fatalf("token endpoint calls = %d, want 0", calls)
+	}
+}
