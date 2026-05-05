@@ -26,6 +26,12 @@
 // interaction. The method respects the same auth method and DPoP
 // configuration as the original flow.
 //
+// # Resource indicators
+//
+// Use [WithResources] or [SetResources] to send OAuth 2.0 Resource Indicators
+// (RFC 8707) as repeated resource parameters. Use [WithTokenResources] to
+// override resources for refresh-token and client-credentials token requests.
+//
 // # Provider discovery
 //
 // For configuration validation or provider inspection before construction, use
