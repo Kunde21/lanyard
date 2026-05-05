@@ -55,3 +55,15 @@ func ExampleNew() {
 	fmt.Println(authURL != "")
 	// Output: true
 }
+
+func ExampleWithResources_clientCredentials() {
+	// Use WithResources to request an audience-restricted access token for an API.
+	_, _ = rp.NewClientCredentials(
+		context.Background(),
+		"https://issuer.example.com",
+		rp.WithClientID("client-id"),
+		rp.WithClientSecret("client-secret"),
+		rp.WithResources("https://api.example.com/"),
+	)
+	// Output:
+}

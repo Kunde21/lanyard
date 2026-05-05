@@ -42,6 +42,7 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
     *   RP-hosted `request_uri` request object support for OIDC configuration variants.
     *   JWT Secured Authorization Response Mode (JARM).
     *   Rich Authorization Requests (RAR).
+    *   Resource Indicators (RFC 8707): audience-restricted tokens via repeated `resource` parameters.
 
 *   **Client Credentials Grant** (RFC 6749 §4.4):
     *   OAuth 2.0 Client Credentials flow for service-to-service authentication.
@@ -243,6 +244,27 @@ func main() {
 
 	_ = adminToken
 }
+```
+
+### Resource Indicators
+
+Use [WithResources] to request audience-restricted access tokens with OAuth 2.0
+Resource Indicators (RFC 8707). Resources are sent as repeated `resource`
+parameters in authorization requests and token requests.
+
+```go
+client, err := rp.NewClientCredentials(
+	ctx,
+	provider.Issuer,
+	rp.WithClientID("client-id"),
+	rp.WithClientSecret("client-secret"),
+	rp.WithProviderMetadata(provider),
+	rp.WithResources("https://api.example.com/"),
+)
+
+// Override resources per-request via context.
+paymentsCtx := rp.WithTokenResources(ctx, "https://payments.example.com/")
+paymentsToken, err := client.Token(paymentsCtx)
 ```
 
 ## Project Structure
