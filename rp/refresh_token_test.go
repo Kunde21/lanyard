@@ -105,7 +105,7 @@ func TestRefreshTokenOnce_PostAuth(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	token, _, _, err := r.refreshTokenOnce(context.Background(), ts.URL, "rt", AuthMethodPost, "")
+	token, _, _, err := r.refreshTokenOnce(context.Background(), ts.URL, "rt", AuthMethodPost, "", nil)
 	if err != nil {
 		t.Fatalf("refreshTokenOnce() failed: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestRefreshTokenOnce_NoneAuth(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	token, _, _, err := r.refreshTokenOnce(context.Background(), ts.URL, "rt", AuthMethodNone, "")
+	token, _, _, err := r.refreshTokenOnce(context.Background(), ts.URL, "rt", AuthMethodNone, "", nil)
 	if err != nil {
 		t.Fatalf("refreshTokenOnce() failed: %v", err)
 	}
@@ -479,5 +479,102 @@ func TestRefreshToken_PreservesRawPayload(t *testing.T) {
 	}
 	if err := token.DecodeRaw(&map[string]any{}); err != nil {
 		t.Fatalf("DecodeRaw() failed: %v", err)
+	}
+}
+
+func TestRefreshToken_IncludesConfiguredResources(t *testing.T) {
+	var gotForm url.Values
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Token{AccessToken: "new-access", TokenType: "Bearer", ExpiresIn: 3600})
+	}))
+	defer ts.Close()
+
+	provider := metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:                            "https://issuer.test",
+			AuthorizationEndpoint:             "https://issuer.test/authorize",
+			TokenEndpoint:                     ts.URL,
+			JWKSURI:                           "https://issuer.test/jwks",
+			ResponseTypesSupported:            []string{"code"},
+			TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+		},
+		SubjectTypesSupported:            []string{"public"},
+		IDTokenSigningAlgValuesSupported: []string{"RS256"},
+	}
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithResources("https://api.example.com/"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if _, err := r.RefreshToken(context.Background(), "rt"); err != nil {
+		t.Fatalf("RefreshToken() failed: %v", err)
+	}
+
+	want := []string{"https://api.example.com/"}
+	if diff := cmp.Diff(want, gotForm["resource"]); diff != "" {
+		t.Fatalf("resource form mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestRefreshToken_ContextResourcesOverrideConfiguredResources(t *testing.T) {
+	var gotForm url.Values
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Token{AccessToken: "new-access", TokenType: "Bearer", ExpiresIn: 3600})
+	}))
+	defer ts.Close()
+
+	provider := metadata.Provider{
+		AuthorizationServer: metadata.AuthorizationServer{
+			Issuer:                            "https://issuer.test",
+			AuthorizationEndpoint:             "https://issuer.test/authorize",
+			TokenEndpoint:                     ts.URL,
+			JWKSURI:                           "https://issuer.test/jwks",
+			ResponseTypesSupported:            []string{"code"},
+			TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+		},
+		SubjectTypesSupported:            []string{"public"},
+		IDTokenSigningAlgValuesSupported: []string{"RS256"},
+	}
+
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithResources("https://api.example.com/"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	ctx := WithTokenResources(context.Background(), "https://payments.example.com/")
+	if _, err := r.RefreshToken(ctx, "rt"); err != nil {
+		t.Fatalf("RefreshToken() failed: %v", err)
+	}
+
+	want := []string{"https://payments.example.com/"}
+	if diff := cmp.Diff(want, gotForm["resource"]); diff != "" {
+		t.Fatalf("resource form mismatch (-want +got):\n%s", diff)
 	}
 }

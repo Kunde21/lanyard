@@ -18,8 +18,15 @@ func (r *RP) RefreshToken(ctx context.Context, refreshToken string) (Token, erro
 		return Token{}, fmt.Errorf("%w: token endpoint is not configured", ErrRefreshTokenFailed)
 	}
 
+	resources := r.resources
+	if overrideResources, overrideErr := tokenResourcesAndErrorFromContext(ctx); overrideErr != nil {
+		return Token{}, fmt.Errorf("%w: %v", ErrRefreshTokenFailed, overrideErr)
+	} else if len(overrideResources) > 0 {
+		resources = overrideResources
+	}
+
 	tokenResp, err := executeTokenGrant(&r.clientConfig, func(method AuthMethod) (tokenGrantResult, error) {
-		tokenResp, status, preview, err := r.refreshTokenOnce(ctx, tokenEndpoint, refreshToken, method, "")
+		tokenResp, status, preview, err := r.refreshTokenOnce(ctx, tokenEndpoint, refreshToken, method, "", resources)
 		return tokenGrantResult{token: tokenResp, status: status, preview: preview}, err
 	})
 	if err != nil {
@@ -28,10 +35,11 @@ func (r *RP) RefreshToken(ctx context.Context, refreshToken string) (Token, erro
 	return tokenResp, nil
 }
 
-func (r *RP) refreshTokenOnce(ctx context.Context, tokenEndpoint, refreshToken string, method AuthMethod, dpopAccessToken string) (Token, int, string, error) {
+func (r *RP) refreshTokenOnce(ctx context.Context, tokenEndpoint, refreshToken string, method AuthMethod, dpopAccessToken string, resources []string) (Token, int, string, error) {
 	form := url.Values{}
 	form.Set("grant_type", "refresh_token")
 	form.Set("refresh_token", refreshToken)
+	addResourceParameters(form, resources)
 
 	useDPoP := r.shouldUseDPoP()
 
