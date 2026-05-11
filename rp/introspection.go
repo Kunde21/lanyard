@@ -1,6 +1,7 @@
 package rp
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 
 // ErrIntrospectionFailed indicates a token introspection request failed.
 var ErrIntrospectionFailed = errors.New("token introspection failed")
+
+const introspectionJWTMediaType = "application/token-introspection+jwt"
 
 // TokenTypeHint identifies the kind of token being introspected.
 type TokenTypeHint string
@@ -89,4 +92,64 @@ func (r IntrospectionResponse) RawJWT() string {
 // Introspector performs OAuth 2.0 token introspection requests (RFC 7662).
 type Introspector struct {
 	clientConfig
+}
+
+// NewIntrospector creates a client for OAuth 2.0 token introspection.
+// Unlike [New], it does not require authorization-code-only options such as
+// redirect URI or state store. Provider metadata is discovered automatically
+// unless [WithProviderMetadata] supplies complete metadata.
+func NewIntrospector(ctx context.Context, issuer string, opts ...Option) (*Introspector, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	i := &Introspector{clientConfig: defaultClientConfig(issuer)}
+	for _, opt := range opts {
+		if _, ok := opt.(AuthCodeOption); ok {
+			return nil, fmt.Errorf("%w: auth-code option is not valid for token introspection", ErrInvalidConfiguration)
+		}
+		opt.applyConfig(&i.clientConfig)
+	}
+
+	i.clientConfig.initDefaults()
+	if len(i.optionErrors) > 0 {
+		return nil, i.optionErrors[0]
+	}
+	if err := i.validate(); err != nil {
+		return nil, err
+	}
+	i.clientConfig.initMetadataClient()
+	if err := i.clientConfig.resolveProviderFromDiscovery(ctx); err != nil {
+		return nil, err
+	}
+	if err := i.resolveIntrospectionAuthMethod(); err != nil {
+		return nil, err
+	}
+	if i.introspectionEndpoint(i.provider) == "" {
+		return nil, fmt.Errorf("%w: introspection endpoint is not configured", ErrInvalidConfiguration)
+	}
+	return i, nil
+}
+
+func (i *Introspector) validate() error {
+	if err := validateHTTPSAbsoluteURL("issuer", i.issuer); err != nil {
+		return err
+	}
+	if i.clientID == "" {
+		return fmt.Errorf("%w: client_id is required", ErrInvalidConfiguration)
+	}
+	return nil
+}
+
+func (i *Introspector) resolveIntrospectionAuthMethod() error {
+	supported := i.provider.IntrospectionEndpointAuthMethodsSupported
+	if len(supported) == 0 {
+		supported = i.provider.TokenEndpointAuthMethodsSupported
+	}
+	method, allowFallback, err := i.clientConfig.selectAuthMethodFromSupported(supported)
+	if err != nil {
+		return err
+	}
+	i.clientConfig.setAuthMethodState(method, allowFallback)
+	return nil
 }

@@ -78,14 +78,23 @@ func (c *clientConfig) resolveProviderFromDiscovery(ctx context.Context) error {
 }
 
 func (c *clientConfig) resolveAuthMethodFromProvider() error {
-	supported := normalizeSupportedAuthMethods(c.provider.TokenEndpointAuthMethodsSupported)
+	method, allowFallback, err := c.selectAuthMethodFromSupported(c.provider.TokenEndpointAuthMethodsSupported)
+	if err != nil {
+		return err
+	}
+	c.setAuthMethodState(method, allowFallback)
+	return nil
+}
+
+func (c *clientConfig) selectAuthMethodFromSupported(supported []string) (AuthMethod, bool, error) {
+	supported = normalizeSupportedAuthMethods(supported)
 	resolved := AuthMethodPost
 	allowFallback := false
 
 	if len(supported) > 0 {
 		if c.authMethod != "" {
 			if !methodSupported(c.authMethod, supported) {
-				return &AuthMethodError{Method: c.authMethod, Supported: supported, Err: ErrAuthMethodNotSupported}
+				return "", false, &AuthMethodError{Method: c.authMethod, Supported: supported, Err: ErrAuthMethodNotSupported}
 			}
 			resolved = c.authMethod
 		} else {
@@ -103,7 +112,7 @@ func (c *clientConfig) resolveAuthMethodFromProvider() error {
 			case methodSupported(AuthMethodBasic, supported):
 				resolved = AuthMethodBasic
 			default:
-				return &AuthMethodError{Method: AuthMethodPost, Supported: supported, Err: ErrAuthMethodNotSupported}
+				return "", false, &AuthMethodError{Method: AuthMethodPost, Supported: supported, Err: ErrAuthMethodNotSupported}
 			}
 		}
 	} else if c.authMethod != "" {
@@ -114,12 +123,10 @@ func (c *clientConfig) resolveAuthMethodFromProvider() error {
 	}
 
 	if err := c.validateResolvedAuthMethod(resolved); err != nil {
-		return err
+		return "", false, err
 	}
 
-	c.setAuthMethodState(resolved, allowFallback)
-
-	return nil
+	return resolved, allowFallback, nil
 }
 
 func (c *clientConfig) validateResolvedAuthMethod(method AuthMethod) error {

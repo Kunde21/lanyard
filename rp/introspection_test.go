@@ -1,12 +1,136 @@
 package rp
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
+
+func introspectionProvider(endpoint string, methods ...string) metadata.Provider {
+	return metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                                    "https://issuer.test",
+		IntrospectionEndpoint:                     endpoint,
+		IntrospectionEndpointAuthMethodsSupported: append([]string(nil), methods...),
+		TokenEndpointAuthMethodsSupported:         append([]string(nil), methods...),
+	}}
+}
+
+func TestNewIntrospector_RejectsAuthCodeOptions(t *testing.T) {
+	_, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider("https://issuer.test/introspect", "client_secret_basic")),
+		WithRedirectURI("https://rp.test/callback"),
+	)
+	if err == nil {
+		t.Fatal("expected error for auth-code option")
+	}
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("error = %v, want ErrInvalidConfiguration", err)
+	}
+}
+
+func TestNewIntrospector_RequiresClientID(t *testing.T) {
+	_, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider("https://issuer.test/introspect", "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err == nil {
+		t.Fatal("expected error for missing client_id")
+	}
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("error = %v, want ErrInvalidConfiguration", err)
+	}
+}
+
+func TestNewIntrospector_RequiresIntrospectionEndpoint(t *testing.T) {
+	_, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+			Issuer: "https://issuer.test",
+		}}),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err == nil {
+		t.Fatal("expected error for missing introspection endpoint")
+	}
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("error = %v, want ErrInvalidConfiguration", err)
+	}
+}
+
+func TestNewIntrospector_AcceptsConfiguredProvider(t *testing.T) {
+	server := httptest.NewServer(nil)
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider(server.URL+"/introspect", "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+	if i == nil {
+		t.Fatal("expected non-nil Introspector")
+	}
+}
+
+func TestNewIntrospector_SelectsIntrospectionAuthMethods(t *testing.T) {
+	server := httptest.NewServer(nil)
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                                    "https://issuer.test",
+		IntrospectionEndpoint:                     server.URL + "/introspect",
+		TokenEndpointAuthMethodsSupported:         []string{"client_secret_basic"},
+		IntrospectionEndpointAuthMethodsSupported: []string{"client_secret_post"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+	if i.resolvedAuthMethod != AuthMethodPost {
+		t.Fatalf("resolvedAuthMethod = %q, want %q", i.resolvedAuthMethod, AuthMethodPost)
+	}
+}
+
+func TestNewIntrospector_FallsBackToTokenEndpointAuthMethods(t *testing.T) {
+	server := httptest.NewServer(nil)
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             server.URL + "/introspect",
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+	if i.resolvedAuthMethod != AuthMethodBasic {
+		t.Fatalf("resolvedAuthMethod = %q, want %q", i.resolvedAuthMethod, AuthMethodBasic)
+	}
+}
 
 func TestIntrospectionResponse_UnmarshalPreservesRaw(t *testing.T) {
 	data := []byte(`{"active":true,"scope":"read write","client_id":"client","aud":"https://api.example.com","custom":"value"}`)
