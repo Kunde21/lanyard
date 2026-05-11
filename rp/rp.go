@@ -230,6 +230,13 @@ func mergeProvider(dst, src metadata.Provider, mode providerMergeMode) metadata.
 	)
 	mergeStrings(&merged.IDTokenEncryptionAlgValuesSupported, src.IDTokenEncryptionAlgValuesSupported)
 	mergeStrings(&merged.IDTokenEncryptionEncValuesSupported, src.IDTokenEncryptionEncValuesSupported)
+	mergeString(&merged.IntrospectionEndpoint, src.IntrospectionEndpoint)
+	mergeStrings(&merged.IntrospectionEndpointAuthMethodsSupported, src.IntrospectionEndpointAuthMethodsSupported)
+	mergeStrings(&merged.IntrospectionEndpointAuthSigningAlgValuesSupported, src.IntrospectionEndpointAuthSigningAlgValuesSupported)
+	mergeStrings(&merged.IntrospectionSigningAlgValuesSupported, src.IntrospectionSigningAlgValuesSupported)
+	mergeStrings(&merged.IntrospectionEncryptionAlgValuesSupported, src.IntrospectionEncryptionAlgValuesSupported)
+	mergeStrings(&merged.IntrospectionEncryptionEncValuesSupported, src.IntrospectionEncryptionEncValuesSupported)
+	mergeString(&merged.MTLSEndpointAliases.IntrospectionEndpoint, src.MTLSEndpointAliases.IntrospectionEndpoint)
 
 	switch mode {
 	case providerMergeFillMissing:
