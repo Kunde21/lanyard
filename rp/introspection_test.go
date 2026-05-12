@@ -2,6 +2,9 @@ package rp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"io"
@@ -380,5 +383,366 @@ func TestIntrospector_IntrospectToken_InactiveToken(t *testing.T) {
 	}
 	if got.Active {
 		t.Fatal("Active = true, want false")
+	}
+}
+
+func TestIntrospector_IntrospectToken_PrivateKeyJWT(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true,"scope":"read"}`))
+	}))
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithProviderMetadata(introspectionProvider(server.URL, "private_key_jwt")),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if gotForm.Get("client_assertion_type") != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
+		t.Fatalf("client_assertion_type = %q, want jwt-bearer", gotForm.Get("client_assertion_type"))
+	}
+	assertion := gotForm.Get("client_assertion")
+	if assertion == "" {
+		t.Fatal("client_assertion is empty")
+	}
+	parts := strings.Split(assertion, ".")
+	if len(parts) != 3 {
+		t.Fatalf("client_assertion has %d parts, want 3", len(parts))
+	}
+}
+
+func TestIntrospector_IntrospectToken_ClientSecretJWT(t *testing.T) {
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                                    "https://issuer.test",
+		IntrospectionEndpoint:                     server.URL,
+		IntrospectionEndpointAuthMethodsSupported: []string{"client_secret_jwt"},
+		TokenEndpointAuthMethodsSupported:         []string{"client_secret_jwt"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("a-very-long-client-secret-for-hs256-compat"),
+		WithAuthMethod(AuthMethodClientSecretJWT),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if gotForm.Get("client_assertion_type") != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
+		t.Fatalf("client_assertion_type = %q, want jwt-bearer", gotForm.Get("client_assertion_type"))
+	}
+	if gotForm.Get("client_assertion") == "" {
+		t.Fatal("client_assertion is empty")
+	}
+}
+
+func TestIntrospector_IntrospectToken_NoneAuth(t *testing.T) {
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                                    "https://issuer.test",
+		IntrospectionEndpoint:                     server.URL,
+		IntrospectionEndpointAuthMethodsSupported: []string{"none"},
+		TokenEndpointAuthMethodsSupported:         []string{"none"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithAuthMethod(AuthMethodNone),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if gotForm.Get("client_id") != "client" {
+		t.Fatalf("client_id = %q, want %q", gotForm.Get("client_id"), "client")
+	}
+	if gotForm.Get("client_secret") != "" {
+		t.Fatal("client_secret should not be present for none auth")
+	}
+}
+
+func TestIntrospector_IntrospectToken_SelfSignedTLSClientAuth(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	cert := &tls.Certificate{}
+
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             server.URL,
+		TokenEndpointAuthMethodsSupported: []string{"self_signed_tls_client_auth"},
+		MTLSEndpointAliases: metadata.MTLSEndpointAliases{
+			IntrospectionEndpoint: server.URL + "/mtls",
+		},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", cert)),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if gotForm.Get("client_id") != "client" {
+		t.Fatalf("client_id = %q, want %q", gotForm.Get("client_id"), "client")
+	}
+	if gotForm.Get("client_secret") != "" {
+		t.Fatal("client_secret should not be present for TLS auth")
+	}
+}
+
+func TestIntrospector_IntrospectToken_FallbackToBasic(t *testing.T) {
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"invalid_client"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                "https://issuer.test",
+		IntrospectionEndpoint: server.URL,
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if callCount != 2 {
+		t.Fatalf("callCount = %d, want 2 (post then basic fallback)", callCount)
+	}
+}
+
+func TestIntrospector_IntrospectToken_DPoP(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	var dpopHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		dpopHeader = r.Header.Get("DPoP")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             server.URL,
+		TokenEndpointAuthMethodsSupported: []string{"private_key_jwt"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain(SenderConstraintDPoP),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if dpopHeader == "" {
+		t.Fatal("DPoP header is empty")
+	}
+}
+
+func TestIntrospector_IntrospectToken_DPoPNonceRetry(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			w.Header().Set("DPoP-Nonce", "server-nonce")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"use_dpop_nonce"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             server.URL,
+		TokenEndpointAuthMethodsSupported: []string{"private_key_jwt"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain(SenderConstraintDPoP),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if callCount != 2 {
+		t.Fatalf("callCount = %d, want 2 (initial + nonce retry)", callCount)
+	}
+}
+
+func TestIntrospector_IntrospectToken_RawExtensionPreserved(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true,"scope":"read","custom_field":"custom_value","exp":1234567890}`))
+	}))
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider(server.URL, "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if diff := cmp.Diff(int64(1234567890), got.Exp); diff != "" {
+		t.Fatalf("Exp mismatch (-want +got):\n%s", diff)
+	}
+
+	var extra struct {
+		CustomField string `json:"custom_field"`
+	}
+	if err := got.DecodeRaw(&extra); err != nil {
+		t.Fatalf("DecodeRaw() failed: %v", err)
+	}
+	if diff := cmp.Diff("custom_value", extra.CustomField); diff != "" {
+		t.Fatalf("custom_field mismatch (-want +got):\n%s", diff)
 	}
 }
