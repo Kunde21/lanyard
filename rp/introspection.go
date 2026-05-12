@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
 )
 
 // ErrIntrospectionFailed indicates a token introspection request failed.
@@ -152,4 +156,123 @@ func (i *Introspector) resolveIntrospectionAuthMethod() error {
 	}
 	i.clientConfig.setAuthMethodState(method, allowFallback)
 	return nil
+}
+
+// IntrospectToken introspects a token at the configured provider using RFC 7662.
+func (i *Introspector) IntrospectToken(ctx context.Context, req IntrospectionRequest) (IntrospectionResponse, error) {
+	return i.clientConfig.introspectToken(ctx, req)
+}
+
+// IntrospectToken introspects a token using the RP's configured provider and
+// client authentication.
+func (r *RP) IntrospectToken(ctx context.Context, req IntrospectionRequest) (IntrospectionResponse, error) {
+	return r.clientConfig.introspectToken(ctx, req)
+}
+
+func (c *clientConfig) introspectToken(ctx context.Context, in IntrospectionRequest) (IntrospectionResponse, error) {
+	if strings.TrimSpace(in.Token) == "" {
+		return IntrospectionResponse{}, fmt.Errorf("%w: token is required", ErrIntrospectionFailed)
+	}
+	endpoint := c.introspectionEndpoint(c.provider)
+	if endpoint == "" {
+		return IntrospectionResponse{}, fmt.Errorf("%w: introspection endpoint is not configured", ErrIntrospectionFailed)
+	}
+	method, allowFallback := c.authMethodState()
+
+	resp, status, preview, err := c.introspectTokenOnce(ctx, endpoint, in, method)
+	if err != nil {
+		return IntrospectionResponse{}, fmt.Errorf("%w: %v", ErrIntrospectionFailed, err)
+	}
+	if status == http.StatusOK {
+		if allowFallback {
+			c.setAuthMethodState(method, false)
+		}
+		return resp, nil
+	}
+
+	if allowFallback && method == AuthMethodPost && shouldFallbackToBasic(status) {
+		retryResp, retryStatus, retryPreview, retryErr := c.introspectTokenOnce(ctx, endpoint, in, AuthMethodBasic)
+		if retryErr != nil {
+			return IntrospectionResponse{}, fmt.Errorf("%w: %v", ErrIntrospectionFailed, retryErr)
+		}
+		if retryStatus == http.StatusOK {
+			c.setAuthMethodState(AuthMethodBasic, false)
+			return retryResp, nil
+		}
+		return IntrospectionResponse{}, fmt.Errorf("%w: introspection endpoint returned status %d: %s", ErrIntrospectionFailed, retryStatus, retryPreview)
+	}
+
+	return IntrospectionResponse{}, fmt.Errorf("%w: introspection endpoint returned status %d: %s", ErrIntrospectionFailed, status, preview)
+}
+
+func (c *clientConfig) introspectTokenOnce(ctx context.Context, endpoint string, in IntrospectionRequest, method AuthMethod) (IntrospectionResponse, int, string, error) {
+	var out IntrospectionResponse
+	_, status, preview, err := doRequestWithDPoPRetry(dpopRequestConfig{
+		buildRequest: func() (*http.Request, error) {
+			return c.buildIntrospectionRequest(ctx, endpoint, in, method)
+		},
+		attachDPoP: func(req *http.Request, nonce string) error {
+			return c.attachDPoPProof(req, nonce)
+		},
+		handleResponse: func(body io.Reader) error {
+			return json.NewDecoder(body).Decode(&out)
+		},
+		storeNonce: func(resp *http.Response) {
+			c.extractAndStoreDPoPNonce(resp, endpoint)
+		},
+		successStatus: http.StatusOK,
+		httpClient:    c.httpClient,
+		useDPoP:       c.shouldUseDPoP(),
+		cachedNonce:   c.cachedDPoPNonce(endpoint),
+	})
+	if err != nil {
+		var decodeErr *jsonDecodeError
+		if errors.As(err, &decodeErr) {
+			return IntrospectionResponse{}, 0, "", fmt.Errorf("failed to decode introspection response: %w", decodeErr.Err)
+		}
+		return IntrospectionResponse{}, 0, "", fmt.Errorf("failed to execute introspection request: %w", err)
+	}
+	return out, status, preview, nil
+}
+
+func (c *clientConfig) buildIntrospectionRequest(ctx context.Context, endpoint string, in IntrospectionRequest, method AuthMethod) (*http.Request, error) {
+	form := url.Values{}
+	form.Set("token", strings.TrimSpace(in.Token))
+	if strings.TrimSpace(string(in.TokenTypeHint)) != "" {
+		form.Set("token_type_hint", strings.TrimSpace(string(in.TokenTypeHint)))
+	}
+
+	switch method {
+	case AuthMethodPrivateKeyJWT:
+		assertion, err := buildPrivateKeyClientAssertion(c.clientID, endpoint, c.clientKeyProvider, c.now(), c.randReader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build client assertion: %w", err)
+		}
+		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+		form.Set("client_assertion", assertion)
+		form.Set("client_id", c.clientID)
+	case AuthMethodClientSecretJWT:
+		assertion, err := buildClientSecretJWTAssertion(c.clientID, c.clientSecret, endpoint, c.now(), c.randReader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build client secret assertion: %w", err)
+		}
+		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+		form.Set("client_assertion", assertion)
+		form.Set("client_id", c.clientID)
+	case AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth, AuthMethodNone:
+		form.Set("client_id", c.clientID)
+	case AuthMethodPost:
+		form.Set("client_id", c.clientID)
+		form.Set("client_secret", c.clientSecret)
+	case AuthMethodBasic:
+	}
+
+	req, err := buildTokenRequestEnvelope(ctx, endpoint, form, method, c.clientID, c.clientSecret)
+	if err != nil {
+		return nil, err
+	}
+	if in.PreferJWTResponse {
+		req.Header.Set("Accept", introspectionJWTMediaType)
+	}
+	return req, nil
 }

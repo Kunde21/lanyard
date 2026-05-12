@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/Kunde21/lanyard/metadata"
@@ -189,4 +193,192 @@ func TestIntrospector_PublicAPISmoke(t *testing.T) {
 	var _ = IntrospectionRequest{Token: "token", PreferJWTResponse: true}
 	var _ = IntrospectionRequest{Token: "token", ExpectedJWTAudience: "https://rs.example.com"}
 	var _ = (*Introspector)(nil)
+}
+
+func TestIntrospector_IntrospectToken_BasicAuth(t *testing.T) {
+	var requestBody string
+	var authHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeader = r.Header.Get("Authorization")
+		body, _ := io.ReadAll(r.Body)
+		requestBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true,"scope":"read"}`))
+	}))
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider(server.URL, "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token:         "opaque-token",
+		TokenTypeHint: TokenTypeHintAccessToken,
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if diff := cmp.Diff(true, got.Active); diff != "" {
+		t.Fatalf("Active mismatch (-want +got):\n%s", diff)
+	}
+	if !strings.HasPrefix(authHeader, "Basic ") {
+		t.Fatalf("Authorization header = %q, want Basic", authHeader)
+	}
+	values, err := url.ParseQuery(requestBody)
+	if err != nil {
+		t.Fatalf("ParseQuery() failed: %v", err)
+	}
+	want := url.Values{"token": {"opaque-token"}, "token_type_hint": {"access_token"}}
+	if diff := cmp.Diff(want, values); diff != "" {
+		t.Fatalf("form mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestIntrospector_IntrospectToken_PostAuth(t *testing.T) {
+	var requestBody string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		requestBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true,"scope":"read"}`))
+	}))
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider(server.URL, "client_secret_post")),
+		WithAuthMethod(AuthMethodPost),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatalf("Active = false, want true")
+	}
+
+	values, err := url.ParseQuery(requestBody)
+	if err != nil {
+		t.Fatalf("ParseQuery() failed: %v", err)
+	}
+	if values.Get("client_id") != "client" {
+		t.Fatalf("client_id = %q, want %q", values.Get("client_id"), "client")
+	}
+	if values.Get("client_secret") != "secret" {
+		t.Fatalf("client_secret = %q, want %q", values.Get("client_secret"), "secret")
+	}
+	if values.Get("token") != "opaque-token" {
+		t.Fatalf("token = %q, want %q", values.Get("token"), "opaque-token")
+	}
+}
+
+func TestIntrospector_IntrospectToken_MissingToken(t *testing.T) {
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider("https://issuer.test/introspect", "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	_, err = i.IntrospectToken(context.Background(), IntrospectionRequest{Token: ""})
+	if err == nil {
+		t.Fatal("expected error for empty token")
+	}
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+}
+
+func TestIntrospector_IntrospectToken_Non200Status(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid_token"}`))
+	}))
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider(server.URL, "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	_, err = i.IntrospectToken(context.Background(), IntrospectionRequest{Token: "token"})
+	if err == nil {
+		t.Fatal("expected error for non-200 status")
+	}
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+}
+
+func TestIntrospector_IntrospectToken_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{invalid`))
+	}))
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider(server.URL, "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	_, err = i.IntrospectToken(context.Background(), IntrospectionRequest{Token: "token"})
+	if err == nil {
+		t.Fatal("expected error for invalid JSON")
+	}
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+}
+
+func TestIntrospector_IntrospectToken_InactiveToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":false}`))
+	}))
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider(server.URL, "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{Token: "token"})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if got.Active {
+		t.Fatal("Active = true, want false")
+	}
 }

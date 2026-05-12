@@ -209,18 +209,21 @@ func generateJTI(reader io.Reader) string {
 }
 
 func (r *RP) buildClientSecretAssertion(audience string) (string, error) {
-	if strings.TrimSpace(r.clientSecret) == "" {
+	return buildClientSecretJWTAssertion(r.clientID, r.clientSecret, audience, time.Now(), r.randReader)
+}
+
+func buildClientSecretJWTAssertion(clientID, clientSecret, audience string, now time.Time, randReader io.Reader) (string, error) {
+	if strings.TrimSpace(clientSecret) == "" {
 		return "", fmt.Errorf("%w: client_secret not configured", ErrInvalidConfiguration)
 	}
 
-	now := time.Now()
 	claims := map[string]any{
-		"iss": r.clientID,
-		"sub": r.clientID,
+		"iss": clientID,
+		"sub": clientID,
 		"aud": audience,
 		"iat": now.Unix(),
 		"exp": now.Add(5 * time.Minute).Unix(),
-		"jti": generateJTI(r.randReader),
+		"jti": generateJTI(randReader),
 	}
 
 	payload, err := json.Marshal(claims)
@@ -228,7 +231,7 @@ func (r *RP) buildClientSecretAssertion(audience string) (string, error) {
 		return "", fmt.Errorf("failed to marshal claims: %w", err)
 	}
 
-	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: []byte(r.clientSecret)}, &jose.SignerOptions{
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: jose.HS256, Key: []byte(clientSecret)}, &jose.SignerOptions{
 		ExtraHeaders: map[jose.HeaderKey]interface{}{
 			"typ": "JWT",
 		},
