@@ -8,7 +8,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
+	"time"
+
+	"github.com/go-jose/go-jose/v4"
+	josejwt "github.com/go-jose/go-jose/v4/jwt"
 )
 
 // ErrIntrospectionFailed indicates a token introspection request failed.
@@ -206,7 +211,8 @@ func (c *clientConfig) introspectToken(ctx context.Context, in IntrospectionRequ
 }
 
 func (c *clientConfig) introspectTokenOnce(ctx context.Context, endpoint string, in IntrospectionRequest, method AuthMethod) (IntrospectionResponse, int, string, error) {
-	var out IntrospectionResponse
+	var bodyBytes []byte
+
 	_, status, preview, err := doRequestWithDPoPRetry(dpopRequestConfig{
 		buildRequest: func() (*http.Request, error) {
 			return c.buildIntrospectionRequest(ctx, endpoint, in, method)
@@ -215,7 +221,12 @@ func (c *clientConfig) introspectTokenOnce(ctx context.Context, endpoint string,
 			return c.attachDPoPProof(req, nonce)
 		},
 		handleResponse: func(body io.Reader) error {
-			return json.NewDecoder(body).Decode(&out)
+			data, readErr := io.ReadAll(body)
+			if readErr != nil {
+				return fmt.Errorf("failed to read introspection response: %w", readErr)
+			}
+			bodyBytes = data
+			return nil
 		},
 		storeNonce: func(resp *http.Response) {
 			c.extractAndStoreDPoPNonce(resp, endpoint)
@@ -232,7 +243,28 @@ func (c *clientConfig) introspectTokenOnce(ctx context.Context, endpoint string,
 		}
 		return IntrospectionResponse{}, 0, "", fmt.Errorf("failed to execute introspection request: %w", err)
 	}
+
+	if status != http.StatusOK {
+		return IntrospectionResponse{}, status, preview, nil
+	}
+
+	if in.PreferJWTResponse || isJWTContentType(string(bodyBytes)) {
+		decoded, jwtErr := c.validateIntrospectionJWT(ctx, strings.TrimSpace(string(bodyBytes)), in)
+		if jwtErr != nil {
+			return IntrospectionResponse{}, status, preview, jwtErr
+		}
+		return decoded, status, preview, nil
+	}
+
+	var out IntrospectionResponse
+	if err := json.Unmarshal(bodyBytes, &out); err != nil {
+		return IntrospectionResponse{}, 0, "", fmt.Errorf("failed to decode introspection response: %w", err)
+	}
 	return out, status, preview, nil
+}
+
+func isJWTContentType(body string) bool {
+	return strings.HasPrefix(strings.TrimSpace(body), "eyJ")
 }
 
 func (c *clientConfig) buildIntrospectionRequest(ctx context.Context, endpoint string, in IntrospectionRequest, method AuthMethod) (*http.Request, error) {
@@ -275,4 +307,130 @@ func (c *clientConfig) buildIntrospectionRequest(ctx context.Context, endpoint s
 		req.Header.Set("Accept", introspectionJWTMediaType)
 	}
 	return req, nil
+}
+
+var supportedIntrospectionJWTAlgs = []jose.SignatureAlgorithm{
+	jose.RS256, jose.RS384, jose.RS512,
+	jose.PS256, jose.PS384, jose.PS512,
+	jose.ES256, jose.ES384, jose.ES512,
+}
+
+type introspectionJWTClaims struct {
+	Iss                string                `json:"iss"`
+	Aud                audienceClaim         `json:"aud"`
+	Iat                *int64                `json:"iat"`
+	TokenIntrospection IntrospectionResponse `json:"token_introspection"`
+}
+
+func (c *clientConfig) validateIntrospectionJWT(ctx context.Context, raw string, req IntrospectionRequest) (IntrospectionResponse, error) {
+	if raw == "" {
+		return IntrospectionResponse{}, fmt.Errorf("empty introspection JWT response")
+	}
+
+	parts := strings.Split(raw, ".")
+	if len(parts) == 5 {
+		return IntrospectionResponse{}, fmt.Errorf("encrypted introspection JWT responses are not supported")
+	}
+
+	parsed, err := josejwt.ParseSigned(raw, supportedIntrospectionJWTAlgs)
+	if err != nil {
+		return IntrospectionResponse{}, fmt.Errorf("failed to parse introspection JWT: %w", err)
+	}
+	if len(parsed.Headers) == 0 {
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT missing JOSE headers")
+	}
+
+	header := parsed.Headers[0]
+	if header.Algorithm == "none" {
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT must not use 'none' algorithm")
+	}
+
+	typ, _ := header.ExtraHeaders["typ"].(string)
+	if typ == "" {
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT missing typ header")
+	}
+	if !strings.EqualFold(typ, "token-introspection+jwt") {
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT typ mismatch: %q", typ)
+	}
+
+	if len(c.provider.IntrospectionSigningAlgValuesSupported) > 0 {
+		if !slices.ContainsFunc(c.provider.IntrospectionSigningAlgValuesSupported, func(a string) bool {
+			return strings.EqualFold(a, string(header.Algorithm))
+		}) {
+			return IntrospectionResponse{}, fmt.Errorf("introspection JWT algorithm %q not in provider's supported algorithms %v", header.Algorithm, c.provider.IntrospectionSigningAlgValuesSupported)
+		}
+	}
+
+	jwksURI := c.provider.JWKSURI
+	if jwksURI == "" {
+		return IntrospectionResponse{}, fmt.Errorf("provider metadata missing jwks_uri for introspection JWT verification")
+	}
+
+	keySet, err := c.metadataClient.RemoteKeySetFromJWKSURI(jwksURI)
+	if err != nil {
+		return IntrospectionResponse{}, fmt.Errorf("failed to load JWKS for introspection JWT verification: %w", err)
+	}
+
+	var claims introspectionJWTClaims
+	if header.KeyID != "" {
+		key, err := keySet.Key(ctx, header.KeyID)
+		if err != nil {
+			return IntrospectionResponse{}, fmt.Errorf("failed to find introspection JWT signing key: %w", err)
+		}
+		if err := parsed.Claims(key.Key, &claims); err != nil {
+			return IntrospectionResponse{}, fmt.Errorf("introspection JWT signature verification failed: %w", err)
+		}
+	} else {
+		keys, err := keySet.Keys(ctx)
+		if err != nil {
+			return IntrospectionResponse{}, fmt.Errorf("failed to load introspection JWT signing keys: %w", err)
+		}
+		matched := 0
+		for _, key := range keys {
+			if key.Use != "" && key.Use != "sig" {
+				continue
+			}
+			var candidate introspectionJWTClaims
+			if err := parsed.Claims(key.Key, &candidate); err != nil {
+				continue
+			}
+			matched++
+			claims = candidate
+		}
+		if matched != 1 {
+			return IntrospectionResponse{}, fmt.Errorf("introspection JWT verification requires exactly one matching key, got %d", matched)
+		}
+	}
+
+	if claims.Iss != c.provider.Issuer {
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT iss mismatch: got %q, want %q", claims.Iss, c.provider.Issuer)
+	}
+
+	expectedAud := req.ExpectedJWTAudience
+	if expectedAud == "" {
+		expectedAud = c.clientID
+	}
+	audMatch := false
+	for _, aud := range claims.Aud {
+		if aud == expectedAud {
+			audMatch = true
+			break
+		}
+	}
+	if !audMatch {
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT audience mismatch")
+	}
+
+	if claims.Iat != nil {
+		iat := time.Unix(*claims.Iat, 0).UTC()
+		now := c.now()
+		clockSkew := 5 * time.Minute
+		if iat.After(now.Add(clockSkew)) {
+			return IntrospectionResponse{}, fmt.Errorf("introspection JWT iat in the future")
+		}
+	}
+
+	out := claims.TokenIntrospection
+	out.rawJWT = raw
+	return out, nil
 }
