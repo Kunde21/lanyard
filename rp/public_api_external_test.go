@@ -101,7 +101,9 @@ func TestIntrospectionPublicAPI(t *testing.T) {
 	_ = resp.JTI
 	_ = resp.RawJWT()
 
-	var extra struct{ Custom string `json:"custom"` }
+	var extra struct {
+		Custom string `json:"custom"`
+	}
 	_ = resp.DecodeRaw(&extra)
 
 	_ = rp.ErrIntrospectionFailed

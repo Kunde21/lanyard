@@ -24,8 +24,8 @@ import (
 
 func introspectionProvider(endpoint string, methods ...string) metadata.Provider {
 	return metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
-		Issuer:                                    "https://issuer.test",
-		IntrospectionEndpoint:                     endpoint,
+		Issuer:                "https://issuer.test",
+		IntrospectionEndpoint: endpoint,
 		IntrospectionEndpointAuthMethodsSupported: append([]string(nil), methods...),
 		TokenEndpointAuthMethodsSupported:         append([]string(nil), methods...),
 	}}
@@ -100,9 +100,9 @@ func TestNewIntrospector_SelectsIntrospectionAuthMethods(t *testing.T) {
 	defer server.Close()
 
 	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
-		Issuer:                                    "https://issuer.test",
-		IntrospectionEndpoint:                     server.URL + "/introspect",
-		TokenEndpointAuthMethodsSupported:         []string{"client_secret_basic"},
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             server.URL + "/introspect",
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
 		IntrospectionEndpointAuthMethodsSupported: []string{"client_secret_post"},
 	}}
 
@@ -197,12 +197,12 @@ func base64Encode(data []byte) string {
 }
 
 func TestIntrospector_PublicAPISmoke(t *testing.T) {
-	var _ = TokenTypeHintAccessToken
-	var _ = TokenTypeHintRefreshToken
-	var _ = IntrospectionRequest{Token: "token", TokenTypeHint: TokenTypeHintAccessToken}
-	var _ = IntrospectionRequest{Token: "token", PreferJWTResponse: true}
-	var _ = IntrospectionRequest{Token: "token", ExpectedJWTAudience: "https://rs.example.com"}
-	var _ = (*Introspector)(nil)
+	_ = TokenTypeHintAccessToken
+	_ = TokenTypeHintRefreshToken
+	_ = IntrospectionRequest{Token: "token", TokenTypeHint: TokenTypeHintAccessToken}
+	_ = IntrospectionRequest{Token: "token", PreferJWTResponse: true}
+	_ = IntrospectionRequest{Token: "token", ExpectedJWTAudience: "https://rs.example.com"}
+	_ = (*Introspector)(nil)
 }
 
 func TestIntrospector_IntrospectToken_BasicAuth(t *testing.T) {
@@ -450,8 +450,8 @@ func TestIntrospector_IntrospectToken_ClientSecretJWT(t *testing.T) {
 	defer server.Close()
 
 	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
-		Issuer:                                    "https://issuer.test",
-		IntrospectionEndpoint:                     server.URL,
+		Issuer:                "https://issuer.test",
+		IntrospectionEndpoint: server.URL,
 		IntrospectionEndpointAuthMethodsSupported: []string{"client_secret_jwt"},
 		TokenEndpointAuthMethodsSupported:         []string{"client_secret_jwt"},
 	}}
@@ -494,8 +494,8 @@ func TestIntrospector_IntrospectToken_NoneAuth(t *testing.T) {
 	defer server.Close()
 
 	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
-		Issuer:                                    "https://issuer.test",
-		IntrospectionEndpoint:                     server.URL,
+		Issuer:                "https://issuer.test",
+		IntrospectionEndpoint: server.URL,
 		IntrospectionEndpointAuthMethodsSupported: []string{"none"},
 		TokenEndpointAuthMethodsSupported:         []string{"none"},
 	}}
@@ -1198,9 +1198,9 @@ func TestIntrospector_IntrospectToken_JWTResponseRejectsWrongTyp(t *testing.T) {
 
 	now := time.Now().Unix()
 	payload, _ := json.Marshal(map[string]any{
-		"iss": "https://issuer.test",
-		"aud": "client",
-		"iat": now,
+		"iss":                 "https://issuer.test",
+		"aud":                 "client",
+		"iat":                 now,
 		"token_introspection": map[string]any{"active": true},
 	})
 	sig, err := signer.Sign(payload)
@@ -1261,9 +1261,9 @@ func TestIntrospector_IntrospectToken_JWTResponseEnforcesProviderAlgorithms(t *t
 
 	now := time.Now().Unix()
 	claims := map[string]any{
-		"iss": "https://issuer.test",
-		"aud": "client",
-		"iat": now,
+		"iss":                 "https://issuer.test",
+		"aud":                 "client",
+		"iat":                 now,
 		"token_introspection": map[string]any{"active": true},
 	}
 	signed := signIntrospectionJWT(t, key, "signing-key-1", claims)
@@ -1275,10 +1275,10 @@ func TestIntrospector_IntrospectToken_JWTResponseEnforcesProviderAlgorithms(t *t
 	defer introspectionServer.Close()
 
 	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
-		Issuer:                              "https://issuer.test",
-		IntrospectionEndpoint:               introspectionServer.URL,
-		JWKSURI:                             jwksServer.URL,
-		TokenEndpointAuthMethodsSupported:   []string{"client_secret_basic"},
+		Issuer:                                 "https://issuer.test",
+		IntrospectionEndpoint:                  introspectionServer.URL,
+		JWKSURI:                                jwksServer.URL,
+		TokenEndpointAuthMethodsSupported:      []string{"client_secret_basic"},
 		IntrospectionSigningAlgValuesSupported: []string{"ES256"},
 	}}
 
@@ -1359,12 +1359,12 @@ func TestRP_IntrospectToken_HonorsIntrospectionAuthMethods(t *testing.T) {
 	defer server.Close()
 
 	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
-		Issuer:                                    "https://issuer.test",
-		AuthorizationEndpoint:                     "https://issuer.test/authorize",
-		TokenEndpoint:                             "https://issuer.test/token",
-		IntrospectionEndpoint:                     server.URL,
-		JWKSURI:                                   "https://issuer.test/jwks",
-		TokenEndpointAuthMethodsSupported:         []string{"client_secret_basic"},
+		Issuer:                            "https://issuer.test",
+		AuthorizationEndpoint:             "https://issuer.test/authorize",
+		TokenEndpoint:                     "https://issuer.test/token",
+		IntrospectionEndpoint:             server.URL,
+		JWKSURI:                           "https://issuer.test/jwks",
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
 		IntrospectionEndpointAuthMethodsSupported: []string{"client_secret_post"},
 	}}
 
