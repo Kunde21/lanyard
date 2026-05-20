@@ -166,12 +166,10 @@ func (i *Introspector) resolveIntrospectionAuthMethod() error {
 func (c *clientConfig) introspectionAuthMethod() (AuthMethod, bool) {
 	supported := c.provider.IntrospectionEndpointAuthMethodsSupported
 	if len(supported) > 0 {
-		tokenMethod, _ := c.authMethodState()
 		method, allowFallback, err := c.selectAuthMethodFromSupported(supported)
 		if err == nil {
 			return method, allowFallback
 		}
-		_ = tokenMethod
 	}
 	return c.authMethodState()
 }
@@ -243,7 +241,7 @@ func (c *clientConfig) introspectTokenOnce(ctx context.Context, endpoint string,
 		},
 		successStatus: http.StatusOK,
 		httpClient:    c.httpClient,
-		useDPoP:       c.shouldUseDPoP(),
+		useDPoP:       c.shouldUseDPoPForMethod(method),
 		cachedNonce:   c.cachedDPoPNonce(endpoint),
 	})
 	if err != nil {
@@ -258,7 +256,7 @@ func (c *clientConfig) introspectTokenOnce(ctx context.Context, endpoint string,
 		return IntrospectionResponse{}, status, preview, nil
 	}
 
-	if in.PreferJWTResponse || isJWTContentType(string(bodyBytes)) {
+	if in.PreferJWTResponse || looksLikeJWT(bodyBytes) {
 		decoded, jwtErr := c.validateIntrospectionJWT(ctx, strings.TrimSpace(string(bodyBytes)), in)
 		if jwtErr != nil {
 			return IntrospectionResponse{}, status, preview, jwtErr
@@ -273,8 +271,15 @@ func (c *clientConfig) introspectTokenOnce(ctx context.Context, endpoint string,
 	return out, status, preview, nil
 }
 
-func isJWTContentType(body string) bool {
-	return strings.HasPrefix(strings.TrimSpace(body), "eyJ")
+func looksLikeJWT(data []byte) bool {
+	return strings.HasPrefix(strings.TrimSpace(string(data)), "eyJ")
+}
+
+func (c *clientConfig) shouldUseDPoPForMethod(method AuthMethod) bool {
+	if c.senderConstrain != SenderConstraintNone {
+		return c.senderConstrain == SenderConstraintDPoP && c.clientKeyProvider != nil && isDPoPSupported(method)
+	}
+	return c.clientKeyProvider != nil && isDPoPSupported(method)
 }
 
 func (c *clientConfig) buildIntrospectionRequest(ctx context.Context, endpoint string, in IntrospectionRequest, method AuthMethod) (*http.Request, error) {
