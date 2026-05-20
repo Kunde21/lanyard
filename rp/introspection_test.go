@@ -1304,3 +1304,144 @@ func TestIntrospector_IntrospectToken_JWTResponseEnforcesProviderAlgorithms(t *t
 		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
 	}
 }
+
+func TestRP_IntrospectToken_SendsCredentials(t *testing.T) {
+	var gotAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		AuthorizationEndpoint:             "https://issuer.test/authorize",
+		TokenEndpoint:                     "https://issuer.test/token",
+		IntrospectionEndpoint:             server.URL,
+		JWKSURI:                           "https://issuer.test/jwks",
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	rpClient, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(provider),
+		WithDiscoveryMode(DiscoveryDisabled),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	got, err := rpClient.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if !strings.HasPrefix(gotAuth, "Basic ") {
+		t.Fatalf("Authorization = %q, want Basic auth", gotAuth)
+	}
+}
+
+func TestRP_IntrospectToken_HonorsIntrospectionAuthMethods(t *testing.T) {
+	var gotForm url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		gotForm, _ = url.ParseQuery(string(body))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer server.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                                    "https://issuer.test",
+		AuthorizationEndpoint:                     "https://issuer.test/authorize",
+		TokenEndpoint:                             "https://issuer.test/token",
+		IntrospectionEndpoint:                     server.URL,
+		JWKSURI:                                   "https://issuer.test/jwks",
+		TokenEndpointAuthMethodsSupported:         []string{"client_secret_basic"},
+		IntrospectionEndpointAuthMethodsSupported: []string{"client_secret_post"},
+	}}
+
+	rpClient, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(provider),
+		WithDiscoveryMode(DiscoveryDisabled),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	got, err := rpClient.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if gotForm.Get("client_secret") != "secret" {
+		t.Fatalf("client_secret in form = %q, want %q", gotForm.Get("client_secret"), "secret")
+	}
+}
+
+func TestRP_IntrospectToken_ErrorsOnEmptyToken(t *testing.T) {
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		AuthorizationEndpoint:             "https://issuer.test/authorize",
+		TokenEndpoint:                     "https://issuer.test/token",
+		IntrospectionEndpoint:             "https://issuer.test/introspect",
+		JWKSURI:                           "https://issuer.test/jwks",
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	rpClient, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(provider),
+		WithDiscoveryMode(DiscoveryDisabled),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = rpClient.IntrospectToken(context.Background(), IntrospectionRequest{Token: ""})
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+}
+
+func TestRP_IntrospectToken_ErrorsOnMissingEndpoint(t *testing.T) {
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		AuthorizationEndpoint:             "https://issuer.test/authorize",
+		TokenEndpoint:                     "https://issuer.test/token",
+		JWKSURI:                           "https://issuer.test/jwks",
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	rpClient, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(provider),
+		WithDiscoveryMode(DiscoveryDisabled),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = rpClient.IntrospectToken(context.Background(), IntrospectionRequest{Token: "token"})
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+}

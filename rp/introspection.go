@@ -163,6 +163,19 @@ func (i *Introspector) resolveIntrospectionAuthMethod() error {
 	return nil
 }
 
+func (c *clientConfig) introspectionAuthMethod() (AuthMethod, bool) {
+	supported := c.provider.IntrospectionEndpointAuthMethodsSupported
+	if len(supported) > 0 {
+		tokenMethod, _ := c.authMethodState()
+		method, allowFallback, err := c.selectAuthMethodFromSupported(supported)
+		if err == nil {
+			return method, allowFallback
+		}
+		_ = tokenMethod
+	}
+	return c.authMethodState()
+}
+
 // IntrospectToken introspects a token at the configured provider using RFC 7662.
 func (i *Introspector) IntrospectToken(ctx context.Context, req IntrospectionRequest) (IntrospectionResponse, error) {
 	return i.clientConfig.introspectToken(ctx, req)
@@ -182,16 +195,14 @@ func (c *clientConfig) introspectToken(ctx context.Context, in IntrospectionRequ
 	if endpoint == "" {
 		return IntrospectionResponse{}, fmt.Errorf("%w: introspection endpoint is not configured", ErrIntrospectionFailed)
 	}
-	method, allowFallback := c.authMethodState()
+
+	method, allowFallback := c.introspectionAuthMethod()
 
 	resp, status, preview, err := c.introspectTokenOnce(ctx, endpoint, in, method)
 	if err != nil {
 		return IntrospectionResponse{}, fmt.Errorf("%w: %v", ErrIntrospectionFailed, err)
 	}
 	if status == http.StatusOK {
-		if allowFallback {
-			c.setAuthMethodState(method, false)
-		}
 		return resp, nil
 	}
 
@@ -201,7 +212,6 @@ func (c *clientConfig) introspectToken(ctx context.Context, in IntrospectionRequ
 			return IntrospectionResponse{}, fmt.Errorf("%w: %v", ErrIntrospectionFailed, retryErr)
 		}
 		if retryStatus == http.StatusOK {
-			c.setAuthMethodState(AuthMethodBasic, false)
 			return retryResp, nil
 		}
 		return IntrospectionResponse{}, fmt.Errorf("%w: introspection endpoint returned status %d: %s", ErrIntrospectionFailed, retryStatus, retryPreview)
