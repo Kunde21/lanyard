@@ -194,3 +194,64 @@ func TestConfirmation_VerifyMTLSBinding(t *testing.T) {
 		t.Fatalf("unbound: error = %v, want ErrTokenUnbound", err)
 	}
 }
+
+func TestParseAccessTokenConfirmation(t *testing.T) {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(
+		`{"iss":"x","cnf":{"jkt":"abc"}}`))
+	raw := header + "." + payload + "."
+	got, err := ParseAccessTokenConfirmation(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	want := Confirmation{JKT: "abc"}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestParseAccessTokenConfirmation_X5T256(t *testing.T) {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256"}`))
+	payload := base64.RawURLEncoding.EncodeToString([]byte(
+		`{"iss":"x","cnf":{"x5t#S256":"cert-thumb"}}`))
+	raw := header + "." + payload + ".sig"
+	got, err := ParseAccessTokenConfirmation(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	want := Confirmation{X5T256: "cert-thumb"}
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestParseAccessTokenConfirmation_Errors(t *testing.T) {
+	t.Run("malformed", func(t *testing.T) {
+		if _, err := ParseAccessTokenConfirmation("not-a-jwt"); err == nil {
+			t.Fatal("expected error for malformed JWT")
+		}
+	})
+	t.Run("two parts", func(t *testing.T) {
+		if _, err := ParseAccessTokenConfirmation("a.b"); err == nil {
+			t.Fatal("expected error for two-part input")
+		}
+	})
+	t.Run("no cnf returns ErrTokenUnbound", func(t *testing.T) {
+		header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none"}`))
+		payload := base64.RawURLEncoding.EncodeToString([]byte(`{"iss":"x"}`))
+		raw := header + "." + payload + "."
+		_, err := ParseAccessTokenConfirmation(raw)
+		if err == nil {
+			t.Fatal("expected error for token without cnf")
+		}
+		if !errors.Is(err, ErrTokenUnbound) {
+			t.Fatalf("error = %v, want ErrTokenUnbound", err)
+		}
+	})
+	t.Run("invalid base64 payload", func(t *testing.T) {
+		raw := "eyJhbGciOiJub25lIn0" + "." + "!!!not-base64!!!" + "."
+		if _, err := ParseAccessTokenConfirmation(raw); err == nil {
+			t.Fatal("expected error for invalid base64 payload")
+		}
+	})
+}

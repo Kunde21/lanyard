@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/go-jose/go-jose/v4"
 )
@@ -102,4 +103,37 @@ func X509CertThumbprint(cert *x509.Certificate) string {
 	}
 	sum := sha256.Sum256(cert.Raw)
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// ParseAccessTokenConfirmation decodes the RFC 7800 cnf claim from a JWT access
+// token WITHOUT verifying its signature.
+//
+// SECURITY: This is safe ONLY when the token was obtained over a trusted
+// channel (e.g. directly from the authorization server's token endpoint over
+// TLS). For tokens received from untrusted sources (resource-server use), you
+// MUST first verify the JWT signature against the authorization server's JWKS
+// before trusting any claim. This helper performs no signature, expiry, or
+// issuer checks.
+//
+// Returns an error wrapping ErrTokenUnbound if the JWT has no cnf claim, or if
+// the input is not a well-formed three-part JWT.
+func ParseAccessTokenConfirmation(rawJWT string) (Confirmation, error) {
+	parts := strings.Split(rawJWT, ".")
+	if len(parts) != 3 {
+		return Confirmation{}, fmt.Errorf("invalid JWT: expected 3 parts, got %d", len(parts))
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return Confirmation{}, fmt.Errorf("decode JWT payload: %w", err)
+	}
+	var claims struct {
+		Cnf *Confirmation `json:"cnf"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return Confirmation{}, fmt.Errorf("decode JWT claims: %w", err)
+	}
+	if claims.Cnf == nil {
+		return Confirmation{}, fmt.Errorf("%w: access token has no cnf claim", ErrTokenUnbound)
+	}
+	return *claims.Cnf, nil
 }
