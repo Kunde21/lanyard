@@ -289,23 +289,34 @@ Audience-restricted access tokens via target resource server indicators.
 
 ### RFC 7800: Proof-of-Possession Key Semantics for JWTs
 
-**Status**: Not Implemented
+**Status**: Implemented
 
 **Required for**: DPoP/mTLS sender constraint
 
-Defines the `cnf` (confirmation) claim for token binding.
+Defines the `cnf` (confirmation) claim binding a JWT to a proof-of-possession key.
 
-| Feature                | Status | Notes                        |
-|------------------------|--------|------------------------------|
-| cnf Claim              | ❌     | Confirmation claim in JWT    |
-| JWK Thumbprint         | ❌     | jkt confirmation method      |
-| Certificate Thumbprint | ❌     | x5t#S256 confirmation method |
+| Feature                | Status | Notes                                              |
+|------------------------|--------|----------------------------------------------------|
+| cnf Claim Parsing      | ✅     | All members: jkt, x5t#S256, jwk, x5c, x5u, x5t, kid, jwe |
+| JWK Thumbprint (jkt)   | ✅     | RFC 7638 via go-jose, RSA + EC P-256/384/521       |
+| X.509 Cert (x5t#S256)  | ✅     | SHA-256 DER thumbprint for mTLS                    |
+| DPoP Binding Verify    | ✅     | Confirmation.VerifyDPoPBinding (constant-time)     |
+| mTLS Binding Verify    | ✅     | Confirmation.VerifyMTLSBinding (constant-time)     |
+| ID Token cnf           | ✅     | Parsed on id_token, exposed via CallbackResult.Cnf |
+| Access Token cnf       | ⚠️     | ParseAccessTokenConfirmation decodes WITHOUT signature verification |
+| Introspection cnf      | ❌     | Pending feat/token-introspection merge             |
+
+**Implementation**:
+
+- `rp/confirmation.go` - `Confirmation` type, `JWKThumbprint`, `X509CertThumbprint`, `Verify*Binding`, `ParseAccessTokenConfirmation`
+- `rp/idtoken.go` - `cnf` on id_token claims
+- `rp/dpop.go` - canonical JWK construction shared with thumbprint computation, `RP.DPoPKeyThumbprint`
 
 **Purpose**:
 
 - Binds access tokens to proof-of-possession keys
 - Used by DPoP (JWK thumbprint) and mTLS (certificate thumbprint)
-- Resource servers verify binding
+- Callers verify binding via `Confirmation.Verify*` methods
 
 ---
 
@@ -744,6 +755,7 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | OAuth 2.0 Authorization Framework       | RFC 6749              | ✅     |
 | OAuth 2.0 Bearer Token Usage            | RFC 6750              | ✅     |
 | OAuth 2.0 PKCE                          | RFC 7636              | ✅     |
+| PoP Key Semantics (cnf claim)           | RFC 7800              | ✅     |
 | OAuth 2.0 Authorization Server Metadata | RFC 8414              | ✅     |
 | OAuth 2.0 Token Exchange                | RFC 8693              | ✅     |
 | OAuth 2.0 Mutual-TLS Client Auth        | RFC 8705              | ✅     |
@@ -766,7 +778,6 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 
 | Specification                           | RFC/Standard | Required For                                |
 |-----------------------------------------|--------------|---------------------------------------------|
-| PoP Key Semantics (cnf claim)           | RFC 7800     | DPoP/mTLS sender constraint                 |
 | JWT Introspection Response              | RFC 9701     | Enhanced introspection                      |
 | Refresh Token Rotation                  | RFC 9700     | OAuth 2.0 Security BCP                      |
 | FAPI 2.0 Grant Management               | OpenID FAPI  | Grant lifecycle management                  |
