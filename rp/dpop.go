@@ -1,6 +1,7 @@
 package rp
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	crand "crypto/rand"
 	"crypto/rsa"
@@ -68,26 +69,27 @@ func buildDPoPProof(keyProvider ClientKeyProvider, randReader io.Reader, now fun
 		return "", fmt.Errorf("private key is required for DPoP")
 	}
 
-	alg := keyProvider.SigningAlgorithm()
-	joseAlg := signatureAlgorithm(alg)
-	if joseAlg == "" {
-		return "", fmt.Errorf("unsupported algorithm for DPoP: %s", alg)
+	// Create a single jose.JSONWebKey used for both the DPoP header and the
+	// cnf.jkt claim (RFC 7800). Using one source of truth guarantees the
+	// thumbprint embedded in access tokens matches the key presented in proofs.
+	jwk, err := jwkFromPrivateKey(privateKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to build DPoP JWK: %w", err)
+	}
+	jwkMap, err := dpopJWKToMap(jwk)
+	if err != nil {
+		return "", fmt.Errorf("failed to serialize DPoP JWK: %w", err)
 	}
 
-	var jwk map[string]any
-	switch key := privateKey.(type) {
-	case *rsa.PrivateKey:
-		jwk = rsaJWK(key)
-	case *ecdsa.PrivateKey:
-		jwk = ecdsaJWK(key)
-	default:
-		return "", fmt.Errorf("unsupported key type for DPoP: %T", privateKey)
+	joseAlg := signatureAlgorithm(keyProvider.SigningAlgorithm())
+	if joseAlg == "" {
+		return "", fmt.Errorf("unsupported algorithm for DPoP: %s", keyProvider.SigningAlgorithm())
 	}
 
 	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: joseAlg, Key: privateKey}, &jose.SignerOptions{
 		ExtraHeaders: map[jose.HeaderKey]any{
 			"typ": "dpop+jwt",
-			"jwk": jwk,
+			"jwk": jwkMap,
 		},
 	})
 	if err != nil {
@@ -130,29 +132,71 @@ func (r *RP) AttachDPoPProof(req *http.Request, accessToken, nonce string) error
 	return r.attachDPoPProof(req, accessToken, nonce)
 }
 
-func rsaJWK(key *rsa.PrivateKey) map[string]any {
-	return map[string]any{
-		"kty": "RSA",
-		"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
-		"e":   base64.RawURLEncoding.EncodeToString([]byte{1, 0, 1}),
+// jwkFromPrivateKey converts a crypto.PrivateKey to a jose.JSONWebKey for use in DPoP headers and cnf.jkt.
+func jwkFromPrivateKey(priv crypto.PrivateKey) (*jose.JSONWebKey, error) {
+	var pub crypto.PublicKey
+	switch key := priv.(type) {
+	case *rsa.PrivateKey:
+		pub = &key.PublicKey
+	case *ecdsa.PrivateKey:
+		pub = &key.PublicKey
+	default:
+		return nil, fmt.Errorf("unsupported key type for DPoP: %T", priv)
 	}
+
+	return &jose.JSONWebKey{Key: pub, Use: "sig", Algorithm: signatureAlgorithmFromPrivateKey(priv)}, nil
 }
 
-func ecdsaJWK(key *ecdsa.PrivateKey) map[string]any {
-	curve := key.Curve.Params().Name
-	crv := "P-256"
-	if curve == "P-384" {
-		crv = "P-384"
-	} else if curve == "P-521" {
-		crv = "P-521"
+// signatureAlgorithmFromPrivateKey returns the appropriate signature algorithm for a private key.
+func signatureAlgorithmFromPrivateKey(priv crypto.PrivateKey) string {
+	switch priv.(type) {
+	case *rsa.PrivateKey:
+		return "PS256"
+	case *ecdsa.PrivateKey:
+		key := priv.(*ecdsa.PrivateKey)
+		curve := key.Curve.Params().Name
+		if curve == "P-256" {
+			return "ES256"
+		} else if curve == "P-384" {
+			return "ES384"
+		} else if curve == "P-521" {
+			return "ES512"
+		}
+	}
+	return ""
+}
+
+// dpopJWKToMap converts a jose.JSONWebKey to a map representation for JSON serialization.
+func dpopJWKToMap(jwk *jose.JSONWebKey) (map[string]any, error) {
+	if jwk == nil {
+		return nil, fmt.Errorf("jwk is nil")
 	}
 
-	return map[string]any{
-		"kty": "EC",
-		"crv": crv,
-		"x":   base64.RawURLEncoding.EncodeToString(key.X.Bytes()),
-		"y":   base64.RawURLEncoding.EncodeToString(key.Y.Bytes()),
+	// Use the same logic as rsaJWK and ecdsaJWK for consistency
+	switch key := jwk.Key.(type) {
+	case *rsa.PublicKey:
+		return map[string]any{
+			"kty": "RSA",
+			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
+			"e":   base64.RawURLEncoding.EncodeToString([]byte{1, 0, 1}),
+		}, nil
+	case *ecdsa.PublicKey:
+		curve := key.Curve.Params().Name
+		crv := "P-256"
+		if curve == "P-384" {
+			crv = "P-384"
+		} else if curve == "P-521" {
+			crv = "P-521"
+		}
+		return map[string]any{
+			"kty": "EC",
+			"crv": crv,
+			"x":   base64.RawURLEncoding.EncodeToString(key.X.Bytes()),
+			"y":   base64.RawURLEncoding.EncodeToString(key.Y.Bytes()),
+		}, nil
 	}
+
+	return nil, fmt.Errorf("unsupported key type for DPoP JWK: %T", jwk.Key)
 }
 
 func normalizeDPoPHTU(raw string) string {
@@ -262,6 +306,23 @@ func (r *RP) shouldUseDPoP() bool {
 // ShouldUseDPoP reports whether the RP is configured to use DPoP.
 func (r *RP) ShouldUseDPoP() bool {
 	return r.shouldUseDPoP()
+}
+
+// DPoPKeyThumbprint returns the RFC 7638 JWK Thumbprint (base64url, SHA-256)
+// of the DPoP key configured on this RP. The thumbprint is the value a
+// sender-constrained access token carries in its RFC 7800 cnf.jkt claim.
+//
+// It returns "" with a nil error when DPoP is not configured (no client key
+// provider), allowing callers to treat absence as "no DPoP binding".
+func (r *RP) DPoPKeyThumbprint() (string, error) {
+	if r.clientKeyProvider == nil {
+		return "", nil
+	}
+	priv := r.clientKeyProvider.PrivateKey()
+	if priv == nil {
+		return "", nil
+	}
+	return JWKThumbprint(priv)
 }
 
 type dpopRequestConfig struct {
