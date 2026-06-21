@@ -84,7 +84,7 @@ func JWKThumbprint(priv crypto.PrivateKey) (string, error) {
 	case *ecdsa.PrivateKey:
 		pub = &k.PublicKey
 	default:
-		return "", fmt.Errorf("unsupported key type %T", priv)
+		return "", fmt.Errorf("%w: unsupported key type %T", ErrInvalidConfiguration, priv)
 	}
 	jwk := jose.JSONWebKey{Key: pub}
 	digest, err := jwk.Thumbprint(crypto.SHA256)

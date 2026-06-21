@@ -19,6 +19,7 @@ import (
 	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp/store/memory"
 	jose "github.com/go-jose/go-jose/v4"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestHandleCallbackValidation(t *testing.T) {
@@ -201,6 +202,82 @@ func TestHandleCallbackStateReplayRejected(t *testing.T) {
 	rec, req = callbackRequest("code", "state")
 	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrInvalidState) {
 		t.Fatalf("replayed state should return ErrInvalidState, got %v", err)
+	}
+}
+
+func TestHandleCallback_ExposesIDTokenCnfClaim(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+	issuer := ""
+
+	// The cnf.jkt the provider places on the id_token (simulating a DPoP-bound
+	// identity). We do not need it to match the RP's own key for this test —
+	// only that the value round-trips into CallbackResult.Cnf.
+	const cnfJKT = "0ZcOCORZNYy-DWpqq30jZyJGHTN0d2HglBV3uiguA4I"
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token":
+			claims := map[string]any{
+				"iss":   issuer,
+				"sub":   "sub-123",
+				"aud":   []string{"client-id"},
+				"exp":   now.Add(5 * time.Minute).Unix(),
+				"iat":   now.Unix(),
+				"nonce": "nonce-1",
+				"cnf":   map[string]string{"jkt": cnfJKT},
+			}
+			body := `{"access_token":"access","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, key, "kid-1", claims) + `"}`
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		case "/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"sub-123"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	result, err := r.HandleCallback(rec, req)
+	if err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+	if result.Cnf == nil {
+		t.Fatalf("expected CallbackResult.Cnf to be populated from id_token cnf claim")
+	}
+	want := &Confirmation{JKT: cnfJKT}
+	if diff := cmp.Diff(want, result.Cnf); diff != "" {
+		t.Errorf("CallbackResult.Cnf mismatch (-want +got):\n%s", diff)
 	}
 }
 

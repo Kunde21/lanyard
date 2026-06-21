@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -60,51 +61,74 @@ func TestConfirmation_UnmarshalJSON_DPoPCanonical(t *testing.T) {
 	}
 }
 
-// Skipping RSA RFC7638 test as it produces inconsistent thumbprint
-// func TestJWKThumbprint_RSA_RFC7638(t *testing.T) {
-// 	// RSA key from RFC 7638 Appendix A.1. Canonical thumbprint is:
-// 	//   NzbLsXh8uDCcd-6MNwXFpW7dkPY3YPkD4lP62jQ0NHA
-// 	// (We reconstruct the key from its n/e; see RFC for the full base64url n.)
-// 	n, _ := base64.RawURLEncoding.DecodeString(
-// 		"0vx7agoebGcQSuuPiLJXZptN9nndrQmbWASmE7i3i3FR0w7e1qxyLqY0O4Yu1X3cFIiiTFwt7qU6-xpJxxp9NLS8glLY-SdEzkTCp07iqPYcW7STfsTmQoucdd9YF2JFIv5S5o0Si3iWfu4cTQW0wWyT26zqQskL4fgT3N9Q5YTqagqRnFciTuBpT-Q7tJ7L5xOKFbe9XYHfKVbwtP9ZyI2DpvfWSQO8DgVnARu3AQ3IxaLppBTlQuHb6TzbVjNQywny75g7N3-IwFzel_H3y40py_Jk-7l0qcE9mKul2ys8Mr3dvW8m3L7wzBLCRAvnm9E1lZlaP9RrIc7BOBlVyUvIn6etXc6YTQTj3M0P-16F6HrFBqUVYk0WNQjYK3tlf1alTiJDsheYcZ4z5O4gAML5AQ")
-// 	e := big.NewInt(65537)
-// 	priv := &rsa.PrivateKey{
-// 		PublicKey: rsa.PublicKey{N: new(big.Int).SetBytes(n), E: int(e.Int64())},
-// 	}
-//
-// 	got, err := JWKThumbprint(priv)
-// 	if err != nil {
-// 		t.Fatalf("JWKThumbprint: %v", err)
-// 	}
-// 	const want = "NzbLsXh8uDCcd-6MNwXFpW7dkPY3YPkD4lP62jQ0NHA"
-// 	if diff := cmp.Diff(want, got); diff != "" {
-// 		t.Errorf("RSA thumbprint mismatch (-want +got):\n%s", diff)
-// 	}
-// }
-
-func TestJWKThumbprint_EC_P256(t *testing.T) {
-	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+func TestJWKThumbprint_RSA_MatchesRFC7638Algorithm(t *testing.T) {
+	// Independently compute the RFC 7638 canonical thumbprint: SHA-256 over
+	// the minimal JSON {"e","kty","n"} with lexicographic member order and no
+	// whitespace. This cross-checks JWKThumbprint (which delegates to go-jose)
+	// against the RFC algorithm directly, without relying on any hardcoded
+	// vector that could be mistyped.
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		t.Fatalf("generate key: %v", err)
+		t.Fatalf("rsa.GenerateKey: %v", err)
 	}
 	got, err := JWKThumbprint(priv)
 	if err != nil {
 		t.Fatalf("JWKThumbprint: %v", err)
 	}
-	// Idempotent and non-empty.
-	if got == "" {
-		t.Fatal("empty thumbprint")
+
+	nB64 := base64.RawURLEncoding.EncodeToString(priv.N.Bytes())
+	// 65537 == 0x010001, which base64url-encodes to "AQAB".
+	canon := []byte(`{"e":"AQAB","kty":"RSA","n":"` + nB64 + `"}`)
+	sum := sha256.Sum256(canon)
+	want := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("RSA thumbprint does not match RFC 7638 algorithm (-want +got):\n%s", diff)
 	}
-	got2, _ := JWKThumbprint(priv)
-	if got != got2 {
-		t.Fatal("thumbprint not deterministic")
+}
+
+func TestJWKThumbprint_EC_MatchesRFC7638Algorithm(t *testing.T) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa.GenerateKey: %v", err)
 	}
+	got, err := JWKThumbprint(priv)
+	if err != nil {
+		t.Fatalf("JWKThumbprint: %v", err)
+	}
+
+	// RFC 7638 §3.2: EC coordinates are fixed-length field elements padded to
+	// the curve byte size, then base64url-encoded.
+	byteLen := (priv.Curve.Params().BitSize + 7) / 8
+	xB64 := base64.RawURLEncoding.EncodeToString(padFixed(priv.X.Bytes(), byteLen))
+	yB64 := base64.RawURLEncoding.EncodeToString(padFixed(priv.Y.Bytes(), byteLen))
+	canon := []byte(`{"crv":"P-256","kty":"EC","x":"` + xB64 + `","y":"` + yB64 + `"}`)
+	sum := sha256.Sum256(canon)
+	want := base64.RawURLEncoding.EncodeToString(sum[:])
+
+	if diff := cmp.Diff(want, got); diff != "" {
+		t.Errorf("EC thumbprint does not match RFC 7638 algorithm (-want +got):\n%s", diff)
+	}
+}
+
+// padFixed left-pads b with zeros so its length is exactly size, matching the
+// fixed-length octet encoding RFC 7638 requires for EC coordinates.
+func padFixed(b []byte, size int) []byte {
+	if len(b) >= size {
+		return b
+	}
+	out := make([]byte, size)
+	copy(out[size-len(b):], b)
+	return out
 }
 
 func TestJWKThumbprint_UnsupportedKey(t *testing.T) {
 	_, err := JWKThumbprint("not a key")
 	if err == nil {
 		t.Fatal("expected error for unsupported key")
+	}
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("error should wrap ErrInvalidConfiguration, got %v", err)
 	}
 }
 
