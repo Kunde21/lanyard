@@ -4,12 +4,13 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/subtle"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
-	"crypto/sha256"
 	"github.com/go-jose/go-jose/v4"
 )
 
@@ -37,6 +38,37 @@ type Confirmation struct {
 // (jkt or x5t#S256).
 func (c Confirmation) IsBound() bool {
 	return c.JKT != "" || c.X5T256 != ""
+}
+
+// VerifyDPoPBinding reports whether c binds the token to the public key
+// derived from priv (DPoP). Returns ErrTokenUnbound if no jkt member is
+// present, or an error wrapping ErrTokenBindingMismatch on mismatch.
+func (c Confirmation) VerifyDPoPBinding(priv crypto.PrivateKey) error {
+	if c.JKT == "" {
+		return ErrTokenUnbound
+	}
+	got, err := JWKThumbprint(priv)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrTokenBindingMismatch, err)
+	}
+	if subtle.ConstantTimeCompare([]byte(c.JKT), []byte(got)) != 1 {
+		return fmt.Errorf("%w: jkt mismatch", ErrTokenBindingMismatch)
+	}
+	return nil
+}
+
+// VerifyMTLSBinding reports whether c binds the token to cert's leaf
+// certificate (mTLS x5t#S256). Returns ErrTokenUnbound if no x5t#S256 member
+// is present, or an error wrapping ErrTokenBindingMismatch on mismatch.
+func (c Confirmation) VerifyMTLSBinding(cert *x509.Certificate) error {
+	if c.X5T256 == "" {
+		return ErrTokenUnbound
+	}
+	got := X509CertThumbprint(cert)
+	if subtle.ConstantTimeCompare([]byte(c.X5T256), []byte(got)) != 1 {
+		return fmt.Errorf("%w: x5t#S256 mismatch", ErrTokenBindingMismatch)
+	}
+	return nil
 }
 
 // JWKThumbprint returns the base64url-encoded RFC 7638 SHA-256 JWK Thumbprint

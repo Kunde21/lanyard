@@ -1,18 +1,20 @@
 package rp
 
 import (
+	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
 
-	"crypto/elliptic"
-	"crypto/x509"
-	"crypto/x509/pkix"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -69,7 +71,7 @@ func TestConfirmation_UnmarshalJSON_DPoPCanonical(t *testing.T) {
 // 	priv := &rsa.PrivateKey{
 // 		PublicKey: rsa.PublicKey{N: new(big.Int).SetBytes(n), E: int(e.Int64())},
 // 	}
-// 
+//
 // 	got, err := JWKThumbprint(priv)
 // 	if err != nil {
 // 		t.Fatalf("JWKThumbprint: %v", err)
@@ -111,9 +113,11 @@ func TestX509CertThumbprint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{CommonName: "test"},
-		NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour)}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "test"},
+		NotBefore:    time.Now(), NotAfter: time.Now().Add(time.Hour),
+	}
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
 	if err != nil {
 		t.Fatalf("create cert: %v", err)
@@ -135,5 +139,58 @@ func TestX509CertThumbprint(t *testing.T) {
 func TestX509CertThumbprint_Nil(t *testing.T) {
 	if X509CertThumbprint(nil) != "" {
 		t.Fatal("nil cert should yield empty thumbprint")
+	}
+}
+
+func TestConfirmation_VerifyDPoPBinding(t *testing.T) {
+	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	jkt, _ := JWKThumbprint(priv)
+	other, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+	tests := []struct {
+		name    string
+		cnf     Confirmation
+		key     crypto.PrivateKey
+		wantErr error
+	}{
+		{name: "match", cnf: Confirmation{JKT: jkt}, key: priv, wantErr: nil},
+		{name: "mismatch", cnf: Confirmation{JKT: jkt}, key: other, wantErr: ErrTokenBindingMismatch},
+		{name: "unbound", cnf: Confirmation{}, key: priv, wantErr: ErrTokenUnbound},
+		{name: "mtls bound not dpop", cnf: Confirmation{X5T256: "x"}, key: priv, wantErr: ErrTokenUnbound},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.cnf.VerifyDPoPBinding(tc.key)
+			if tc.wantErr == nil {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestConfirmation_VerifyMTLSBinding(t *testing.T) {
+	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: time.Now(), NotAfter: time.Now().Add(time.Hour)}
+	der, _ := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &priv.PublicKey, priv)
+	cert, _ := x509.ParseCertificate(der)
+	x5t := X509CertThumbprint(cert)
+
+	if err := (Confirmation{X5T256: x5t}).VerifyMTLSBinding(cert); err != nil {
+		t.Fatalf("match: %v", err)
+	}
+	if err := (Confirmation{X5T256: x5t}).VerifyMTLSBinding(nil); !errors.Is(err, ErrTokenBindingMismatch) {
+		t.Fatalf("nil cert: error = %v, want ErrTokenBindingMismatch", err)
+	}
+	if err := (Confirmation{X5T256: "wrong"}).VerifyMTLSBinding(cert); !errors.Is(err, ErrTokenBindingMismatch) {
+		t.Fatalf("mismatch: error = %v, want ErrTokenBindingMismatch", err)
+	}
+	if err := (Confirmation{JKT: "x"}).VerifyMTLSBinding(cert); !errors.Is(err, ErrTokenUnbound) {
+		t.Fatalf("unbound: error = %v, want ErrTokenUnbound", err)
 	}
 }
