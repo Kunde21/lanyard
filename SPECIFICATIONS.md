@@ -258,23 +258,32 @@ JWT-based client authentication (private_key_jwt).
 
 ### RFC 8707: Resource Indicators for OAuth 2.0
 
-**Status**: Not Implemented
+**Status**: Implemented
 
-**Required for**: FAPI 2.0 Grant Management
+Audience-restricted access tokens via target resource server indicators.
 
-Specifies target resource servers for access tokens.
+| Feature                | Status | Notes                                             |
+|------------------------|--------|---------------------------------------------------|
+| resource Parameter     | ✅     | Authorization request (query + request object)    |
+| Multiple Resources     | ✅     | Repeated `resource` parameter                     |
+| Token Endpoint Support | ✅     | client_credentials, refresh_token, token_exchange |
+| Per-Request Override   | ✅     | `WithTokenResources` via context                  |
+| Resource Validation    | ✅     | Absolute URI, no fragment                         |
+| invalid_target Error   | ⚠️     | Propagated via standard token error path          |
 
-| Feature              | Status | Notes                           |
-|----------------------|--------|---------------------------------|
-| resource Parameter   | ❌     | In authorization request        |
-| Multiple Resources   | ❌     | Repeated resource parameter     |
-| invalid_target Error | ❌     | Invalid resource error response |
+**Implementation**:
+
+- `rp/resource_indicators.go` - Validation and parameter helpers
+- `rp/options.go` - `WithResources`, `SetResources`
+- `rp/token_source.go` - `WithTokenResources` (per-request context override)
+- `rp/authrequest.go`, `rp/par.go`, `rp/request_object.go` - Authorization request wiring
+- `rp/client_credentials.go`, `rp/refresh_token.go`, `rp/token_exchange.go` - Token endpoint wiring
 
 **Purpose**:
 
 - Binds access tokens to specific resource servers
 - Prevents token misuse across APIs
-- Required for fine-grained authorization
+- Foundation for fine-grained authorization and FAPI 2.0 Grant Management
 
 ---
 
@@ -738,6 +747,7 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | OAuth 2.0 Authorization Server Metadata | RFC 8414              | ✅     |
 | OAuth 2.0 Token Exchange                | RFC 8693              | ✅     |
 | OAuth 2.0 Mutual-TLS Client Auth        | RFC 8705              | ✅     |
+| OAuth 2.0 Resource Indicators           | RFC 8707              | ✅     |
 | OAuth 2.0 Pushed Authorization Requests | RFC 9126              | ✅     |
 | OAuth 2.0 DPoP                          | RFC 9449              | ✅     |
 | JWT Profile for OAuth 2.0               | RFC 7523              | ✅     |
@@ -756,7 +766,6 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 
 | Specification                           | RFC/Standard | Required For                                |
 |-----------------------------------------|--------------|---------------------------------------------|
-| Resource Indicators                     | RFC 8707     | FAPI 2.0 Grant Management                   |
 | PoP Key Semantics (cnf claim)           | RFC 7800     | DPoP/mTLS sender constraint                 |
 | JWT Introspection Response              | RFC 9701     | Enhanced introspection                      |
 | Refresh Token Rotation                  | RFC 9700     | OAuth 2.0 Security BCP                      |
