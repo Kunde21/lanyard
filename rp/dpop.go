@@ -172,7 +172,8 @@ func dpopJWKToMap(jwk *jose.JSONWebKey) (map[string]any, error) {
 		return nil, fmt.Errorf("jwk is nil")
 	}
 
-	// Use the same logic as rsaJWK and ecdsaJWK for consistency
+	// Serialize the public key to the canonical JWK member map for the DPoP
+	// header (kty/crv/x/y for EC; kty/n/e for RSA).
 	switch key := jwk.Key.(type) {
 	case *rsa.PublicKey:
 		return map[string]any{
