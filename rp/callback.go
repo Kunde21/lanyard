@@ -20,6 +20,12 @@ type CallbackResult struct {
 	AccessToken string
 	// UserInfo contains claims returned from the provider's UserInfo endpoint.
 	UserInfo map[string]any
+	// Cnf is the RFC 7800 confirmation claim parsed from the ID token, if
+	// present. It binds the ID token to a proof-of-possession key (e.g. a
+	// DPoP JWK thumbprint). Callers can verify the binding via
+	// Confirmation.VerifyDPoPBinding / VerifyMTLSBinding. Nil when the ID
+	// token carries no cnf claim.
+	Cnf *Confirmation
 }
 
 func (r *RP) parseAuthorizationResponse(ctx context.Context, params callbackParams) (code, state, iss string, err error) {
@@ -153,7 +159,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, err
 	}
 	if r.isFAPIProfile() {
-		return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken}, nil
+		return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, Cnf: claims.Cnf}, nil
 	}
 
 	userInfoEndpoint := r.userInfoEndpoint(provider)
@@ -171,7 +177,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, err
 	}
 
-	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo}, nil
+	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo, Cnf: claims.Cnf}, nil
 }
 
 func (r *RP) validateAuthorizationResponseIDToken(ctx context.Context, rawIDToken, expectedNonce, code, state, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
