@@ -304,7 +304,7 @@ Defines the `cnf` (confirmation) claim binding a JWT to a proof-of-possession ke
 | mTLS Binding Verify    | ✅     | Confirmation.VerifyMTLSBinding (constant-time)     |
 | ID Token cnf           | ✅     | Parsed on id_token, exposed via CallbackResult.Cnf |
 | Access Token cnf       | ⚠️     | ParseAccessTokenConfirmation decodes WITHOUT signature verification |
-| Introspection cnf      | ❌     | Pending feat/token-introspection merge             |
+| Introspection cnf      | ✅     | Parsed on IntrospectionResponse; passthrough, no auto enforcement |
 
 **Implementation**:
 

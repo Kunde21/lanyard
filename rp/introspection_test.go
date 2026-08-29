@@ -2,6 +2,8 @@ package rp
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -247,6 +249,64 @@ func TestIntrospector_IntrospectToken_BasicAuth(t *testing.T) {
 	want := url.Values{"token": {"opaque-token"}, "token_type_hint": {"access_token"}}
 	if diff := cmp.Diff(want, values); diff != "" {
 		t.Fatalf("form mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestIntrospector_IntrospectToken_ParsesCnfClaim(t *testing.T) {
+	dpopKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jkt, err := JWKThumbprint(dpopKey)
+	if err != nil {
+		t.Fatalf("JWKThumbprint() failed: %v", err)
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"active": true,
+		"sub":    "user-1",
+		"cnf":    map[string]any{"jkt": jkt},
+	})
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(introspectionProvider(server.URL, "client_secret_basic")),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token: "opaque-token",
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+
+	want := &Confirmation{JKT: jkt}
+	if diff := cmp.Diff(want, got.Cnf); diff != "" {
+		t.Fatalf("Cnf mismatch (-want +got):\n%s", diff)
+	}
+	if err := got.Cnf.VerifyDPoPBinding(dpopKey); err != nil {
+		t.Fatalf("VerifyDPoPBinding() = %v, want nil for matching key", err)
+	}
+
+	otherKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	if err := got.Cnf.VerifyDPoPBinding(otherKey); !errors.Is(err, ErrTokenBindingMismatch) {
+		t.Fatalf("VerifyDPoPBinding() = %v, want ErrTokenBindingMismatch", err)
 	}
 }
 
@@ -852,6 +912,77 @@ func TestIntrospector_IntrospectToken_JWTResponse(t *testing.T) {
 	}
 	if got.RawJWT() == "" {
 		t.Fatal("RawJWT() is empty, want JWT string")
+	}
+}
+
+func TestIntrospector_IntrospectToken_JWTResponseParsesCnfClaim(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jwksServer := newIntrospectionJWKSServer(t, key, "signing-key-1")
+	defer jwksServer.Close()
+
+	dpopKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jkt, err := JWKThumbprint(dpopKey)
+	if err != nil {
+		t.Fatalf("JWKThumbprint() failed: %v", err)
+	}
+
+	now := time.Now().Unix()
+	claims := map[string]any{
+		"iss": "https://issuer.test",
+		"aud": "client",
+		"iat": now,
+		"token_introspection": map[string]any{
+			"active": true,
+			"sub":    "user-1",
+			"cnf":    map[string]any{"jkt": jkt},
+		},
+	}
+	signed := signIntrospectionJWT(t, key, "signing-key-1", claims)
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", introspectionJWTMediaType)
+		_, _ = w.Write([]byte(signed))
+	}))
+	defer introspectionServer.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             introspectionServer.URL,
+		JWKSURI:                           jwksServer.URL,
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithHTTPClient(jwksServer.Client()),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token:             "opaque-token",
+		PreferJWTResponse: true,
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+
+	want := &Confirmation{JKT: jkt}
+	if diff := cmp.Diff(want, got.Cnf); diff != "" {
+		t.Fatalf("Cnf mismatch (-want +got):\n%s", diff)
+	}
+	if err := got.Cnf.VerifyDPoPBinding(dpopKey); err != nil {
+		t.Fatalf("VerifyDPoPBinding() = %v, want nil for matching key", err)
 	}
 }
 

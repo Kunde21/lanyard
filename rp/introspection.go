@@ -59,6 +59,17 @@ type IntrospectionResponse struct {
 	Iss       string        `json:"iss,omitempty"`
 	JTI       string        `json:"jti,omitempty"`
 
+	// Cnf is the RFC 7800 confirmation claim of the introspected token,
+	// carrying its proof-of-possession key binding (e.g. cnf.jkt for
+	// DPoP-bound tokens, cnf.x5t#S256 for mTLS-bound tokens). Nil when the
+	// response carries no cnf claim.
+	//
+	// Introspection is a pure passthrough: the binding is not enforced
+	// automatically. Callers can cross-check it via
+	// Confirmation.VerifyDPoPBinding / VerifyMTLSBinding — for a DPoP client,
+	// against RP.DPoPKeyThumbprint().
+	Cnf *Confirmation `json:"cnf,omitempty"`
+
 	raw    json.RawMessage
 	rawJWT string
 }
