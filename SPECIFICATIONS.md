@@ -297,7 +297,7 @@ Defines the `cnf` (confirmation) claim binding a JWT to a proof-of-possession ke
 
 | Feature                | Status | Notes                                              |
 |------------------------|--------|----------------------------------------------------|
-| cnf Claim Parsing      | ✅     | All members: jkt, x5t#S256, jwk, x5c, x5u, x5t, kid, jwe |
+| cnf Claim Parsing      | ✅     | All members: jkt, x5t#S256, jwk, jku, x5c, x5u, x5t, kid, jwe |
 | JWK Thumbprint (jkt)   | ✅     | RFC 7638 via go-jose, RSA + EC P-256/384/521       |
 | X.509 Cert (x5t#S256)  | ✅     | SHA-256 DER thumbprint for mTLS                    |
 | DPoP Binding Verify    | ✅     | Confirmation.VerifyDPoPBinding (constant-time)     |

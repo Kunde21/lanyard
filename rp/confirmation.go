@@ -22,10 +22,11 @@ import (
 //   - JKT (RFC 7638 JWK Thumbprint) — used by DPoP (RFC 9449).
 //   - X5T256 (x5t#S256, X.509 SHA-256 certificate thumbprint) — used by mTLS (RFC 8705).
 //
-// Other members (jwk, x5c, x5u, x5t, kid, jwe) are parsed for completeness but
+// Other members (jwk, jku, x5c, x5u, x5t, kid, jwe) are parsed for completeness but
 // not enforced by VerifyDPoPBinding / VerifyMTLSBinding.
 type Confirmation struct {
 	JWK    json.RawMessage `json:"jwk,omitempty"`
+	JKU    string          `json:"jku,omitempty"`
 	JKT    string          `json:"jkt,omitempty"`
 	X5T256 string          `json:"x5t#S256,omitempty"`
 	X5C    []string        `json:"x5c,omitempty"`
