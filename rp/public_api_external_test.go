@@ -117,6 +117,36 @@ func TestIntrospectionPublicAPI(t *testing.T) {
 	_, _ = rp.NewRefreshTokenSource(nil, "rt")
 	_ = rotSrc
 
+	// Grant management surface.
+	_ = rp.GrantActionCreate
+	_ = rp.GrantActionMerge
+	_ = rp.GrantActionUpdate
+	_ = rp.GrantActionReplace
+	_ = rp.SetGrantManagementAction(rp.GrantActionMerge, "grant-id")
+	_ = rp.SetGrantID("grant-id")
+	_, _ = rp.NewGrantManager(nil, "https://issuer.example.com")
+	_ = rp.ErrGrantManagementFailed
+	_ = rp.ErrInvalidGrantID
+	_ = rp.ErrAuthorizationFailed
+	var grantStatus rp.GrantStatus
+	_ = grantStatus.Scopes
+	_ = grantStatus.Claims
+	_ = grantStatus.AuthorizationDetails
+	_ = grantStatus.UpdatedBy
+	_ = grantStatus.DecodeRaw(&struct{}{})
+	var grantScope rp.GrantScope
+	_ = grantScope.Resource
+	var rpInst *rp.RP
+	query := rpInst.QueryGrant
+	revoke := rpInst.RevokeGrant
+	_ = query
+	_ = revoke
+	_ = rp.SetGrantManagementAction(rp.GrantActionMerge, "grant-id")
+	var cbResult rp.CallbackResult
+	_ = cbResult.GrantID
+	var tokenValue rp.Token
+	_ = tokenValue.GrantID
+
 	var opt rp.Option
 	opt = rp.WithIntrospectionDecryptionKey(nil) // compiles; nil rejected at construction
 	_ = opt

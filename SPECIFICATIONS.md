@@ -374,6 +374,34 @@ Security recommendations for OAuth 2.0 deployments.
 
 ---
 
+### FAPI 2.0 Grant Management (draft-ietf-oauth-grant-management)
+
+**Status**: Implemented
+
+Explicit grant lifecycle management: reference, create, merge, replace,
+query, and revoke grants via grant_id.
+
+| Feature                        | Status | Notes                                                   |
+|--------------------------------|--------|---------------------------------------------------------|
+| Authorization Request Params   | ✅     | grant_id, grant_management_action (query, PAR, JAR)     |
+| Actions                        | ✅     | create, merge, replace + FAPI ID1 update alias          |
+| action_required Enforcement    | ✅     | grant_management_action_required metadata              |
+| Token Response grant_id        | ✅     | Token.GrantID, CallbackResult.GrantID                   |
+| Query API (GET)                | ✅     | RP.QueryGrant / NewGrantManager, Bearer token           |
+| Revoke API (DELETE)            | ✅     | RP.RevokeGrant                                          |
+| Grant Status                   | ✅     | scopes+resource (both spellings), claims, RAR details, timestamps |
+| invalid_grant_id Error         | ✅     | ErrInvalidGrantID at callback                           |
+| Refresh Invalidation Handling  | ✅     | RefreshTokenSource.Replace after merge/replace          |
+| DPoP on Grant API              | ✅     | Proof bound to the grant management access token        |
+
+**Implementation**:
+
+- `rp/grant_management_request.go` - actions, validation, authorization request parameters
+- `rp/grant_management.go` - GrantManager, QueryGrant, RevokeGrant, GrantStatus
+- `rp/options.go` - SetGrantManagementAction, SetGrantID
+
+---
+
 ### RFC 7662: OAuth 2.0 Token Introspection
 
 **Status**: Implemented
@@ -785,6 +813,7 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | OAuth 2.0 Resource Indicators           | RFC 8707              | ✅     |
 | OAuth 2.0 Pushed Authorization Requests | RFC 9126              | ✅     |
 | OAuth 2.0 Token Introspection           | RFC 7662              | ✅     |
+| FAPI 2.0 Grant Management               | OpenID FAPI / IETF draft | ✅  |
 | JWT Introspection Response              | RFC 9701              | ✅     |
 | OAuth 2.0 DPoP                          | RFC 9449              | ✅     |
 | JWT Profile for OAuth 2.0               | RFC 7523              | ✅     |
@@ -803,7 +832,6 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 
 | Specification                           | RFC/Standard | Required For                                |
 |-----------------------------------------|--------------|---------------------------------------------|
-| FAPI 2.0 Grant Management               | OpenID FAPI  | Grant lifecycle management                  |
 | OpenID Connect for Identity Assurance   | OpenID       | Identity-proofing ecosystems                |
 
 ---

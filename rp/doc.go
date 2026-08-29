@@ -42,6 +42,21 @@
 // (invalid_grant), refresh errors wrap [ErrRefreshTokenRejected]; discard the
 // token and restart the authorization flow.
 //
+// # Grant management
+//
+// Providers supporting grant management (draft-ietf-oauth-grant-management,
+// profiled by FAPI 2.0 Grant Management) let the RP create, update, query, and
+// revoke grants. Reference a grant in the authorization request with
+// [SetGrantManagementAction] (create, merge, or replace; the FAPI
+// Implementer's Draft 1 spelling update is accepted as an alias of merge) and
+// [SetGrantID]. The grant_id returned in token responses surfaces on [Token]
+// and [CallbackResult.GrantID]. Query and revoke grants via
+// [RP.QueryGrant] / [RP.RevokeGrant] or a standalone [NewGrantManager], with
+// a caller-supplied access token authorized for the grant_management_query /
+// grant_management_revoke scope. merge and replace invalidate the grant's
+// existing refresh tokens: point a [RefreshTokenSource] at the new refresh
+// token with Replace.
+//
 // # Resource indicators
 //
 // Use [WithResources] or [SetResources] to send OAuth 2.0 Resource Indicators
