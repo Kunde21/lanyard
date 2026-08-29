@@ -2,6 +2,7 @@ package rp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -78,8 +79,39 @@ func executeTokenGrant(config *clientConfig, run tokenGrantExecutor) (Token, err
 }
 
 func tokenEndpointStatusError(status int, preview string) error {
+	var body struct {
+		Error       string `json:"error"`
+		Description string `json:"error_description"`
+	}
+	if err := json.Unmarshal([]byte(preview), &body); err == nil && body.Error != "" {
+		return &OAuthError{Code: body.Error, Description: body.Description, Status: status}
+	}
 	return fmt.Errorf("token endpoint returned status %d: %s", status, preview)
 }
+
+// OAuthError describes an OAuth 2.0 token endpoint error response (RFC 6749
+// section 5.2). It is returned when the endpoint responds with a JSON error
+// body, so callers can branch on the machine-readable Code (e.g.
+// "invalid_grant") via errors.As.
+type OAuthError struct {
+	// Code is the OAuth error code, e.g. "invalid_grant" or "invalid_client".
+	Code string
+	// Description is the optional error_description from the response.
+	Description string
+	// Status is the HTTP status code of the response.
+	Status int
+}
+
+func (e *OAuthError) Error() string {
+	if e.Description != "" {
+		return fmt.Sprintf("oauth error %s (HTTP %d): %s", e.Code, e.Status, e.Description)
+	}
+	return fmt.Sprintf("oauth error %s (HTTP %d)", e.Code, e.Status)
+}
+
+// oauthErrorInvalidGrant is the RFC 6749 error code for an expired, revoked,
+// or otherwise rejected refresh token.
+const oauthErrorInvalidGrant = "invalid_grant"
 
 func executeTokenRequest(cfg tokenRequestExecution) (Token, int, string, error) {
 	var tokenResp Token

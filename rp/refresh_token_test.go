@@ -287,6 +287,16 @@ func TestRefreshToken_ServerError(t *testing.T) {
 	if !errors.Is(err, ErrRefreshTokenFailed) {
 		t.Fatalf("expected ErrRefreshTokenFailed, got: %v", err)
 	}
+	if !errors.Is(err, ErrRefreshTokenRejected) {
+		t.Fatalf("expected ErrRefreshTokenRejected for invalid_grant, got: %v", err)
+	}
+	var oauthErr *OAuthError
+	if !errors.As(err, &oauthErr) {
+		t.Fatalf("expected *OAuthError, got: %v", err)
+	}
+	if diff := cmp.Diff("invalid_grant", oauthErr.Code); diff != "" {
+		t.Fatalf("OAuthError.Code mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestRefreshToken_FallbackPostToBasic(t *testing.T) {

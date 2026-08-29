@@ -110,6 +110,12 @@ func TestIntrospectionPublicAPI(t *testing.T) {
 	_ = rp.TokenTypeHintAccessToken
 	_ = rp.TokenTypeHintRefreshToken
 	_ = (*rp.Introspector)(nil)
+	_ = rp.ErrRefreshTokenRejected
+	var oauthErr rp.OAuthError
+	_ = oauthErr.Code
+	var rotSrc *rp.RefreshTokenSource
+	_, _ = rp.NewRefreshTokenSource(nil, "rt")
+	_ = rotSrc
 
 	var opt rp.Option
 	opt = rp.WithIntrospectionDecryptionKey(nil) // compiles; nil rejected at construction

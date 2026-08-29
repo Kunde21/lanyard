@@ -25,6 +25,11 @@ var (
 	ErrClientCredentialsFailed = errors.New("client credentials token request failed")
 	// ErrRefreshTokenFailed indicates a refresh token request failed.
 	ErrRefreshTokenFailed = errors.New("refresh token request failed")
+	// ErrRefreshTokenRejected indicates the authorization server rejected the
+	// refresh token (invalid_grant). Per RFC 9700, callers must discard the
+	// refresh token and restart the authorization flow; replaying a rotated
+	// token typically triggers revocation of the whole token family.
+	ErrRefreshTokenRejected = errors.New("refresh token was rejected")
 	// ErrTokenUnbound indicates a token lacked a required sender-constraint binding.
 	ErrTokenUnbound = errors.New("token is not sender-constrained")
 	// ErrTokenBindingMismatch indicates a token's cnf binding did not match the expected key.

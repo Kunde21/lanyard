@@ -35,6 +35,13 @@
 // interaction. The method respects the same auth method and DPoP
 // configuration as the original flow.
 //
+// Authorization servers following RFC 9700 rotate the refresh token on every
+// use; once rotated, the previous token is invalid. Track rotation with
+// [NewRefreshTokenSource], which serializes refreshes so concurrent callers
+// never replay a rotated-out token. When the server rejects a token
+// (invalid_grant), refresh errors wrap [ErrRefreshTokenRejected]; discard the
+// token and restart the authorization flow.
+//
 // # Resource indicators
 //
 // Use [WithResources] or [SetResources] to send OAuth 2.0 Resource Indicators

@@ -370,7 +370,7 @@ Security recommendations for OAuth 2.0 deployments.
 | No Password Grant         | ✅     | Not supported                |
 | Sender-Constrained Tokens | ✅     | DPoP, mTLS supported         |
 | Short-Lived Tokens        | ⚠️     | Configurable, not enforced   |
-| Refresh Token Rotation    | ❌     | Not implemented              |
+| Refresh Token Rotation    | ✅     | RefreshTokenSource + ErrRefreshTokenRejected |
 
 ---
 
@@ -803,7 +803,6 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 
 | Specification                           | RFC/Standard | Required For                                |
 |-----------------------------------------|--------------|---------------------------------------------|
-| Refresh Token Rotation                  | RFC 9700     | OAuth 2.0 Security BCP                      |
 | FAPI 2.0 Grant Management               | OpenID FAPI  | Grant lifecycle management                  |
 | OpenID Connect for Identity Assurance   | OpenID       | Identity-proofing ecosystems                |
 

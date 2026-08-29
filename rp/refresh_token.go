@@ -2,6 +2,7 @@ package rp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -30,6 +31,10 @@ func (r *RP) RefreshToken(ctx context.Context, refreshToken string) (Token, erro
 		return tokenGrantResult{token: tokenResp, status: status, preview: preview}, err
 	})
 	if err != nil {
+		var oauthErr *OAuthError
+		if errors.As(err, &oauthErr) && oauthErr.Code == oauthErrorInvalidGrant {
+			return Token{}, fmt.Errorf("%w: %w: %w", ErrRefreshTokenFailed, ErrRefreshTokenRejected, err)
+		}
 		return Token{}, fmt.Errorf("%w: %v", ErrRefreshTokenFailed, err)
 	}
 	return tokenResp, nil
