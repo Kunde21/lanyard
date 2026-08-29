@@ -35,11 +35,30 @@ func (r *RP) parseAuthorizationResponse(ctx context.Context, params callbackPara
 			return "", "", "", err
 		}
 		if jarmClaims.Error != "" {
-			return "", "", "", fmt.Errorf("%w: JARM error %q: %s", ErrInvalidState, jarmClaims.Error, jarmClaims.ErrorDescription)
+			return "", "", "", authorizationError(jarmClaims.Error, jarmClaims.ErrorDescription)
 		}
 		return jarmClaims.Code, jarmClaims.State, jarmClaims.Iss, nil
 	}
+	if params.Error != "" {
+		return "", "", "", authorizationError(params.Error, params.ErrorDescription)
+	}
 	return params.Code, params.State, params.Iss, nil
+}
+
+// authorizationError maps an authorization error response (RFC 6749 section
+// 4.1.2.1) to an error, with a dedicated sentinel for the grant management
+// invalid_grant_id code.
+func authorizationError(code, description string) error {
+	if code == "invalid_grant_id" {
+		if description != "" {
+			return fmt.Errorf("%w: %w: %s", ErrAuthorizationFailed, ErrInvalidGrantID, description)
+		}
+		return fmt.Errorf("%w: %w", ErrAuthorizationFailed, ErrInvalidGrantID)
+	}
+	if description != "" {
+		return fmt.Errorf("%w: %s: %s", ErrAuthorizationFailed, code, description)
+	}
+	return fmt.Errorf("%w: %s", ErrAuthorizationFailed, code)
 }
 
 func (r *RP) providerForCallback(ctx context.Context, issuer string) (metadata.Provider, error) {

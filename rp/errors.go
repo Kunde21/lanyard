@@ -13,6 +13,13 @@ var (
 	ErrInvalidState = errors.New("invalid state")
 	// ErrMissingCode indicates callback is missing an authorization code.
 	ErrMissingCode = errors.New("missing authorization code")
+	// ErrAuthorizationFailed indicates the authorization server returned an
+	// error response to the authorization request (RFC 6749 section 4.1.2.1).
+	ErrAuthorizationFailed = errors.New("authorization request failed")
+	// ErrInvalidGrantID indicates the authorization server rejected the
+	// grant_id used in an authorization request (grant management,
+	// draft-ietf-oauth-grant-management section 5.3).
+	ErrInvalidGrantID = errors.New("invalid grant_id")
 	// ErrTokenExchangeFailed indicates token exchange failed.
 	ErrTokenExchangeFailed = errors.New("token exchange failed")
 	// ErrIDTokenValidationFailed indicates ID token validation failed.

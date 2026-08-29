@@ -76,6 +76,11 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 	if err := cfg.grantManagement.validateSupported(metadata.GrantManagementActionsSupported); err != nil {
 		return "", err
 	}
+	if required := metadata.GrantManagementActionRequired; required != nil && *required {
+		if cfg.grantManagement == nil || cfg.grantManagement.action == "" {
+			return "", fmt.Errorf("%w: provider requires grant_management_action on every authorization request", ErrInvalidConfiguration)
+		}
+	}
 
 	if err := r.resolveAuthMethod(); err != nil {
 		return "", err
