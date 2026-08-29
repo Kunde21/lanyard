@@ -374,19 +374,42 @@ Security recommendations for OAuth 2.0 deployments.
 
 ---
 
+### RFC 7662: OAuth 2.0 Token Introspection
+
+**Status**: Implemented
+
+Resource-server style token state queries.
+
+| Feature                      | Status | Notes                                                   |
+|------------------------------|--------|---------------------------------------------------------|
+| Introspection Endpoint       | ✅     | `NewIntrospector`, `RP.IntrospectToken`                 |
+| Client Auth Methods          | ✅     | All supported methods + introspection-specific metadata |
+| active:false Handling        | ✅     | Returned as successful response, not an error           |
+| cnf Claim                    | ✅     | RFC 7800 binding parsed (see RFC 7800 section)          |
+
+---
+
 ### RFC 9701: JWT Response for OAuth Token Introspection
 
-**Status**: Not Implemented
+**Status**: Implemented
 
 **Required for**: Enhanced introspection security
 
-JWT-formatted introspection responses.
+JWT-formatted introspection responses, requested via `PreferJWTResponse`
+(`Accept: application/token-introspection+jwt`).
 
-| Feature                    | Status | Notes                            |
-|----------------------------|--------|----------------------------------|
-| JWT Introspection Response | ❌     | Signed response from AS          |
-| Response Claims            | ❌     | iss, aud, exp, iat, active, etc. |
-| Signature Verification     | ❌     | RS validates JWT signature       |
+| Feature                     | Status | Notes                                                    |
+|-----------------------------|--------|----------------------------------------------------------|
+| Signed Response             | ✅     | Signature, typ, alg allowlist verified against AS JWKS   |
+| Response Claims             | ✅     | iss, aud, iat (required), token_introspection             |
+| Signature Verification      | ✅     | kid lookup; exactly-one-key rule for kid-less tokens      |
+| Encrypted (Nested JWT)      | ✅     | With `WithIntrospectionDecryptionKey`; safe alg allowlist |
+| Provider Algorithm Metadata | ✅     | introspection_signing_alg_values_supported enforced       |
+
+**Implementation**:
+
+- `rp/introspection.go` - `validateIntrospectionJWT` (signed), `decryptIntrospectionJWE` (nested)
+- `rp/options.go` - `WithIntrospectionDecryptionKey` (RSA-OAEP, RSA-OAEP-256, ECDH-ES family; RSA1_5 rejected)
 
 ---
 
@@ -761,6 +784,8 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | OAuth 2.0 Mutual-TLS Client Auth        | RFC 8705              | ✅     |
 | OAuth 2.0 Resource Indicators           | RFC 8707              | ✅     |
 | OAuth 2.0 Pushed Authorization Requests | RFC 9126              | ✅     |
+| OAuth 2.0 Token Introspection           | RFC 7662              | ✅     |
+| JWT Introspection Response              | RFC 9701              | ✅     |
 | OAuth 2.0 DPoP                          | RFC 9449              | ✅     |
 | JWT Profile for OAuth 2.0               | RFC 7523              | ✅     |
 | OAuth 2.1                               | draft-ietf-oauth-v2-1 | ✅     |
@@ -778,7 +803,6 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 
 | Specification                           | RFC/Standard | Required For                                |
 |-----------------------------------------|--------------|---------------------------------------------|
-| JWT Introspection Response              | RFC 9701     | Enhanced introspection                      |
 | Refresh Token Rotation                  | RFC 9700     | OAuth 2.0 Security BCP                      |
 | FAPI 2.0 Grant Management               | OpenID FAPI  | Grant lifecycle management                  |
 | OpenID Connect for Identity Assurance   | OpenID       | Identity-proofing ecosystems                |

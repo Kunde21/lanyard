@@ -341,11 +341,44 @@ var supportedIntrospectionJWTAlgs = []jose.SignatureAlgorithm{
 	jose.ES256, jose.ES384, jose.ES512,
 }
 
+// supportedIntrospectionJWEAlgs restricts key encryption to algorithms
+// considered safe (RFC 8725). RSA1_5 is deliberately excluded.
+var supportedIntrospectionJWEAlgs = []jose.KeyAlgorithm{
+	jose.RSA_OAEP, jose.RSA_OAEP_256,
+	jose.ECDH_ES, jose.ECDH_ES_A128KW, jose.ECDH_ES_A192KW, jose.ECDH_ES_A256KW,
+}
+
+var supportedIntrospectionJWEEncs = []jose.ContentEncryption{
+	jose.A128GCM, jose.A192GCM, jose.A256GCM,
+	jose.A128CBC_HS256, jose.A192CBC_HS384, jose.A256CBC_HS512,
+}
+
 type introspectionJWTClaims struct {
 	Iss                string                `json:"iss"`
 	Aud                audienceClaim         `json:"aud"`
 	Iat                *int64                `json:"iat"`
 	TokenIntrospection IntrospectionResponse `json:"token_introspection"`
+}
+
+// decryptIntrospectionJWE decrypts the outer JWE of a signed-then-encrypted
+// nested introspection response (RFC 9701 section 5) and returns the inner
+// signed JWT. Requires a key configured via [WithIntrospectionDecryptionKey].
+func (c *clientConfig) decryptIntrospectionJWE(raw string) (string, error) {
+	if c.introspectionDecryptionKey == nil {
+		return "", fmt.Errorf("encrypted introspection JWT received but no decryption key is configured")
+	}
+	obj, err := jose.ParseEncrypted(raw, supportedIntrospectionJWEAlgs, supportedIntrospectionJWEEncs)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse encrypted introspection JWT: %w", err)
+	}
+	if typ, _ := obj.Header.ExtraHeaders["typ"].(string); typ != "" && !strings.EqualFold(typ, "token-introspection+jwt") {
+		return "", fmt.Errorf("encrypted introspection JWT typ mismatch: %q", typ)
+	}
+	plaintext, err := obj.Decrypt(c.introspectionDecryptionKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt introspection JWT: %w", err)
+	}
+	return string(plaintext), nil
 }
 
 func (c *clientConfig) validateIntrospectionJWT(ctx context.Context, raw string, req IntrospectionRequest) (IntrospectionResponse, error) {
@@ -354,11 +387,26 @@ func (c *clientConfig) validateIntrospectionJWT(ctx context.Context, raw string,
 	}
 
 	parts := strings.Split(raw, ".")
-	if len(parts) == 5 {
-		return IntrospectionResponse{}, fmt.Errorf("encrypted introspection JWT responses are not supported")
+	inner := raw
+	switch len(parts) {
+	case 3:
+		// Plain signed JWT; validated below.
+	case 5:
+		// Signed-then-encrypted nested JWT (RFC 9701 section 5): decrypt the
+		// outer JWE, then validate the inner signed JWT below.
+		decrypted, err := c.decryptIntrospectionJWE(raw)
+		if err != nil {
+			return IntrospectionResponse{}, err
+		}
+		inner = decrypted
+		if len(strings.Split(inner, ".")) != 3 {
+			return IntrospectionResponse{}, fmt.Errorf("nested introspection JWT plaintext must be a signed JWT")
+		}
+	default:
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT must be a signed or nested JWT, got %d parts", len(parts))
 	}
 
-	parsed, err := josejwt.ParseSigned(raw, supportedIntrospectionJWTAlgs)
+	parsed, err := josejwt.ParseSigned(inner, supportedIntrospectionJWTAlgs)
 	if err != nil {
 		return IntrospectionResponse{}, fmt.Errorf("failed to parse introspection JWT: %w", err)
 	}

@@ -24,8 +24,9 @@
 // Token introspection is available through [NewIntrospector] for resource-server
 // style use and through [RP.IntrospectToken] for existing RP instances. JSON
 // responses from RFC 7662 are supported, and signed JWT responses from RFC 9701
-// are verified when requested. Encrypted JWT introspection responses are not yet
-// supported.
+// are verified when requested. Signed-then-encrypted (nested JWT) RFC 9701
+// responses are decrypted when a key is configured via
+// [WithIntrospectionDecryptionKey].
 //
 // # Token refresh
 //

@@ -2,6 +2,7 @@ package rp
 
 import (
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -118,6 +119,19 @@ func TestNewIntrospector_SelectsIntrospectionAuthMethods(t *testing.T) {
 	}
 	if i.resolvedAuthMethod != AuthMethodPost {
 		t.Fatalf("resolvedAuthMethod = %q, want %q", i.resolvedAuthMethod, AuthMethodPost)
+	}
+}
+
+func TestNewIntrospector_RejectsNilDecryptionKey(t *testing.T) {
+	_, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithIntrospectionDecryptionKey(nil),
+	)
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("NewIntrospector() error = %v, want ErrInvalidConfiguration", err)
+	}
+	if !strings.Contains(err.Error(), "decryption key must not be nil") {
+		t.Fatalf("NewIntrospector() error = %v, want nil-key message", err)
 	}
 }
 
@@ -846,6 +860,28 @@ func newIntrospectionJWKSServer(t *testing.T, key *rsa.PrivateKey, kid string) *
 	}))
 }
 
+// encryptIntrospectionJWT wraps a signed introspection JWT in a JWE addressed
+// to recipient, producing a signed-then-encrypted nested JWT (RFC 9701 section 5).
+func encryptIntrospectionJWT(t *testing.T, recipient crypto.PublicKey, keyAlg jose.KeyAlgorithm, signed string) string {
+	t.Helper()
+	opts := (&jose.EncrypterOptions{}).
+		WithType("token-introspection+jwt").
+		WithContentType("JWT")
+	encrypter, err := jose.NewEncrypter(jose.A128CBC_HS256, jose.Recipient{Algorithm: keyAlg, Key: recipient}, opts)
+	if err != nil {
+		t.Fatalf("create introspection encrypter: %v", err)
+	}
+	obj, err := encrypter.Encrypt([]byte(signed))
+	if err != nil {
+		t.Fatalf("encrypt introspection JWT: %v", err)
+	}
+	out, err := obj.CompactSerialize()
+	if err != nil {
+		t.Fatalf("serialize encrypted introspection JWT: %v", err)
+	}
+	return out
+}
+
 func TestIntrospector_IntrospectToken_JWTResponse(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -1215,8 +1251,8 @@ func TestIntrospector_IntrospectToken_JWTResponseRejectsAudienceMismatch(t *test
 	}
 }
 
-func TestIntrospector_IntrospectToken_JWTResponseRejectsEncrypted(t *testing.T) {
-	encryptedJWT := "eyJhbGciOiJSU0EtPUEyNTYsImVuYyI6IkEyNTZHQ00ifQ.UGFydB.UGFydC.SGVhZGVy.QmFzZTY0UGF5bG9hZA"
+func TestIntrospector_IntrospectToken_JWTResponseRejectsEncryptedWithoutDecryptionKey(t *testing.T) {
+	encryptedJWT := "eyJhbGciOiJSU0EtPUEyNTYsImVuYyI6IkEyNTZHQ00ifQ.UGFydA.UGFydQ.UGFydI.QmFzZTY0UGF5bG9hZA"
 
 	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", introspectionJWTMediaType)
@@ -1246,13 +1282,264 @@ func TestIntrospector_IntrospectToken_JWTResponseRejectsEncrypted(t *testing.T) 
 		PreferJWTResponse: true,
 	})
 	if err == nil {
-		t.Fatal("expected error for encrypted JWT")
+		t.Fatal("expected error for encrypted JWT without decryption key")
 	}
 	if !errors.Is(err, ErrIntrospectionFailed) {
 		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
 	}
-	if !strings.Contains(err.Error(), "encrypted") {
-		t.Fatalf("error = %v, want encrypted message", err)
+	if !strings.Contains(err.Error(), "no decryption key is configured") {
+		t.Fatalf("error = %v, want no-decryption-key message", err)
+	}
+}
+
+func TestIntrospector_IntrospectToken_JWTResponseEncrypted(t *testing.T) {
+	asKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	rsKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jwksServer := newIntrospectionJWKSServer(t, asKey, "signing-key-1")
+	defer jwksServer.Close()
+
+	now := time.Now().Unix()
+	claims := map[string]any{
+		"iss": "https://issuer.test",
+		"aud": "client",
+		"iat": now,
+		"token_introspection": map[string]any{
+			"active": true,
+			"sub":    "user-1",
+			"scope":  "read write",
+		},
+	}
+	signed := signIntrospectionJWT(t, asKey, "signing-key-1", claims)
+	nested := encryptIntrospectionJWT(t, &rsKey.PublicKey, jose.RSA_OAEP_256, signed)
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", introspectionJWTMediaType)
+		_, _ = w.Write([]byte(nested))
+	}))
+	defer introspectionServer.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             introspectionServer.URL,
+		JWKSURI:                           jwksServer.URL,
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithHTTPClient(jwksServer.Client()),
+		WithIntrospectionDecryptionKey(rsKey),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	got, err := i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token:             "opaque-token",
+		PreferJWTResponse: true,
+	})
+	if err != nil {
+		t.Fatalf("IntrospectToken() failed: %v", err)
+	}
+	if !got.Active {
+		t.Fatal("Active = false, want true")
+	}
+	if diff := cmp.Diff("user-1", got.Sub); diff != "" {
+		t.Fatalf("Sub mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("read write", got.Scope); diff != "" {
+		t.Fatalf("Scope mismatch (-want +got):\n%s", diff)
+	}
+	if got.RawJWT() != nested {
+		t.Fatal("RawJWT() does not match the received nested JWT")
+	}
+}
+
+func TestIntrospector_IntrospectToken_JWTResponseEncryptedWrongKey(t *testing.T) {
+	asKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	configuredKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jwksServer := newIntrospectionJWKSServer(t, asKey, "signing-key-1")
+	defer jwksServer.Close()
+
+	now := time.Now().Unix()
+	claims := map[string]any{
+		"iss":                 "https://issuer.test",
+		"aud":                 "client",
+		"iat":                 now,
+		"token_introspection": map[string]any{"active": true},
+	}
+	signed := signIntrospectionJWT(t, asKey, "signing-key-1", claims)
+	// Encrypted to a different recipient than the configured decryption key.
+	nested := encryptIntrospectionJWT(t, &otherKey.PublicKey, jose.RSA_OAEP_256, signed)
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", introspectionJWTMediaType)
+		_, _ = w.Write([]byte(nested))
+	}))
+	defer introspectionServer.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             introspectionServer.URL,
+		JWKSURI:                           jwksServer.URL,
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithHTTPClient(jwksServer.Client()),
+		WithIntrospectionDecryptionKey(configuredKey),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	_, err = i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token:             "opaque-token",
+		PreferJWTResponse: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for wrong decryption key")
+	}
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+	if !strings.Contains(err.Error(), "failed to decrypt") {
+		t.Fatalf("error = %v, want decrypt failure message", err)
+	}
+}
+
+func TestIntrospector_IntrospectToken_JWTResponseEncryptedRejectsRSA15(t *testing.T) {
+	asKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	rsKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jwksServer := newIntrospectionJWKSServer(t, asKey, "signing-key-1")
+	defer jwksServer.Close()
+
+	now := time.Now().Unix()
+	claims := map[string]any{
+		"iss":                 "https://issuer.test",
+		"aud":                 "client",
+		"iat":                 now,
+		"token_introspection": map[string]any{"active": true},
+	}
+	signed := signIntrospectionJWT(t, asKey, "signing-key-1", claims)
+	nested := encryptIntrospectionJWT(t, &rsKey.PublicKey, jose.RSA1_5, signed)
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", introspectionJWTMediaType)
+		_, _ = w.Write([]byte(nested))
+	}))
+	defer introspectionServer.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             introspectionServer.URL,
+		JWKSURI:                           jwksServer.URL,
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithHTTPClient(jwksServer.Client()),
+		WithIntrospectionDecryptionKey(rsKey),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	_, err = i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token:             "opaque-token",
+		PreferJWTResponse: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for RSA1_5 key encryption")
+	}
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+}
+
+func TestIntrospector_IntrospectToken_JWTResponseEncryptedRejectsMalformedJWE(t *testing.T) {
+	asKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	rsKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jwksServer := newIntrospectionJWKSServer(t, asKey, "signing-key-1")
+	defer jwksServer.Close()
+
+	garbageJWE := "eyJhbGciOiJSU0EtTUEyNTYiLCJlbmMiOiJBMjU2R0NNIn0.UGFydA.UGFydQ.UGFydI.QmFzZTY0UGF5bG9hZA"
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", introspectionJWTMediaType)
+		_, _ = w.Write([]byte(garbageJWE))
+	}))
+	defer introspectionServer.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             introspectionServer.URL,
+		JWKSURI:                           jwksServer.URL,
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithHTTPClient(jwksServer.Client()),
+		WithIntrospectionDecryptionKey(rsKey),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	_, err = i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token:             "opaque-token",
+		PreferJWTResponse: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for malformed JWE")
+	}
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+	if !strings.Contains(err.Error(), "failed to parse encrypted introspection JWT") {
+		t.Fatalf("error = %v, want parse failure message", err)
 	}
 }
 

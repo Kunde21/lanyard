@@ -1,7 +1,9 @@
 package rp
 
 import (
+	"crypto"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -263,6 +265,29 @@ func (o resourcesOption) applyConfig(c *clientConfig) {
 		return
 	}
 	c.resources = normalized
+}
+
+// WithIntrospectionDecryptionKey sets the private key used to decrypt encrypted
+// RFC 9701 introspection responses (signed-then-encrypted nested JWTs). The
+// corresponding public key must be registered with the authorization server
+// (e.g. via the jwks or jwks_uri client metadata, together with
+// introspection_encrypted_response_alg). Supports *rsa.PrivateKey and
+// *ecdsa.PrivateKey.
+func WithIntrospectionDecryptionKey(key crypto.PrivateKey) Option {
+	return introspectionDecryptionKeyOption{key: key}
+}
+
+type introspectionDecryptionKeyOption struct {
+	key crypto.PrivateKey
+}
+
+func (o introspectionDecryptionKeyOption) applyConfig(c *clientConfig) {
+	if o.key == nil {
+		c.optionErrors = append(c.optionErrors, fmt.Errorf(
+			"%w: introspection decryption key must not be nil", ErrInvalidConfiguration))
+		return
+	}
+	c.introspectionDecryptionKey = o.key
 }
 
 // SetAuthParam sets an extra authorization request parameter.

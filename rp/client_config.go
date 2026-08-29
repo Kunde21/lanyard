@@ -2,6 +2,7 @@ package rp
 
 import (
 	"context"
+	"crypto"
 	"crypto/rand"
 	"fmt"
 	"io"
@@ -22,6 +23,8 @@ type clientConfig struct {
 	scopesExplicit bool
 	authMethod     AuthMethod
 	resources      []string
+
+	introspectionDecryptionKey crypto.PrivateKey
 
 	optionErrors []error
 
