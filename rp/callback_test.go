@@ -281,6 +281,72 @@ func TestHandleCallback_ExposesIDTokenCnfClaim(t *testing.T) {
 	}
 }
 
+func TestHandleCallback_ExposesGrantID(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+	issuer := ""
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSONWithEndpoints(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token":
+			claims := map[string]any{
+				"iss":   issuer,
+				"sub":   "sub-123",
+				"aud":   []string{"client-id"},
+				"exp":   now.Add(5 * time.Minute).Unix(),
+				"iat":   now.Unix(),
+				"nonce": "nonce-1",
+			}
+			body := `{"access_token":"access","token_type":"Bearer","expires_in":3600,"grant_id":"TSdqirmAxDa0","id_token":"` + signIDToken(t, key, "kid-1", claims) + `"}`
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(body))
+		case "/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"sub":"sub-123"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(
+		context.Background(),
+		issuer,
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state", CallbackCorrelation{Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	rec, req := callbackRequest("code", "state")
+	result, err := r.HandleCallback(rec, req)
+	if err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+	if diff := cmp.Diff("TSdqirmAxDa0", result.GrantID); diff != "" {
+		t.Errorf("CallbackResult.GrantID mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestHandleCallback_UsesMTLSAliasForTokenEndpoint(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

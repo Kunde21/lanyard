@@ -26,6 +26,11 @@ type CallbackResult struct {
 	// Confirmation.VerifyDPoPBinding / VerifyMTLSBinding. Nil when the ID
 	// token carries no cnf claim.
 	Cnf *Confirmation
+	// GrantID identifies the underlying grant when the provider supports
+	// grant management (draft-ietf-oauth-grant-management section 5.4). Use
+	// it with SetGrantManagementAction / SetGrantID to merge, replace, or
+	// obtain new tokens for the same grant, and with QueryGrant / RevokeGrant.
+	GrantID string
 }
 
 func (r *RP) parseAuthorizationResponse(ctx context.Context, params callbackParams) (code, state, iss string, err error) {
@@ -178,7 +183,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, err
 	}
 	if r.isFAPIProfile() {
-		return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, Cnf: claims.Cnf}, nil
+		return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, GrantID: tokenResp.GrantID, Cnf: claims.Cnf}, nil
 	}
 
 	userInfoEndpoint := r.userInfoEndpoint(provider)
@@ -196,7 +201,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, err
 	}
 
-	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo, Cnf: claims.Cnf}, nil
+	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo, GrantID: tokenResp.GrantID, Cnf: claims.Cnf}, nil
 }
 
 func (r *RP) validateAuthorizationResponseIDToken(ctx context.Context, rawIDToken, expectedNonce, code, state, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
