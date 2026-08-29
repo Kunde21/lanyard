@@ -146,6 +146,62 @@ func TestAuthorizationServer_IntrospectionFields(t *testing.T) {
 	}
 }
 
+func TestProvider_GrantManagementFields(t *testing.T) {
+	serverJSON := `{
+		"issuer": "https://issuer.test",
+		"grant_management_endpoint": "https://issuer.test/grants",
+		"grant_management_actions_supported": ["create", "query", "revoke", "merge", "replace"],
+		"grant_management_action_required": true
+	}`
+
+	var server Provider
+	if err := json.Unmarshal([]byte(serverJSON), &server); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	if diff := cmp.Diff("https://issuer.test/grants", server.GrantManagementEndpoint); diff != "" {
+		t.Fatalf("GrantManagementEndpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"create", "query", "revoke", "merge", "replace"}, server.GrantManagementActionsSupported); diff != "" {
+		t.Fatalf("GrantManagementActionsSupported mismatch (-want +got):\n%s", diff)
+	}
+	if server.GrantManagementActionRequired == nil || !*server.GrantManagementActionRequired {
+		t.Fatal("GrantManagementActionRequired = nil/false, want true")
+	}
+
+	encoded, err := json.Marshal(server)
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	var roundTripped Provider
+	if err := json.Unmarshal(encoded, &roundTripped); err != nil {
+		t.Fatalf("round-trip Unmarshal() failed: %v", err)
+	}
+	server.Raw = nil
+	server.AuthorizationServer.Raw = nil
+	roundTripped.Raw = nil
+	roundTripped.AuthorizationServer.Raw = nil
+	if diff := cmp.Diff(server, roundTripped); diff != "" {
+		t.Fatalf("round-trip mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestProvider_GrantManagementFieldsOmitted(t *testing.T) {
+	var server Provider
+	if err := json.Unmarshal([]byte(`{"issuer":"https://issuer.test"}`), &server); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+	if server.GrantManagementEndpoint != "" {
+		t.Fatalf("GrantManagementEndpoint = %q, want empty", server.GrantManagementEndpoint)
+	}
+	if len(server.GrantManagementActionsSupported) != 0 {
+		t.Fatalf("GrantManagementActionsSupported = %v, want empty", server.GrantManagementActionsSupported)
+	}
+	if server.GrantManagementActionRequired != nil {
+		t.Fatal("GrantManagementActionRequired = non-nil, want nil default (false per spec)")
+	}
+}
+
 func TestProvider_DPoPFields(t *testing.T) {
 	providerJSON := `{
 		"issuer": "https://issuer.test",

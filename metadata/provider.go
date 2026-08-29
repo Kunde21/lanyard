@@ -39,6 +39,7 @@ type Provider struct {
 	AuthorizationEncryptionEncValuesSupported []string        `json:"authorization_encryption_enc_values_supported,omitempty"`
 	GrantManagementEndpoint                   string          `json:"grant_management_endpoint,omitempty"`
 	GrantManagementActionsSupported           []string        `json:"grant_management_actions_supported,omitempty"`
+	GrantManagementActionRequired             *bool           `json:"grant_management_action_required,omitempty"`
 	TrustFrameworksSupported                  []string        `json:"trust_frameworks_supported,omitempty"`
 	EvidenceSupported                         json.RawMessage `json:"evidence_supported,omitempty"`
 	VerifiedClaimsSupported                   json.RawMessage `json:"verified_claims_supported,omitempty"`

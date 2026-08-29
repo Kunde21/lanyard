@@ -358,6 +358,9 @@ func providerWithMergeFields(base string) metadata.Provider {
 			Raw:                           raw,
 		},
 		UserinfoEndpoint:                 base + "/userinfo",
+		GrantManagementEndpoint:          base + "/grants",
+		GrantManagementActionsSupported:  []string{"query", "revoke", "create", "merge", "replace"},
+		GrantManagementActionRequired:    &[]bool{true}[0],
 		SubjectTypesSupported:            []string{"public"},
 		IDTokenSigningAlgValuesSupported: []string{"RS256"},
 		RequestObjectSigningAlgValuesSupported: []string{
