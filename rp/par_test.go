@@ -226,7 +226,7 @@ func TestPushAuthorizationRequest_RetriesWithDpopNonce(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	params := r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "", nil, nil)
+	params := r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "", nil, nil, nil)
 	parResp, err := r.pushAuthorizationRequest(context.Background(), params)
 	if err != nil {
 		t.Fatalf("pushAuthorizationRequest() failed: %v", err)

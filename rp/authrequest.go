@@ -73,6 +73,10 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 		selectedResources = cfg.resources
 	}
 
+	if err := cfg.grantManagement.validateSupported(metadata.GrantManagementActionsSupported); err != nil {
+		return "", err
+	}
+
 	if err := r.resolveAuthMethod(); err != nil {
 		return "", err
 	}
@@ -94,12 +98,12 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 		return "", err
 	}
 
-	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails, selectedResources, cfg.parameters)
+	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, cfg.parameters)
 
 	if r.shouldUsePAR() {
 		parParams := params
 		if r.requestMethod.isSigned() {
-			signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.parameters)
+			signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, cfg.parameters)
 			if err != nil {
 				return "", err
 			}
@@ -124,7 +128,7 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 
 	redirectParams := params
 	if r.requestMethod.isSigned() {
-		signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.parameters)
+		signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, cfg.parameters)
 		if err != nil {
 			return "", err
 		}

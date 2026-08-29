@@ -42,6 +42,7 @@ type authorizationURLConfig struct {
 	authorizationDetails string
 	parameters           url.Values
 	resources            []string
+	grantManagement      *grantManagementRequest
 	err                  error
 }
 
@@ -246,6 +247,41 @@ func SetResources(resources ...string) AuthorizationURLOption {
 			return
 		}
 		cfg.resources = normalized
+	}
+}
+
+// SetGrantManagementAction sets the grant management parameters
+// (grant_management_action and grant_id) for one authorization request.
+// grant_id must be empty for [GrantActionCreate] and non-empty for
+// [GrantActionMerge], [GrantActionUpdate], and [GrantActionReplace].
+func SetGrantManagementAction(action GrantManagementAction, grantID string) AuthorizationURLOption {
+	return func(cfg *authorizationURLConfig) {
+		if cfg == nil {
+			return
+		}
+		grant := &grantManagementRequest{action: action, grantID: strings.TrimSpace(grantID)}
+		if err := grant.validate(); err != nil {
+			cfg.err = err
+			return
+		}
+		cfg.grantManagement = grant
+	}
+}
+
+// SetGrantID references an existing grant for one authorization request via
+// the grant_id parameter, without requesting a specific grant management
+// action.
+func SetGrantID(grantID string) AuthorizationURLOption {
+	return func(cfg *authorizationURLConfig) {
+		if cfg == nil {
+			return
+		}
+		grantID = strings.TrimSpace(grantID)
+		if grantID == "" {
+			cfg.err = fmt.Errorf("%w: grant_id must not be empty", ErrInvalidConfiguration)
+			return
+		}
+		cfg.grantManagement = &grantManagementRequest{grantID: grantID}
 	}
 }
 

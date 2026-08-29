@@ -12,27 +12,29 @@ import (
 )
 
 type requestObjectClaims struct {
-	Iss                  string            `json:"iss"`
-	Aud                  string            `json:"aud"`
-	ClientID             string            `json:"client_id"`
-	ResponseType         string            `json:"response_type"`
-	RedirectURI          string            `json:"redirect_uri"`
-	Scope                string            `json:"scope"`
-	State                string            `json:"state"`
-	Nonce                string            `json:"nonce,omitempty"`
-	CodeChallenge        string            `json:"code_challenge,omitempty"`
-	CodeChallengeMethod  string            `json:"code_challenge_method,omitempty"`
-	AuthorizationDetails json.RawMessage   `json:"authorization_details,omitempty"`
-	Resource             []string          `json:"resource,omitempty"`
-	ResponseMode         string            `json:"response_mode,omitempty"`
-	IssuedAt             int64             `json:"iat"`
-	NotBefore            int64             `json:"nbf"`
-	Expiration           int64             `json:"exp"`
-	JTI                  string            `json:"jti"`
-	Extra                map[string]string `json:"-"`
+	Iss                   string            `json:"iss"`
+	Aud                   string            `json:"aud"`
+	ClientID              string            `json:"client_id"`
+	ResponseType          string            `json:"response_type"`
+	RedirectURI           string            `json:"redirect_uri"`
+	Scope                 string            `json:"scope"`
+	State                 string            `json:"state"`
+	Nonce                 string            `json:"nonce,omitempty"`
+	CodeChallenge         string            `json:"code_challenge,omitempty"`
+	CodeChallengeMethod   string            `json:"code_challenge_method,omitempty"`
+	AuthorizationDetails  json.RawMessage   `json:"authorization_details,omitempty"`
+	Resource              []string          `json:"resource,omitempty"`
+	GrantID               string            `json:"grant_id,omitempty"`
+	GrantManagementAction string            `json:"grant_management_action,omitempty"`
+	ResponseMode          string            `json:"response_mode,omitempty"`
+	IssuedAt              int64             `json:"iat"`
+	NotBefore             int64             `json:"nbf"`
+	Expiration            int64             `json:"exp"`
+	JTI                   string            `json:"jti"`
+	Extra                 map[string]string `json:"-"`
 }
 
-func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDetails string, resources []string, extra url.Values) (string, error) {
+func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDetails string, resources []string, grant *grantManagementRequest, extra url.Values) (string, error) {
 	now := r.now()
 	parsedAuthorizationDetails, err := parseAuthorizationDetailsClaim(authorizationDetails)
 	if err != nil {
@@ -40,21 +42,23 @@ func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDeta
 	}
 
 	claims := requestObjectClaims{
-		Iss:                  r.clientID,
-		Aud:                  r.issuer,
-		ClientID:             r.clientID,
-		ResponseType:         r.authorizationResponseType(),
-		RedirectURI:          r.redirectURI,
-		Scope:                strings.Join(r.scopes, " "),
-		State:                state,
-		CodeChallenge:        challenge,
-		CodeChallengeMethod:  "S256",
-		AuthorizationDetails: parsedAuthorizationDetails,
-		Resource:             append([]string(nil), resources...),
-		IssuedAt:             now.Unix(),
-		NotBefore:            now.Unix(),
-		Expiration:           now.Add(5 * time.Minute).Unix(),
-		JTI:                  generateJTI(r.randReader),
+		Iss:                   r.clientID,
+		Aud:                   r.issuer,
+		ClientID:              r.clientID,
+		ResponseType:          r.authorizationResponseType(),
+		RedirectURI:           r.redirectURI,
+		Scope:                 strings.Join(r.scopes, " "),
+		State:                 state,
+		CodeChallenge:         challenge,
+		CodeChallengeMethod:   "S256",
+		AuthorizationDetails:  parsedAuthorizationDetails,
+		Resource:              append([]string(nil), resources...),
+		GrantID:               grant.grantIDValue(),
+		GrantManagementAction: grant.actionValue(),
+		IssuedAt:              now.Unix(),
+		NotBefore:             now.Unix(),
+		Expiration:            now.Add(5 * time.Minute).Unix(),
+		JTI:                   generateJTI(r.randReader),
 	}
 
 	if r.usesOpenIDScope() {
@@ -87,7 +91,8 @@ func isStandardRequestObjectClaim(key string) bool {
 	switch strings.ToLower(key) {
 	case "iss", "aud", "client_id", "response_type", "redirect_uri",
 		"scope", "state", "nonce", "code_challenge", "code_challenge_method",
-		"authorization_details", "response_mode", "resource", "iat", "nbf", "exp", "jti":
+		"authorization_details", "response_mode", "resource", "grant_id",
+		"grant_management_action", "iat", "nbf", "exp", "jti":
 		return true
 	}
 	return false
@@ -175,6 +180,12 @@ func claimsToMap(claims requestObjectClaims) map[string]any {
 	}
 	if claims.ResponseMode != "" {
 		m["response_mode"] = claims.ResponseMode
+	}
+	if claims.GrantID != "" {
+		m["grant_id"] = claims.GrantID
+	}
+	if claims.GrantManagementAction != "" {
+		m["grant_management_action"] = claims.GrantManagementAction
 	}
 	if len(claims.Resource) > 0 {
 		m["resource"] = claims.Resource
