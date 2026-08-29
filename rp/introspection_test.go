@@ -1178,6 +1178,130 @@ func TestIntrospector_IntrospectToken_JWTResponseFutureIat(t *testing.T) {
 	if !errors.Is(err, ErrIntrospectionFailed) {
 		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
 	}
+	if !strings.Contains(err.Error(), "iat in the future") {
+		t.Fatalf("error = %v, want future iat message", err)
+	}
+}
+
+func TestIntrospector_IntrospectToken_JWTResponseRequiresIat(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jwksServer := newIntrospectionJWKSServer(t, key, "signing-key-1")
+	defer jwksServer.Close()
+
+	claims := map[string]any{
+		"iss": "https://issuer.test",
+		"aud": "client",
+		"token_introspection": map[string]any{
+			"active": true,
+		},
+	}
+	signed := signIntrospectionJWT(t, key, "signing-key-1", claims)
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", introspectionJWTMediaType)
+		_, _ = w.Write([]byte(signed))
+	}))
+	defer introspectionServer.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             introspectionServer.URL,
+		JWKSURI:                           jwksServer.URL,
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithHTTPClient(jwksServer.Client()),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	_, err = i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token:             "opaque-token",
+		PreferJWTResponse: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for missing iat")
+	}
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+	if !strings.Contains(err.Error(), "missing required iat") {
+		t.Fatalf("error = %v, want missing iat message", err)
+	}
+}
+
+func TestIntrospector_IntrospectToken_JWTResponseRejectsInvalidSignature(t *testing.T) {
+	publishedKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	attackerKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	// The JWKS publishes publishedKey under the advertised kid, but the JWT is
+	// signed by a different (untrusted) key claiming the same kid.
+	jwksServer := newIntrospectionJWKSServer(t, publishedKey, "signing-key-1")
+	defer jwksServer.Close()
+
+	now := time.Now().Unix()
+	claims := map[string]any{
+		"iss": "https://issuer.test",
+		"aud": "client",
+		"iat": now,
+		"token_introspection": map[string]any{
+			"active": true,
+		},
+	}
+	signed := signIntrospectionJWT(t, attackerKey, "signing-key-1", claims)
+
+	introspectionServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", introspectionJWTMediaType)
+		_, _ = w.Write([]byte(signed))
+	}))
+	defer introspectionServer.Close()
+
+	provider := metadata.Provider{AuthorizationServer: metadata.AuthorizationServer{
+		Issuer:                            "https://issuer.test",
+		IntrospectionEndpoint:             introspectionServer.URL,
+		JWKSURI:                           jwksServer.URL,
+		TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+	}}
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithHTTPClient(jwksServer.Client()),
+	)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+
+	_, err = i.IntrospectToken(context.Background(), IntrospectionRequest{
+		Token:             "opaque-token",
+		PreferJWTResponse: true,
+	})
+	if err == nil {
+		t.Fatal("expected error for invalid signature")
+	}
+	if !errors.Is(err, ErrIntrospectionFailed) {
+		t.Fatalf("error = %v, want ErrIntrospectionFailed", err)
+	}
+	if !strings.Contains(err.Error(), "signature verification failed") {
+		t.Fatalf("error = %v, want signature verification failure message", err)
+	}
 }
 
 func TestIntrospector_IntrospectToken_JWTResponseRejectsWrongTyp(t *testing.T) {

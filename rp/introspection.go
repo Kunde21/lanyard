@@ -436,13 +436,14 @@ func (c *clientConfig) validateIntrospectionJWT(ctx context.Context, raw string,
 		return IntrospectionResponse{}, fmt.Errorf("introspection JWT audience mismatch")
 	}
 
-	if claims.Iat != nil {
-		iat := time.Unix(*claims.Iat, 0).UTC()
-		now := c.now()
-		clockSkew := 5 * time.Minute
-		if iat.After(now.Add(clockSkew)) {
-			return IntrospectionResponse{}, fmt.Errorf("introspection JWT iat in the future")
-		}
+	if claims.Iat == nil {
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT missing required iat claim")
+	}
+	iat := time.Unix(*claims.Iat, 0).UTC()
+	now := c.now()
+	clockSkew := 5 * time.Minute
+	if iat.After(now.Add(clockSkew)) {
+		return IntrospectionResponse{}, fmt.Errorf("introspection JWT iat in the future")
 	}
 
 	out := claims.TokenIntrospection
