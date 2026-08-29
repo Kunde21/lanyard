@@ -131,6 +131,38 @@ func TestRefreshTokenSource_TracksRotation(t *testing.T) {
 	}
 }
 
+func TestRefreshTokenSource_ReplaceSwapsToken(t *testing.T) {
+	var gotToken string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		values, _ := url.ParseQuery(string(body))
+		gotToken = values.Get("refresh_token")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(Token{AccessToken: "at", TokenType: "Bearer", ExpiresIn: 3600})
+	}))
+	defer server.Close()
+
+	r := newRefreshRotationRP(t, server)
+	src, err := NewRefreshTokenSource(r, "old-rt")
+	if err != nil {
+		t.Fatalf("NewRefreshTokenSource() failed: %v", err)
+	}
+
+	// Grant management merge/replace invalidated the old refresh token; the
+	// flow returned post-merge-rt, which the source must now use.
+	src.Replace("post-merge-rt")
+	if diff := cmp.Diff("post-merge-rt", src.CurrentRefreshToken()); diff != "" {
+		t.Fatalf("CurrentRefreshToken() mismatch (-want +got):\n%s", diff)
+	}
+
+	if _, err := src.Refresh(context.Background()); err != nil {
+		t.Fatalf("Refresh() failed: %v", err)
+	}
+	if diff := cmp.Diff("post-merge-rt", gotToken); diff != "" {
+		t.Fatalf("refresh_token sent mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestRefreshTokenSource_RejectionSurfacesSentinel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

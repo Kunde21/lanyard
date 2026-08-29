@@ -198,6 +198,17 @@ func (c *clientConfig) attachDPoPProof(req *http.Request, nonce string) error {
 	return nil
 }
 
+// attachDPoPProofForAccessToken attaches a DPoP proof bound to an access
+// token (ath claim) for resource requests such as the Grant Management API.
+func (c *clientConfig) attachDPoPProofForAccessToken(req *http.Request, accessToken, nonce string) error {
+	proof, err := buildDPoPProof(c.clientKeyProvider, c.randReader, c.now, req.Method, req.URL.String(), accessToken, nonce)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("DPoP", proof)
+	return nil
+}
+
 func (c *clientConfig) cachedDPoPNonce(rawURL string) string {
 	if c.dpopNonces == nil {
 		return ""

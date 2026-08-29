@@ -67,3 +67,14 @@ func (s *RefreshTokenSource) CurrentRefreshToken() string {
 	defer s.mu.Unlock()
 	return s.current
 }
+
+// Replace swaps the refresh token held by the source. Use it after a grant
+// management merge or replace flow: those actions invalidate the grant's
+// existing refresh tokens (draft-ietf-oauth-grant-management section 5.2),
+// so the source must be pointed at the refresh token returned by that
+// flow's token exchange.
+func (s *RefreshTokenSource) Replace(refreshToken string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.current = strings.TrimSpace(refreshToken)
+}
