@@ -20,6 +20,10 @@ type Token struct {
 	IDToken string `json:"id_token,omitempty"`
 	// RefreshToken is set when the provider issues a refresh token.
 	RefreshToken string `json:"refresh_token,omitempty"`
+	// GrantID identifies the underlying grant the tokens were issued under
+	// (grant management, draft-ietf-oauth-grant-management section 5.4). Empty
+	// when the provider does not support grant management.
+	GrantID string `json:"grant_id,omitempty"`
 	// Scope is the granted scope string returned by the token endpoint.
 	Scope string `json:"scope,omitempty"`
 
@@ -70,6 +74,7 @@ func (t Token) MarshalJSON() ([]byte, error) {
 			ExpiresIn:    t.ExpiresIn,
 			IDToken:      t.IDToken,
 			RefreshToken: t.RefreshToken,
+			GrantID:      t.GrantID,
 			Scope:        t.Scope,
 		})
 		if err != nil {
