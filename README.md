@@ -56,6 +56,7 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
     *   Token introspection (RFC 7662) with signed JWT response verification (RFC 9701).
     *   DPoP (Demonstrating Proof-of-Possession) support.
     *   mTLS sender-constrained access token support.
+    *   RFC 7800 `cnf` claim parsing and binding verification for sender-constrained tokens.
 
 *   **Security & Validation**:
     *   HTTPS enforcement for issuer and redirect URIs.

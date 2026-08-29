@@ -40,6 +40,18 @@
 // (RFC 8707) as repeated resource parameters. Use [WithTokenResources] to
 // override resources for refresh-token and client-credentials token requests.
 //
+// # Sender-constrained tokens (RFC 7800)
+//
+// Sender-constrained access tokens (DPoP, RFC 9449; mTLS, RFC 8705) bind a
+// token to a proof-of-possession key via the RFC 7800 cnf (confirmation)
+// claim. [Confirmation] parses all cnf members; [Confirmation.VerifyDPoPBinding]
+// and [Confirmation.VerifyMTLSBinding] verify a token's binding against the
+// RP's own key material. [RP.DPoPKeyThumbprint] returns the JWK thumbprint an
+// authorization server places in cnf.jkt for DPoP-bound tokens issued to this
+// RP. [ParseAccessTokenConfirmation] decodes cnf from a JWT access token
+// obtained over a trusted channel (without signature verification; see its
+// godoc for the security caveat).
+//
 // # Provider discovery
 //
 // For configuration validation or provider inspection before construction, use

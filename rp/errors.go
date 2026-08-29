@@ -25,6 +25,10 @@ var (
 	ErrClientCredentialsFailed = errors.New("client credentials token request failed")
 	// ErrRefreshTokenFailed indicates a refresh token request failed.
 	ErrRefreshTokenFailed = errors.New("refresh token request failed")
+	// ErrTokenUnbound indicates a token lacked a required sender-constraint binding.
+	ErrTokenUnbound = errors.New("token is not sender-constrained")
+	// ErrTokenBindingMismatch indicates a token's cnf binding did not match the expected key.
+	ErrTokenBindingMismatch = errors.New("token binding mismatch")
 )
 
 // AuthMethodError indicates token endpoint auth method selection/validation failure.

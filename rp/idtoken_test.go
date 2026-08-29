@@ -14,6 +14,7 @@ import (
 
 	jose "github.com/go-jose/go-jose/v4"
 	"github.com/go-jose/go-jose/v4/jwt"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestValidateIDToken(t *testing.T) {
@@ -502,5 +503,122 @@ func TestValidateIDTokenClaims_AllowsOldIatForNonFAPI(t *testing.T) {
 	err := r.validateIDTokenClaims(claims, "nonce-1")
 	if err != nil {
 		t.Fatalf("validateIDTokenClaims() unexpected error for non-FAPI: %v", err)
+	}
+}
+
+func TestValidateIDToken_ParsesCnfClaim(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	now := time.Now().UTC()
+	r, err := New(
+		context.Background(),
+		issuer,
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	claims := map[string]any{
+		"iss":   issuer,
+		"sub":   "subject-123",
+		"aud":   []string{"client-id"},
+		"exp":   now.Add(5 * time.Minute).Unix(),
+		"iat":   now.Add(-1 * time.Minute).Unix(),
+		"nonce": "nonce-123",
+		"cnf":   map[string]string{"jkt": "thumbprint-value", "x5t#S256": "cert-thumbprint"},
+	}
+	raw := signIDToken(t, key, "kid-1", claims)
+
+	got, err := r.validateIDToken(context.Background(), raw, "nonce-123", issuer+"/jwks", nil)
+	if err != nil {
+		t.Fatalf("validateIDToken() failed: %v", err)
+	}
+	if got.Cnf == nil {
+		t.Fatal("expected cnf claim to be parsed, got nil")
+	}
+	want := &Confirmation{JKT: "thumbprint-value", X5T256: "cert-thumbprint"}
+	if diff := cmp.Diff(want, got.Cnf); diff != "" {
+		t.Errorf("cnf mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestValidateIDToken_NoCnfClaim(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+
+	issuer := ""
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(providerMetadataJSON(issuer)))
+		case "/jwks":
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	now := time.Now().UTC()
+	r, err := New(
+		context.Background(),
+		issuer,
+		WithClientID("client-id"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	claims := map[string]any{
+		"iss":   issuer,
+		"sub":   "subject-123",
+		"aud":   []string{"client-id"},
+		"exp":   now.Add(5 * time.Minute).Unix(),
+		"iat":   now.Add(-1 * time.Minute).Unix(),
+		"nonce": "nonce-123",
+	}
+	raw := signIDToken(t, key, "kid-1", claims)
+
+	got, err := r.validateIDToken(context.Background(), raw, "nonce-123", issuer+"/jwks", nil)
+	if err != nil {
+		t.Fatalf("validateIDToken() failed: %v", err)
+	}
+	if got.Cnf != nil {
+		t.Errorf("expected nil cnf for token without cnf claim, got %+v", got.Cnf)
 	}
 }

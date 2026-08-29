@@ -43,6 +43,7 @@ type idTokenClaims struct {
 	Azp     string        `json:"azp"`
 	CHash   string        `json:"c_hash"`
 	SHash   string        `json:"s_hash"`
+	Cnf     *Confirmation `json:"cnf,omitempty"`
 }
 
 var supportedIDTokenAlgs = []jose.SignatureAlgorithm{

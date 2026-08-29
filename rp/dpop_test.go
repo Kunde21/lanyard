@@ -2,6 +2,9 @@ package rp
 
 import (
 	"bytes"
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
@@ -15,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -61,6 +65,89 @@ func TestGenerateDPoPProof_IncludesExpectedClaims(t *testing.T) {
 	if payload.IAT == 0 {
 		t.Fatalf("expected iat to be set")
 	}
+}
+
+func TestGenerateDPoPProof_HeaderJWKMatchesThumbprint(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate EC key: %v", err)
+	}
+
+	r := &RP{
+		clientConfig: clientConfig{
+			clientKeyProvider:  NewStaticClientKeyProvider(key, "kid-1", "ES256", nil),
+			resolvedAuthMethod: AuthMethodPrivateKeyJWT,
+			randReader:         bytes.NewReader(bytes.Repeat([]byte{0x42}, 32)),
+			now:                func() time.Time { return time.Unix(1712100000, 0).UTC() },
+		},
+	}
+
+	proof, err := r.generateDPoPProof(http.MethodPost, "https://issuer.test/token", "access-token", "nonce-123")
+	if err != nil {
+		t.Fatalf("generateDPoPProof() failed: %v", err)
+	}
+
+	// The JWK embedded in the DPoP header must thumbprint to the same value
+	// as RP.DPoPKeyThumbprint — this is the cnf.jkt an AS would mint.
+	header, _ := decodeProofParts(t, proof)
+	headerJWK, err := json.Marshal(header.JWK)
+	if err != nil {
+		t.Fatalf("marshal header jwk: %v", err)
+	}
+	var pub jose.JSONWebKey
+	if err := json.Unmarshal(headerJWK, &pub); err != nil {
+		t.Fatalf("unmarshal header jwk: %v", err)
+	}
+	sum, err := pub.Thumbprint(crypto.SHA256)
+	if err != nil {
+		t.Fatalf("thumbprint header jwk: %v", err)
+	}
+	headerJKT := base64.RawURLEncoding.EncodeToString(sum)
+
+	rpJKT, err := r.DPoPKeyThumbprint()
+	if err != nil {
+		t.Fatalf("DPoPKeyThumbprint: %v", err)
+	}
+	if diff := cmp.Diff(rpJKT, headerJKT); diff != "" {
+		t.Fatalf("header jwk thumbprint does not match RP.DPoPKeyThumbprint (-want +got):\n%s", diff)
+	}
+}
+
+func TestRP_DPoPKeyThumbprint(t *testing.T) {
+	t.Run("returns thumbprint when configured", func(t *testing.T) {
+		key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		r := &RP{clientConfig: clientConfig{clientKeyProvider: NewStaticClientKeyProvider(key, "kid-1", "ES256", nil)}}
+		got, err := r.DPoPKeyThumbprint()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want, _ := JWKThumbprint(key)
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("thumbprint mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("empty when no provider", func(t *testing.T) {
+		r := &RP{}
+		got, err := r.DPoPKeyThumbprint()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("expected empty thumbprint, got %q", got)
+		}
+	})
+
+	t.Run("empty when provider has no key", func(t *testing.T) {
+		r := &RP{clientConfig: clientConfig{clientKeyProvider: NewStaticClientKeyProvider(nil, "kid-1", "ES256", nil)}}
+		got, err := r.DPoPKeyThumbprint()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got != "" {
+			t.Errorf("expected empty thumbprint, got %q", got)
+		}
+	})
 }
 
 func TestDoRequestWithDPoPRetry_NoDPoP(t *testing.T) {
