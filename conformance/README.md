@@ -25,7 +25,10 @@ Latest verified full-suite result:
 The example RP implements Authorization Code + PKCE, ID token validation, UserInfo validation,
 PAR, JAR, JARM, RAR, DPoP, mTLS, and RP-hosted `request_uri` support. It uses the supported
 cookie-backed RP state store (`rp/store/cookie`) so login and callback state is bound to the
-browser session.
+browser session. A grant management demo is available outside the certified flows:
+`/login?grant_management_action=create` (or `merge`/`replace` + `grant_id`), and
+`GET`/`DELETE /grants/{grant_id}` with a `grant_management_query`/`grant_management_revoke`
+access token supplied via the `Authorization: Bearer` header.
 
 ## Prerequisites
 

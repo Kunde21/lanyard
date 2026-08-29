@@ -32,6 +32,7 @@ func main() {
 	mux.HandleFunc("/login-userinfo-body", handleLoginUserInfoBody)
 	mux.HandleFunc("/callback", handleCallback)
 	mux.HandleFunc("/callback/", handleCallback)
+	mux.HandleFunc("/grants/", handleGrants)
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 	mux.HandleFunc("/conformance/jwks/", handleConformanceJWKS)
 	mux.HandleFunc("/request/", handleRequestObject(sharedRequestStore))
@@ -50,6 +51,7 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 	mux.HandleFunc("/login-userinfo-body", handleLoginWithFlow(flow))
 	mux.HandleFunc("/callback", handleCallbackWithFlow(flow))
 	mux.HandleFunc("/callback/", handleCallbackWithFlow(flow))
+	mux.HandleFunc("/grants/", handleGrants)
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 	mux.HandleFunc("/conformance/jwks/", handleConformanceJWKS)
 	mux.HandleFunc("/request/", handleRequestObject(sharedRequestStore))
@@ -66,7 +68,13 @@ func rpClientFromRequest(r *http.Request, clientID, clientSecret, redirectURI st
 
 func handleRoot(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintln(w, "<!doctype html><html><body><h1>Lanyard example RP</h1><p><a href=\"/login\">Login</a></p></body></html>")
+	_, _ = fmt.Fprintln(w, `<!doctype html><html><body><h1>Lanyard example RP</h1>
+<p><a href="/login">Login</a></p>
+<p><a href="/login?grant_management_action=create">Login with a new grant (create)</a></p>
+<p>Grant management: add <code>grant_management_action=create|merge|replace</code> (and <code>grant_id</code> for merge/replace) to /login, then query/revoke grants:</p>
+<pre>curl -H "Authorization: Bearer $GM_TOKEN" https://rp.localhost/grants/$GRANT_ID
+curl -X DELETE -H "Authorization: Bearer $GM_TOKEN" https://rp.localhost/grants/$GRANT_ID</pre>
+</body></html>`)
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -81,14 +89,7 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("failed to create RP client: %v", err), http.StatusInternalServerError)
 		return
 	}
-
-	authURL, err := flow.AuthorizationURL(w, r)
-	if err != nil {
-		slog.Info("login initialization failed", "err", err)
-		http.Error(w, "failed to initialize login", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, authURL, http.StatusFound)
+	handleLoginWithFlow(flow)(w, r)
 }
 
 func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +116,13 @@ func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 
 func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authURL, err := flow.AuthorizationURL(w, r)
+		grantOption, err := grantManagementOptionsFromRequest(r)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("invalid grant management parameters: %v", err), http.StatusBadRequest)
+			return
+		}
+
+		authURL, err := flow.AuthorizationURL(w, r, grantOption)
 		if err != nil {
 			slog.Info("login initialization failed", "err", err)
 			http.Error(w, "failed to initialize login", http.StatusInternalServerError)
@@ -168,7 +175,16 @@ func handleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "<!doctype html><html><body><h1>Login complete</h1><p>Subject: %s</p></body></html>", result.Subject)
+	_, _ = fmt.Fprintf(w, "<!doctype html><html><body><h1>Login complete</h1><p>Subject: %s</p>%s</body></html>",
+		result.Subject, grantIDHTML(result.GrantID))
+}
+
+func grantIDHTML(grantID string) string {
+	if grantID == "" {
+		return ""
+	}
+	return fmt.Sprintf("<p>Grant: %s</p><p>Query: <code>curl -H 'Authorization: Bearer $GM_TOKEN' %s/grants/%s</code></p>",
+		grantID, envOrDefault("RP_REDIRECT_URI", "https://rp.localhost"), grantID)
 }
 
 func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
@@ -187,7 +203,8 @@ func handleCallbackWithFlow(flow flowHandler) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprintf(w, "<!doctype html><html><body><h1>Login complete</h1><p>Subject: %s</p></body></html>", result.Subject)
+		_, _ = fmt.Fprintf(w, "<!doctype html><html><body><h1>Login complete</h1><p>Subject: %s</p>%s</body></html>",
+			result.Subject, grantIDHTML(result.GrantID))
 	}
 }
 
