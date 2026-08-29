@@ -104,6 +104,48 @@ func TestAuthorizationServer_DPoPFields(t *testing.T) {
 	}
 }
 
+func TestAuthorizationServer_IntrospectionFields(t *testing.T) {
+	serverJSON := `{
+		"issuer": "https://issuer.test",
+		"introspection_endpoint": "https://issuer.test/introspect",
+		"introspection_endpoint_auth_methods_supported": ["private_key_jwt"],
+		"introspection_endpoint_auth_signing_alg_values_supported": ["PS256"],
+		"introspection_signing_alg_values_supported": ["PS256", "ES256"],
+		"introspection_encryption_alg_values_supported": ["RSA-OAEP"],
+		"introspection_encryption_enc_values_supported": ["A256GCM"],
+		"mtls_endpoint_aliases": {
+			"introspection_endpoint": "https://mtls.issuer.test/introspect"
+		}
+	}`
+
+	var server AuthorizationServer
+	if err := json.Unmarshal([]byte(serverJSON), &server); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	if diff := cmp.Diff("https://issuer.test/introspect", server.IntrospectionEndpoint); diff != "" {
+		t.Fatalf("IntrospectionEndpoint mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"private_key_jwt"}, server.IntrospectionEndpointAuthMethodsSupported); diff != "" {
+		t.Fatalf("IntrospectionEndpointAuthMethodsSupported mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"PS256"}, server.IntrospectionEndpointAuthSigningAlgValuesSupported); diff != "" {
+		t.Fatalf("IntrospectionEndpointAuthSigningAlgValuesSupported mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"PS256", "ES256"}, server.IntrospectionSigningAlgValuesSupported); diff != "" {
+		t.Fatalf("IntrospectionSigningAlgValuesSupported mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"RSA-OAEP"}, server.IntrospectionEncryptionAlgValuesSupported); diff != "" {
+		t.Fatalf("IntrospectionEncryptionAlgValuesSupported mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"A256GCM"}, server.IntrospectionEncryptionEncValuesSupported); diff != "" {
+		t.Fatalf("IntrospectionEncryptionEncValuesSupported mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("https://mtls.issuer.test/introspect", server.MTLSEndpointAliases.IntrospectionEndpoint); diff != "" {
+		t.Fatalf("MTLS IntrospectionEndpoint mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestProvider_DPoPFields(t *testing.T) {
 	providerJSON := `{
 		"issuer": "https://issuer.test",

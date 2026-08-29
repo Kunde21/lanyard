@@ -22,7 +22,9 @@ func doJSON(req *http.Request, client *http.Client, decoder func(io.Reader) erro
 }
 
 func doJSONStatus(req *http.Request, client *http.Client, successStatus int, decoder func(io.Reader) error) (*http.Response, int, string, error) {
-	req.Header.Set("Accept", "application/json")
+	if req.Header.Get("Accept") == "" {
+		req.Header.Set("Accept", "application/json")
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

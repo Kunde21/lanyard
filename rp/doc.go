@@ -19,6 +19,14 @@
 // [NewClientCredentials] and request a shared [Token] with
 // [ClientCredentials.Token].
 //
+// # Token introspection
+//
+// Token introspection is available through [NewIntrospector] for resource-server
+// style use and through [RP.IntrospectToken] for existing RP instances. JSON
+// responses from RFC 7662 are supported, and signed JWT responses from RFC 9701
+// are verified when requested. Encrypted JWT introspection responses are not yet
+// supported.
+//
 // # Token refresh
 //
 // When the authorization code flow returns a refresh token, use

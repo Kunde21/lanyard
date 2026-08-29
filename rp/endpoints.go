@@ -34,3 +34,16 @@ func (r *RP) usesMTLSForPAR() bool {
 func (r *RP) usesMTLSForTokenEndpoint() bool {
 	return r.resolvedAuthMethod == AuthMethodTLSClientAuth || r.resolvedAuthMethod == AuthMethodSelfSignedTLSClientAuth || r.senderConstrain == SenderConstraintMTLS
 }
+
+func (c *clientConfig) introspectionEndpoint(provider metadata.Provider) string {
+	if c.usesMTLSForIntrospectionEndpoint() && provider.MTLSEndpointAliases.IntrospectionEndpoint != "" {
+		return provider.MTLSEndpointAliases.IntrospectionEndpoint
+	}
+	return provider.IntrospectionEndpoint
+}
+
+func (c *clientConfig) usesMTLSForIntrospectionEndpoint() bool {
+	return c.resolvedAuthMethod == AuthMethodTLSClientAuth ||
+		c.resolvedAuthMethod == AuthMethodSelfSignedTLSClientAuth ||
+		c.senderConstrain == SenderConstraintMTLS
+}

@@ -78,3 +78,36 @@ func TestPublicAPIOptionTypeAssignments(t *testing.T) {
 func TestPublicAPIRemovedSymbols(t *testing.T) {
 	t.Log("WithFAPIProfile, WithOIDCClient, WithClientCredentialsOIDCClient, WithDiscoveryOIDCClient, WithClientCredentialsProviderMetadata, WithClientCredentialsSenderConstrain, and string-taking sender-constrain signatures have been removed")
 }
+
+func TestIntrospectionPublicAPI(t *testing.T) {
+	var req rp.IntrospectionRequest
+	req.Token = "token"
+	req.TokenTypeHint = rp.TokenTypeHintAccessToken
+	req.PreferJWTResponse = true
+	req.ExpectedJWTAudience = "https://rs.example.com"
+
+	var resp rp.IntrospectionResponse
+	_ = resp.Active
+	_ = resp.Scope
+	_ = resp.ClientID
+	_ = resp.Username
+	_ = resp.TokenType
+	_ = resp.Exp
+	_ = resp.Iat
+	_ = resp.Nbf
+	_ = resp.Sub
+	_ = resp.Aud
+	_ = resp.Iss
+	_ = resp.JTI
+	_ = resp.RawJWT()
+
+	var extra struct {
+		Custom string `json:"custom"`
+	}
+	_ = resp.DecodeRaw(&extra)
+
+	_ = rp.ErrIntrospectionFailed
+	_ = rp.TokenTypeHintAccessToken
+	_ = rp.TokenTypeHintRefreshToken
+	_ = (*rp.Introspector)(nil)
+}
