@@ -33,6 +33,7 @@ func main() {
 	mux.HandleFunc("/callback", handleCallback)
 	mux.HandleFunc("/callback/", handleCallback)
 	mux.HandleFunc("/grants/", handleGrants)
+	mux.HandleFunc("/register", handleRegister)
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 	mux.HandleFunc("/conformance/jwks/", handleConformanceJWKS)
 	mux.HandleFunc("/request/", handleRequestObject(sharedRequestStore))
@@ -52,6 +53,7 @@ func newMuxForTest(flow flowHandler) *http.ServeMux {
 	mux.HandleFunc("/callback", handleCallbackWithFlow(flow))
 	mux.HandleFunc("/callback/", handleCallbackWithFlow(flow))
 	mux.HandleFunc("/grants/", handleGrants)
+	mux.HandleFunc("/register", handleRegister)
 	mux.HandleFunc("/conformance/runtime", handleConformanceRuntime)
 	mux.HandleFunc("/conformance/jwks/", handleConformanceJWKS)
 	mux.HandleFunc("/request/", handleRequestObject(sharedRequestStore))
@@ -71,6 +73,7 @@ func handleRoot(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintln(w, `<!doctype html><html><body><h1>Lanyard example RP</h1>
 <p><a href="/login">Login</a></p>
 <p><a href="/login?grant_management_action=create">Login with a new grant (create)</a></p>
+<p><a href="/register">Register a client dynamically (RFC 7591)</a></p>
 <p>Grant management: add <code>grant_management_action=create|merge|replace</code> (and <code>grant_id</code> for merge/replace) to /login, then query/revoke grants:</p>
 <pre>curl -H "Authorization: Bearer $GM_TOKEN" https://rp.localhost/grants/$GRANT_ID
 curl -X DELETE -H "Authorization: Bearer $GM_TOKEN" https://rp.localhost/grants/$GRANT_ID</pre>
