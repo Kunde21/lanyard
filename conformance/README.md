@@ -81,6 +81,15 @@ Run:
 docker compose -f conformance/docker-compose.yml up -d
 ```
 
+If another host service holds TCP 443 on a specific interface (e.g. tailscaled HTTPS),
+Docker's wildcard bind fails; use the loopback-only override instead:
+
+```bash
+docker compose -f conformance/docker-compose.yml -f conformance/docker-compose.override.yml up -d
+```
+
+(`*.localhost` resolves to 127.0.0.1, so host-side traffic is unaffected; containers reach each other via network aliases.)
+
 Open:
 
 - `https://suite.localhost`

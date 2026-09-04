@@ -1,0 +1,10 @@
+# Local override: bind published ports to loopback only, so host services
+# holding 443 on other interfaces (e.g. tailscaled HTTPS) do not conflict with
+# Docker's wildcard bind. *.localhost resolves to 127.0.0.1, so browser and
+# harness traffic is unaffected; containers reach each other via network
+# aliases, not host ports.
+services:
+  caddy:
+    ports: !override
+      - "127.0.0.1:443:443"
+      - "127.0.0.1:8444:8444"
