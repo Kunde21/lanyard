@@ -204,6 +204,13 @@ func discoveryModeForPlanVariant(planName string, planVariant map[string]string)
 	return "auto"
 }
 
+// isDynamicClientPlan reports whether a plan drives the RP through dynamic
+// client registration (its client_registration variant is plan-fixed to
+// dynamic_client, so the flag cannot come from the user variant map).
+func isDynamicClientPlan(planName string) bool {
+	return strings.Contains(planName, "client-dynamic-certification")
+}
+
 func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, suiteURL, alias string) rpRuntimeRequest {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
@@ -242,7 +249,8 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 		Profile:                             profileForPlanVariant(job.PlanName, planVariant),
 		DiscoveryMode:                       discoveryModeForPlanVariant(job.PlanName, planVariant),
 		ValidateAuthorizationResponseIssuer: validateAuthorizationResponseIssuerForPlanVariant(job.PlanName, planVariant),
-		DynamicClientRegistration:           strings.EqualFold(strings.TrimSpace(planVariant["client_registration"]), "dynamic_client"),
+		DynamicClientRegistration: isDynamicClientPlan(job.PlanName) ||
+			strings.EqualFold(strings.TrimSpace(planVariant["client_registration"]), "dynamic_client"),
 	}
 }
 

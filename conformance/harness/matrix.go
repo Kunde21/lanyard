@@ -79,14 +79,15 @@ func expandMatrixVariants(matrixName, planName string) ([]matrixVariant, error) 
 		if planName != "oidcc-client-dynamic-certification-test-plan" {
 			return nil, nil
 		}
+		// The plan pins response_type, client_registration, and
+		// client_request_type; the suite rejects user-supplied values for
+		// plan-fixed variants. Only client_auth_type is settable.
 		return []matrixVariant{
 			{
 				Name:     "dynamic-01",
 				PlanName: "oidcc-client-dynamic-certification-test-plan",
 				Variant: map[string]string{
-					"response_type":       "code",
-					"client_registration": "dynamic_client",
-					"client_request_type": "request_uri",
+					"client_auth_type": "client_secret_basic",
 				},
 				RPProfile: RPProfileConfig{},
 			},

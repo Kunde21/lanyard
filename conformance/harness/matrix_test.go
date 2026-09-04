@@ -473,9 +473,7 @@ func TestExpandMatrixVariants_OIDCCDynamic(t *testing.T) {
 		t.Fatalf("variants = %d, want 1", len(variants))
 	}
 	want := map[string]string{
-		"response_type":       "code",
-		"client_registration": "dynamic_client",
-		"client_request_type": "request_uri",
+		"client_auth_type": "client_secret_basic",
 	}
 	if diff := cmp.Diff(want, variants[0].Variant); diff != "" {
 		t.Fatalf("variant mismatch (-want +got):\n%s", diff)
@@ -502,10 +500,10 @@ func TestBuildRPRuntimeRequest_MarksDynamicRegistration(t *testing.T) {
 		t.Fatal("DynamicClientRegistration = false, want true for dynamic_client variant")
 	}
 
-	req = buildRPRuntimeRequest(job, map[string]string{
+	req = buildRPRuntimeRequest(RunJob{Alias: "alias-x", PlanName: "oidcc-client-config-certification-test-plan"}, map[string]string{
 		"response_type": "code",
 	}, "https://suite.localhost")
 	if req.DynamicClientRegistration {
-		t.Fatal("DynamicClientRegistration = true, want false without dynamic_client variant")
+		t.Fatal("DynamicClientRegistration = true, want false for static-client plan")
 	}
 }
