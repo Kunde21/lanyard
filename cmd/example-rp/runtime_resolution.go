@@ -151,13 +151,16 @@ func resolveRPRequestFromRuntimeConfig(cfg rpRuntimeConfig) (resolvedRPRequest, 
 	resolved.keyProvider = keyProvider
 
 	if shouldRegisterDynamically(cfg) {
-		clientID, clientSecret, provider, err := ensureDynamicClientRegistration(context.Background(), cfg, cfg.ModuleName)
+		clientID, clientSecret, provider, keyProvider, err := ensureDynamicClientRegistration(context.Background(), cfg, cfg.ModuleName)
 		if err != nil {
 			return resolvedRPRequest{}, err
 		}
 		resolved.clientID = clientID
 		resolved.clientSecret = clientSecret
 		resolved.provider = provider
+		if keyProvider != nil {
+			resolved.keyProvider = keyProvider
+		}
 	}
 
 	return resolved, nil
@@ -172,13 +175,16 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, 
 		return resolved, nil
 	}
 
-	clientID, clientSecret, provider, err := ensureDynamicClientRegistration(context.Background(), runtimeCfg, moduleName)
+	clientID, clientSecret, provider, keyProvider, err := ensureDynamicClientRegistration(context.Background(), runtimeCfg, moduleName)
 	if err != nil {
 		return resolvedRPRequest{}, err
 	}
 	resolved.clientID = clientID
 	resolved.clientSecret = clientSecret
 	resolved.provider = provider
+	if keyProvider != nil {
+		resolved.keyProvider = keyProvider
+	}
 	return resolved, nil
 }
 

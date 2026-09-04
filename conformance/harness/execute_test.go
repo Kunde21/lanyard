@@ -976,11 +976,12 @@ func TestExcludeModules(t *testing.T) {
 		{Name: "oidcc-client-test-idtoken-sig-none"},
 	}
 
-	exclude := regexp.MustCompile(`oidcc-client-test-request-uri-signed-(rs256|none)`)
+	exclude := regexp.MustCompile(`oidcc-client-test-request-uri-signed-none`)
 	got := excludeModules(modules, exclude)
 	want := []string{
 		"oidcc-client-test-discovery-webfinger-acct",
 		"oidcc-client-test-dynamic-registration",
+		"oidcc-client-test-request-uri-signed-rs256",
 		"oidcc-client-test-idtoken-sig-none",
 	}
 	if len(got) != len(want) {

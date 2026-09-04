@@ -82,7 +82,7 @@ var builtInPresets = map[string]presetConfig{
 		Profile:            "oidc-rp",
 		Matrices:           []string{"oidcc-dynamic-cert"},
 		IncludePlanRegex:   "oidcc-client-dynamic-certification-test-plan",
-		ExcludeModuleRegex: "oidcc-client-test-request-uri-signed-(rs256|none)",
+		ExcludeModuleRegex: "oidcc-client-test-request-uri-signed-none",
 		Parallel:           true,
 		MaxParallelRuns:    2,
 	},

@@ -185,7 +185,7 @@ func TestResolvePreset_OIDCCDynamicFull(t *testing.T) {
 	if preset.IncludePlanRegex != "oidcc-client-dynamic-certification-test-plan" {
 		t.Fatalf("IncludePlanRegex = %q", preset.IncludePlanRegex)
 	}
-	if preset.ExcludeModuleRegex != "oidcc-client-test-request-uri-signed-(rs256|none)" {
+	if preset.ExcludeModuleRegex != "oidcc-client-test-request-uri-signed-none" {
 		t.Fatalf("ExcludeModuleRegex = %q", preset.ExcludeModuleRegex)
 	}
 }

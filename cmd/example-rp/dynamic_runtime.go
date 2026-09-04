@@ -23,6 +23,7 @@ type dynamicRegistrationEntry struct {
 	clientSecret string
 	moduleName   string
 	provider     *metadata.Provider
+	keyProvider  rp.ClientKeyProvider
 }
 
 var dynamicRegistrations = struct {
@@ -42,13 +43,13 @@ func resetDynamicRegistrations() {
 // by module_name) it discovers the provider once, registers a fresh client
 // via RFC 7591, and caches both; callbacks and repeated requests (which do
 // not carry module_name) reuse the cached entry.
-func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, moduleName string) (string, string, *metadata.Provider, error) {
+func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, moduleName string) (string, string, *metadata.Provider, rp.ClientKeyProvider, error) {
 	alias := strings.TrimSpace(cfg.Alias)
 	if alias == "" {
-		return "", "", nil, fmt.Errorf("dynamic client registration requires a runtime alias")
+		return "", "", nil, nil, fmt.Errorf("dynamic client registration requires a runtime alias")
 	}
 	if strings.TrimSpace(cfg.Issuer) == "" {
-		return "", "", nil, fmt.Errorf("dynamic client registration requires a runtime issuer")
+		return "", "", nil, nil, fmt.Errorf("dynamic client registration requires a runtime issuer")
 	}
 
 	dynamicRegistrations.Lock()
@@ -56,20 +57,24 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 
 	if cached, ok := dynamicRegistrations.entries[alias]; ok {
 		if moduleName == "" || moduleName == cached.moduleName {
-			return cached.clientID, cached.clientSecret, cached.provider, nil
+			return cached.clientID, cached.clientSecret, cached.provider, cached.keyProvider, nil
 		}
 	}
 
 	// The request-object signing algorithm must match what the example RP
-	// actually signs with (the conformance key set's algorithm), or the
-	// suite's ValidateRequestObjectSignature rejects the request object.
+	// actually signs with. The dynamic plan's request-uri-signed-rs256 module
+	// requires RS256 specifically; the other modules verify the signature
+	// against the registered jwks_uri and accept any algorithm, so the
+	// dynamic runtime always uses RS256 for request objects.
+	var keyProvider rp.ClientKeyProvider
 	requestObjectAlg := ""
 	if requestTypeNeedsAsymmetricSigningKey(cfg.RequestType) {
 		keys, keysErr := loadConformanceKeySet()
 		if keysErr != nil {
-			return "", "", nil, fmt.Errorf("dynamic registration key set failed: %w", keysErr)
+			return "", "", nil, nil, fmt.Errorf("dynamic registration key set failed: %w", keysErr)
 		}
-		requestObjectAlg = keys.rsaAlg
+		requestObjectAlg = "RS256"
+		keyProvider = rp.NewStaticClientKeyProvider(keys.rsaPrivateKey, keys.rsaKeyID, "RS256", nil)
 	}
 
 	// Single discovery for the whole window: feeds both the Registrar and the
@@ -77,7 +82,7 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 	// FINISHED on the registration POST.
 	provider, err := newMetadataClient(nil).DiscoverProvider(ctx, cfg.Issuer)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("dynamic registration discovery failed: %w", err)
+		return "", "", nil, nil, fmt.Errorf("dynamic registration discovery failed: %w", err)
 	}
 
 	registrar, err := rp.NewRegistrar(ctx, cfg.Issuer,
@@ -85,7 +90,7 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 		rp.WithHTTPClient(newRPHTTPClient(nil)),
 	)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("dynamic registration setup failed: %w", err)
+		return "", "", nil, nil, fmt.Errorf("dynamic registration setup failed: %w", err)
 	}
 	reg, err := registrar.Register(ctx, rp.ClientMetadata{
 		RedirectURIs:            []string{cfg.RedirectURI},
@@ -99,7 +104,7 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 		RequestObjectSigningAlg: requestObjectAlg,
 	})
 	if err != nil {
-		return "", "", nil, fmt.Errorf("dynamic client registration failed: %w", err)
+		return "", "", nil, nil, fmt.Errorf("dynamic client registration failed: %w", err)
 	}
 
 	dynamicRegistrations.entries[alias] = dynamicRegistrationEntry{
@@ -107,8 +112,9 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 		clientSecret: reg.ClientSecret,
 		moduleName:   moduleName,
 		provider:     &provider,
+		keyProvider:  keyProvider,
 	}
-	return reg.ClientID, reg.ClientSecret, &provider, nil
+	return reg.ClientID, reg.ClientSecret, &provider, keyProvider, nil
 }
 
 // shouldRegisterDynamically reports whether a runtime configuration should
