@@ -125,8 +125,17 @@ func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 			return
 		}
 
-		authURL, err := flow.AuthorizationURL(w, r, grantOption)
+		authOpts := []rp.AuthorizationURLOption{grantOption}
+		if rawClaims := strings.TrimSpace(r.URL.Query().Get("claims")); rawClaims != "" {
+			authOpts = append(authOpts, rp.SetClaims(rawClaims))
+		}
+
+		authURL, err := flow.AuthorizationURL(w, r, authOpts...)
 		if err != nil {
+			if strings.Contains(err.Error(), "claims parameter must be a JSON object") {
+				http.Error(w, fmt.Sprintf("invalid claims parameter: %v", err), http.StatusBadRequest)
+				return
+			}
 			slog.Info("login initialization failed", "err", err)
 			http.Error(w, "failed to initialize login", http.StatusInternalServerError)
 			return

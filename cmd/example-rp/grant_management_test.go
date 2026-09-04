@@ -256,3 +256,27 @@ func TestHandleGrantsUpstreamErrorMapped(t *testing.T) {
 		t.Fatalf("body = %s, want grant management error text", w.Body.String())
 	}
 }
+
+func TestLoginClaimsParameter(t *testing.T) {
+	flow := &recordingLoginFlow{stubFlow: stubFlow{authURL: "https://issuer.test/authorize"}}
+	h := newMuxForTest(flow)
+
+	// Valid claims JSON passes through as an option.
+	req := httptest.NewRequest(http.MethodGet, `/login?claims={"userinfo":{"verified_claims":{"verification":{"trust_framework":null},"claims":{"given_name":null}}}}`, nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want %d (body: %s)", w.Code, http.StatusFound, w.Body.String())
+	}
+	if len(flow.captured) != 2 {
+		t.Fatalf("captured options = %d, want 2 (grant + claims)", len(flow.captured))
+	}
+
+	// Invalid claims JSON yields a 400 before the redirect.
+	req = httptest.NewRequest(http.MethodGet, `/login?claims={"userinfo":`, nil)
+	w = httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body: %s)", w.Code, w.Body.String())
+	}
+}
