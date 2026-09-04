@@ -34,6 +34,14 @@ func handleConformanceJWKS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Dynamic runtimes sign request objects with RS256 (the algorithm they
+	// register); the advertised key alg must match or verifiers skip the key.
+	if runtimeCfg.DynamicClientRegistration {
+		if keys, ok := jwks["keys"].([]map[string]any); ok && len(keys) > 0 {
+			keys[0]["alg"] = "RS256"
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(jwks)
 }
