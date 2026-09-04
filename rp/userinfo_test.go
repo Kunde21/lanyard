@@ -2,7 +2,11 @@ package rp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +15,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-jose/go-jose/v4"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -382,5 +387,114 @@ func TestFetchUserInfo_StoresNonceFromSuccessfulResponse(t *testing.T) {
 	}
 	if diff := cmp.Diff("ui-fresh-nonce", cachedNonce); diff != "" {
 		t.Fatalf("cached nonce mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestFetchUserInfoSignedJWT(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jwk := jose.JSONWebKey{KeyID: "userinfo-key-1", Algorithm: "RS256", Use: "sig", Key: &key.PublicKey}
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		signer, signErr := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, &jose.SignerOptions{
+			ExtraHeaders: map[jose.HeaderKey]any{"kid": "userinfo-key-1"},
+		})
+		if signErr != nil {
+			t.Errorf("NewSigner() failed: %v", signErr)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		payload, signErr2 := signer.Sign([]byte(`{"iss":"https://issuer.test","aud":"client","sub":"sub-123","name":"Alice"}`))
+		if signErr2 != nil {
+			t.Errorf("Sign() failed: %v", signErr2)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		serialized, serializeErr := payload.CompactSerialize()
+		if serializeErr != nil {
+			t.Errorf("CompactSerialize() failed: %v", serializeErr)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/jwt")
+		_, _ = fmt.Fprint(w, serialized)
+	}))
+	defer ts.Close()
+
+	// JWKS endpoint serving the userinfo signing key.
+	jwksTS := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}})
+	}))
+	defer jwksTS.Close()
+
+	provider := providerForAuthMethods()
+	provider.JWKSURI = jwksTS.URL
+
+	r, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	got, err := r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportHeader)
+	if err != nil {
+		t.Fatalf("fetchUserInfo() failed: %v", err)
+	}
+	if diff := cmp.Diff("Alice", got["name"]); diff != "" {
+		t.Fatalf("name mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("sub-123", fmt.Sprint(got["sub"])); diff != "" {
+		t.Fatalf("sub mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestFetchUserInfoSignedJWTRejectsWrongAudience(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	jwk := jose.JSONWebKey{KeyID: "userinfo-key-1", Algorithm: "RS256", Use: "sig", Key: &key.PublicKey}
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		signer, _ := jose.NewSigner(jose.SigningKey{Algorithm: jose.RS256, Key: key}, nil)
+		payload, _ := signer.Sign([]byte(`{"iss":"https://issuer.test","aud":"other-client","sub":"sub-123"}`))
+		serialized, _ := payload.CompactSerialize()
+		w.Header().Set("Content-Type", "application/jwt")
+		_, _ = fmt.Fprint(w, serialized)
+	}))
+	defer ts.Close()
+
+	jwksTS := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{jwk}})
+	}))
+	defer jwksTS.Close()
+
+	provider := providerForAuthMethods()
+	provider.JWKSURI = jwksTS.URL
+
+	r, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	_, err = r.fetchUserInfo(context.Background(), ts.URL, "access-token", "sub-123", UserInfoTokenTransportHeader)
+	if !errors.Is(err, ErrUserInfoValidationFailed) {
+		t.Fatalf("fetchUserInfo() error = %v, want ErrUserInfoValidationFailed", err)
+	}
+	if !strings.Contains(err.Error(), "aud mismatch") {
+		t.Fatalf("error = %v, want aud mismatch", err)
 	}
 }

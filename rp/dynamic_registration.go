@@ -42,6 +42,9 @@ type ClientMetadata struct {
 	// (RFC 7591 section 2). Some providers require request_uri values to be
 	// pre-registered.
 	RequestURIs []string `json:"request_uris,omitempty"`
+	// RequestObjectSigningAlg declares the JWS algorithm the client uses to
+	// sign request objects (e.g. RS256).
+	RequestObjectSigningAlg string `json:"request_object_signing_alg,omitempty"`
 	// SoftwareID identifies the software deployment per RFC 7591 section 2.
 	SoftwareID string `json:"software_id,omitempty"`
 	// SoftwareVersion identifies the software version.

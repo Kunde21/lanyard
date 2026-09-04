@@ -11,12 +11,14 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/go-jose/go-jose/v4/jwt"
 )
 
 func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedSub string, transport UserInfoTokenTransport) (map[string]any, error) {
 	useDPoP := transport == UserInfoTokenTransportHeader && r.shouldUseDPoP()
 
-	var payload map[string]any
+	var body []byte
 	_, status, preview, err := doRequestWithDPoPRetry(dpopRequestConfig{
 		buildRequest: func() (*http.Request, error) {
 			req, err := buildUserInfoRequest(ctx, endpoint, accessToken, transport)
@@ -31,8 +33,13 @@ func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedS
 		attachDPoP: func(req *http.Request, nonce string) error {
 			return r.attachDPoPProof(req, accessToken, nonce)
 		},
-		handleResponse: func(body io.Reader) error {
-			return json.NewDecoder(body).Decode(&payload)
+		handleResponse: func(bodyReader io.Reader) error {
+			data, readErr := io.ReadAll(bodyReader)
+			if readErr != nil {
+				return fmt.Errorf("failed to read userinfo response: %w", readErr)
+			}
+			body = data
+			return nil
 		},
 		storeNonce: func(resp *http.Response) {
 			r.extractAndStoreDPoPNonce(resp, endpoint)
@@ -52,6 +59,16 @@ func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedS
 
 	if status != http.StatusOK {
 		return nil, fmt.Errorf("%w: userinfo endpoint returned status %d: %s", ErrUserInfoValidationFailed, status, preview)
+	}
+
+	var payload map[string]any
+	if looksLikeJWT(body) {
+		payload, err = r.verifySignedUserInfo(ctx, strings.TrimSpace(string(body)))
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrUserInfoValidationFailed, err)
+		}
+	} else if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, fmt.Errorf("%w: failed to decode userinfo JSON: %v", ErrUserInfoValidationFailed, err)
 	}
 	if payload == nil {
 		return nil, fmt.Errorf("%w: userinfo response was empty", ErrUserInfoValidationFailed)
@@ -253,4 +270,87 @@ func validateClaimSubject(claims map[string]any, expectedSub string) error {
 		}
 	}
 	return nil
+}
+
+// signedUserInfoClaims are the OIDC Core section 5.3.2 verification claims of
+// a signed userinfo response.
+type signedUserInfoClaims struct {
+	Iss string        `json:"iss"`
+	Aud audienceClaim `json:"aud"`
+	Sub string        `json:"sub"`
+}
+
+// verifySignedUserInfo verifies a signed (application/jwt) userinfo response:
+// the signature is checked against the provider's JWKS and the iss, aud, and
+// sub claims are validated per OIDC Core section 5.3.2.
+func (r *RP) verifySignedUserInfo(ctx context.Context, raw string) (map[string]any, error) {
+	parsed, err := jwt.ParseSigned(raw, supportedIDTokenAlgs)
+	if err != nil {
+		return nil, fmt.Errorf("parse signed userinfo: %v", err)
+	}
+	if len(parsed.Headers) == 0 {
+		return nil, fmt.Errorf("signed userinfo missing JOSE headers")
+	}
+	if parsed.Headers[0].Algorithm == "none" {
+		return nil, fmt.Errorf("signed userinfo must not use 'none' algorithm")
+	}
+
+	keySet, err := r.metadataClient.RemoteKeySet(ctx, r.issuer)
+	if err != nil {
+		return nil, fmt.Errorf("load key set: %v", err)
+	}
+
+	var claims signedUserInfoClaims
+	if kid := parsed.Headers[0].KeyID; kid != "" {
+		key, keyErr := keySet.Key(ctx, kid)
+		if keyErr != nil {
+			return nil, fmt.Errorf("find signing key: %v", keyErr)
+		}
+		if err := parsed.Claims(key.Key, &claims); err != nil {
+			return nil, fmt.Errorf("verify signed userinfo signature: %v", err)
+		}
+	} else {
+		all, keysErr := keySet.Keys(ctx)
+		if keysErr != nil {
+			return nil, fmt.Errorf("load signing keys: %v", keysErr)
+		}
+		matched := 0
+		for _, key := range all {
+			if key.Use != "" && key.Use != "sig" {
+				continue
+			}
+			var candidate signedUserInfoClaims
+			if err := parsed.Claims(key.Key, &candidate); err != nil {
+				continue
+			}
+			matched++
+			claims = candidate
+		}
+		if matched != 1 {
+			return nil, fmt.Errorf("missing kid: expected exactly one matching key, got %d", matched)
+		}
+	}
+
+	if claims.Iss != r.issuer {
+		return nil, fmt.Errorf("signed userinfo iss mismatch: got %q, want %q", claims.Iss, r.issuer)
+	}
+	audMatch := false
+	for _, aud := range claims.Aud {
+		if aud == r.clientID {
+			audMatch = true
+			break
+		}
+	}
+	if !audMatch {
+		return nil, fmt.Errorf("signed userinfo aud mismatch: client_id %q not in audience", r.clientID)
+	}
+	if strings.TrimSpace(claims.Sub) == "" {
+		return nil, fmt.Errorf("signed userinfo missing sub claim")
+	}
+
+	var payload map[string]any
+	if err := parsed.UnsafeClaimsWithoutVerification(&payload); err != nil {
+		return nil, fmt.Errorf("decode signed userinfo claims: %v", err)
+	}
+	return payload, nil
 }
