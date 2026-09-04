@@ -216,7 +216,7 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 	if alias == "" {
 		alias = job.Alias
 	}
-	requestType := requestTypeForPlanVariant(planVariant)
+	requestType := requestTypeForPlanVariant(job.PlanName, planVariant)
 	clientID := "local-dev-client"
 	clientSecret := "local-dev-secret-32-bytes-minimum!!"
 	redirectURI := runtimeRedirectURI(alias)

@@ -38,6 +38,10 @@ type ClientMetadata struct {
 	// JWKS holds the client's public keys inline. Mutually exclusive with
 	// JWKSURI.
 	JWKS json.RawMessage `json:"jwks,omitempty"`
+	// RequestURIs pre-registers the request_uri endpoints the client will use
+	// (RFC 7591 section 2). Some providers require request_uri values to be
+	// pre-registered.
+	RequestURIs []string `json:"request_uris,omitempty"`
 	// SoftwareID identifies the software deployment per RFC 7591 section 2.
 	SoftwareID string `json:"software_id,omitempty"`
 	// SoftwareVersion identifies the software version.

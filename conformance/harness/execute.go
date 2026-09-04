@@ -851,7 +851,7 @@ func buildPlanConfig(planName string, planVariant map[string]string, alias strin
 
 	isFAPI2 := isFAPI2PlanVariant(planVariant)
 
-	requestType := requestTypeForPlanVariant(planVariant)
+	requestType := requestTypeForPlanVariant(planName, planVariant)
 	scope := scopeStringForPlanVariant(planVariant)
 
 	cfg := map[string]any{
@@ -946,13 +946,14 @@ func buildPlanConfig(planName string, planVariant map[string]string, alias strin
 }
 
 func buildStandaloneModuleConfig(alias string, planVariant map[string]string, waitTimeoutSeconds int) map[string]any {
+	planName := "" // standalone modules have no plan context
 	if waitTimeoutSeconds <= 0 {
 		waitTimeoutSeconds = 5
 	}
 	client := map[string]any{
 		"client_id":    "local-dev-client",
 		"redirect_uri": runtimeRedirectURI(alias),
-		"request_type": requestTypeForPlanVariant(planVariant),
+		"request_type": requestTypeForPlanVariant(planName, planVariant),
 		"scope":        strings.Join(scopesForPlanVariant(planVariant), " "),
 	}
 	if secret := strings.TrimSpace("local-dev-secret-32-bytes-minimum!!"); secret != "" && !strings.EqualFold(strings.TrimSpace(planVariant["client_auth_type"]), "none") {
@@ -970,7 +971,7 @@ func buildStandaloneModuleConfig(alias string, planVariant map[string]string, wa
 			client["tls_client_auth_san_dns"] = "client-mtls.localhost"
 		}
 	}
-	if requestTypeUsesSignedRequestObject(requestTypeForPlanVariant(planVariant)) {
+	if requestTypeUsesSignedRequestObject(requestTypeForPlanVariant(planName, planVariant)) {
 		client["jwks"] = loadPublicJWKS("client.jwks.json")
 		client["request_object_signing_alg"] = "PS256"
 	}
@@ -979,7 +980,7 @@ func buildStandaloneModuleConfig(alias string, planVariant map[string]string, wa
 			client["jwks"] = appendSelfSignedCertToJWKS(jwks)
 		}
 	}
-	if strings.EqualFold(strings.TrimSpace(requestTypeForPlanVariant(planVariant)), "request_uri") {
+	if strings.EqualFold(strings.TrimSpace(requestTypeForPlanVariant(planName, planVariant)), "request_uri") {
 		client["request_uris"] = []string{"https://rp.localhost/request/"}
 	}
 	return map[string]any{
@@ -1015,9 +1016,14 @@ func requestTypeUsesSignedRequestObject(requestType string) bool {
 	}
 }
 
-func requestTypeForPlanVariant(planVariant map[string]string) string {
+func requestTypeForPlanVariant(planName string, planVariant map[string]string) string {
 	if v := strings.TrimSpace(planVariant["request_type"]); v != "" {
 		return v
+	}
+	// The dynamic certification plan pins client_request_type=request_uri in
+	// its module variants, which never appear in user variant maps.
+	if isDynamicClientPlan(planName) {
+		return "request_uri"
 	}
 
 	switch strings.ToLower(strings.TrimSpace(planVariant["fapi_auth_request_method"])) {

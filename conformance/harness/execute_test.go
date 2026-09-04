@@ -281,7 +281,7 @@ func TestRequestTypeForPlanVariant(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := requestTypeForPlanVariant(tc.variant)
+			got := requestTypeForPlanVariant("fapi2-security-profile-final-client-test-plan", tc.variant)
 			if got != tc.want {
 				t.Fatalf("requestTypeForPlanVariant() = %q, want %q", got, tc.want)
 			}

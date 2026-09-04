@@ -82,6 +82,7 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 		ResponseTypes:           []string{"code"},
 		ClientName:              "Lanyard example RP",
 		Contacts:                []string{"dev@example.org"},
+		RequestURIs:             []string{"https://rp.localhost/request/"},
 	})
 	if err != nil {
 		return "", "", nil, fmt.Errorf("dynamic client registration failed: %w", err)
