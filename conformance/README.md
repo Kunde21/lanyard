@@ -26,9 +26,9 @@ Latest verified full-suite result:
 Dynamic client registration (Dynamic RP profile):
 
 - preset: `oidcc-dynamic-full`
-- result: `1/1` plan passed, `10/10` modules passed (the two request-uri signing modules are excluded by the preset; see
-  `thoughts/research/2026-08-29-dcr-conformance-wiring.md`)
-- artifact: `artifacts/20260904-134941/report.json`
+- result: `1/1` plan passed, `11/11` modules passed (only the unsigned request-object module is excluded — the library
+  never emits unsigned request objects by design; see `thoughts/research/2026-08-29-dcr-conformance-wiring.md`)
+- artifact: `artifacts/20260904-150941/report.json`
 
 The example RP implements Authorization Code + PKCE, ID token validation, UserInfo validation,
 PAR, JAR, JARM, RAR, DPoP, mTLS, and RP-hosted `request_uri` support. It uses the supported
