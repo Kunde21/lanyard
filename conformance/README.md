@@ -23,6 +23,13 @@ Latest verified full-suite result:
 - result: `104/104` plans passed, `1180/1180` tests passed
 - artifact: `artifacts/20260410-232441/report.json`
 
+Dynamic client registration (Dynamic RP profile):
+
+- preset: `oidcc-dynamic-full`
+- result: `1/1` plan passed, `10/10` modules passed (the two request-uri signing modules are excluded by the preset; see
+  `thoughts/research/2026-08-29-dcr-conformance-wiring.md`)
+- artifact: `artifacts/20260904-134941/report.json`
+
 The example RP implements Authorization Code + PKCE, ID token validation, UserInfo validation,
 PAR, JAR, JARM, RAR, DPoP, mTLS, and RP-hosted `request_uri` support. It uses the supported
 cookie-backed RP state store (`rp/store/cookie`) so login and callback state is bound to the
