@@ -60,6 +60,18 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 		}
 	}
 
+	// The request-object signing algorithm must match what the example RP
+	// actually signs with (the conformance key set's algorithm), or the
+	// suite's ValidateRequestObjectSignature rejects the request object.
+	requestObjectAlg := ""
+	if requestTypeNeedsAsymmetricSigningKey(cfg.RequestType) {
+		keys, keysErr := loadConformanceKeySet()
+		if keysErr != nil {
+			return "", "", nil, fmt.Errorf("dynamic registration key set failed: %w", keysErr)
+		}
+		requestObjectAlg = keys.rsaAlg
+	}
+
 	// Single discovery for the whole window: feeds both the Registrar and the
 	// RP built afterwards, so no second discovery can hit a mock that already
 	// FINISHED on the registration POST.
@@ -84,7 +96,7 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 		Contacts:                []string{"dev@example.org"},
 		RequestURIs:             []string{"https://rp.localhost/request/"},
 		JWKSURI:                 "https://rp.localhost/conformance/jwks/" + alias,
-		RequestObjectSigningAlg: "RS256",
+		RequestObjectSigningAlg: requestObjectAlg,
 	})
 	if err != nil {
 		return "", "", nil, fmt.Errorf("dynamic client registration failed: %w", err)
