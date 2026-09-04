@@ -24,7 +24,13 @@ func buildTokenRequestEnvelope(ctx context.Context, tokenEndpoint string, form u
 
 	switch method {
 	case AuthMethodBasic:
-		req.SetBasicAuth(clientID, clientSecret)
+		// RFC 6749 section 2.3.1: the client_id and client_secret are
+		// application/x-www-form-urlencoded per Appendix B before being
+		// concatenated and base64-encoded for the Basic authentication header.
+		// Authorization servers that issue credentials containing reserved
+		// characters (as the OIDF conformance suite's dynamic registration does)
+		// rely on this encoding.
+		req.SetBasicAuth(url.QueryEscape(clientID), url.QueryEscape(clientSecret))
 	case AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth:
 	}
 

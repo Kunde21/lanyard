@@ -598,3 +598,41 @@ func TestExchangeTokenRequestShape_SelfSignedTLSClientAuth(t *testing.T) {
 		t.Fatalf("client_secret should not be present for self_signed_tls_client_auth")
 	}
 }
+
+func TestBuildTokenRequestEnvelopeBasicAuthURLEncodesCredentials(t *testing.T) {
+	// RFC 6749 section 2.3.1: Basic auth carries the form-urlencoded
+	// client_id and client_secret. The OIDF conformance suite's dynamically
+	// issued credentials contain reserved characters specifically to test
+	// this.
+	req, err := buildTokenRequestEnvelope(
+		context.Background(),
+		"https://issuer.test/token",
+		url.Values{"grant_type": {"authorization_code"}},
+		AuthMethodBasic,
+		"client_bczPdKuyHTkyKOF60082)~-%,",
+		"secret_iwSjaxDTpxpyGjpTFJEqsApEQKiioGiUkztFvtUTYAUPKZLznv9830617030&{]!$",
+	)
+	if err != nil {
+		t.Fatalf("buildTokenRequestEnvelope() failed: %v", err)
+	}
+
+	username, password, ok := req.BasicAuth()
+	if !ok {
+		t.Fatal("Basic auth header missing")
+	}
+	if want := url.QueryEscape("client_bczPdKuyHTkyKOF60082)~-%,"); username != want {
+		t.Fatalf("username = %q, want url-encoded %q", username, want)
+	}
+	if want := url.QueryEscape("secret_iwSjaxDTpxpyGjpTFJEqsApEQKiioGiUkztFvtUTYAUPKZLznv9830617030&{]!$"); password != want {
+		t.Fatalf("password = %q, want url-encoded %q", password, want)
+	}
+
+	// Round-trip: a server following RFC 6749 URL-decodes both parts.
+	decodedID, decodeErr := url.QueryUnescape(username)
+	if decodeErr != nil {
+		t.Fatalf("QueryUnescape(username) failed: %v", decodeErr)
+	}
+	if decodedID != "client_bczPdKuyHTkyKOF60082)~-%," {
+		t.Fatalf("round-tripped username = %q", decodedID)
+	}
+}
