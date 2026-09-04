@@ -207,6 +207,7 @@ func mergeProvider(dst, src metadata.Provider, mode providerMergeMode) metadata.
 	mergeString(&merged.AuthorizationEndpoint, src.AuthorizationEndpoint)
 	mergeString(&merged.TokenEndpoint, src.TokenEndpoint)
 	mergeString(&merged.JWKSURI, src.JWKSURI)
+	mergeString(&merged.RegistrationEndpoint, src.RegistrationEndpoint)
 	mergeString(&merged.UserinfoEndpoint, src.UserinfoEndpoint)
 	mergeString(&merged.PushedAuthorizationRequestEndpoint, src.PushedAuthorizationRequestEndpoint)
 	mergeString(&merged.Issuer, src.Issuer)
@@ -218,6 +219,7 @@ func mergeProvider(dst, src metadata.Provider, mode providerMergeMode) metadata.
 	mergeStrings(&merged.AuthorizationSigningAlgValuesSupported, src.AuthorizationSigningAlgValuesSupported)
 	mergeString(&merged.MTLSEndpointAliases.TokenEndpoint, src.MTLSEndpointAliases.TokenEndpoint)
 	mergeString(&merged.MTLSEndpointAliases.UserinfoEndpoint, src.MTLSEndpointAliases.UserinfoEndpoint)
+	mergeString(&merged.MTLSEndpointAliases.RegistrationEndpoint, src.MTLSEndpointAliases.RegistrationEndpoint)
 	mergeString(
 		&merged.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint,
 		src.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint,

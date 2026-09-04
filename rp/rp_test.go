@@ -343,6 +343,7 @@ func providerWithMergeFields(base string) metadata.Provider {
 			AuthorizationEndpoint:  base + "/authorize",
 			TokenEndpoint:          base + "/token",
 			JWKSURI:                base + "/jwks",
+			RegistrationEndpoint:   base + "/register",
 			ResponseTypesSupported: []string{"code"},
 			TokenEndpointAuthMethodsSupported: []string{
 				"client_secret_basic",
@@ -352,6 +353,7 @@ func providerWithMergeFields(base string) metadata.Provider {
 				TokenEndpoint:                      base + "/mtls/token",
 				UserinfoEndpoint:                   base + "/mtls/userinfo",
 				PushedAuthorizationRequestEndpoint: base + "/mtls/par",
+				RegistrationEndpoint:               base + "/mtls/register",
 			},
 			CodeChallengeMethodsSupported: []string{"S256"},
 			ResponseModesSupported:        []string{"query"},
