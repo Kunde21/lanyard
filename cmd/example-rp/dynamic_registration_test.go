@@ -125,7 +125,7 @@ func TestHandleRegisterUpstreamErrors(t *testing.T) {
 		t.Fatalf("oauth error status = %d, want 400 (body: %s)", w.Code, w.Body.String())
 	}
 
-	plainFailure := &stubRegistrar{err: errors.New("registration endpoint returned status 500: boom")}
+	plainFailure := &stubRegistrar{err: errors.Join(rp.ErrRegistrationFailed, errors.New("registration endpoint returned status 500: boom"))}
 	handler = serveRegisterWithRegistrar(t, plainFailure)
 	req = httptest.NewRequest(http.MethodPost, "/register", nil)
 	w = httptest.NewRecorder()
