@@ -6,18 +6,23 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp"
 )
 
 // dynamicRegistrationEntry caches the credentials issued for one dynamically
-// registered client, scoped to the conformance module window that requested
-// them. The suite creates a fresh client record from each registration POST,
-// so each module (identified by module_name) must use credentials issued in
-// that module's window.
+// registered client together with the provider metadata discovered in the
+// same module window, scoped to the conformance module that requested them.
+// The suite creates a fresh client record from each registration POST, and
+// some modules (rp-registration-dynamic) FINISH on the registration POST —
+// any further discovery against the mock then fails, so the provider
+// discovered alongside the registration is cached and reused for the rest of
+// the module's flow.
 type dynamicRegistrationEntry struct {
 	clientID     string
 	clientSecret string
 	moduleName   string
+	provider     *metadata.Provider
 }
 
 var dynamicRegistrations = struct {
@@ -32,18 +37,18 @@ func resetDynamicRegistrations() {
 	dynamicRegistrations.entries = map[string]dynamicRegistrationEntry{}
 }
 
-// ensureDynamicClientRegistration returns the client credentials for a
-// dynamic conformance runtime. It registers a fresh client via RFC 7591 when
-// a new module window starts (module_name differs from the cached one) or no
-// cached registration exists, and reuses the cached credentials otherwise
-// (callbacks do not carry module_name).
-func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, moduleName string) (string, string, error) {
+// ensureDynamicClientRegistration returns client credentials and the provider
+// metadata for a dynamic conformance runtime. Per module window (identified
+// by module_name) it discovers the provider once, registers a fresh client
+// via RFC 7591, and caches both; callbacks and repeated requests (which do
+// not carry module_name) reuse the cached entry.
+func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, moduleName string) (string, string, *metadata.Provider, error) {
 	alias := strings.TrimSpace(cfg.Alias)
 	if alias == "" {
-		return "", "", fmt.Errorf("dynamic client registration requires a runtime alias")
+		return "", "", nil, fmt.Errorf("dynamic client registration requires a runtime alias")
 	}
 	if strings.TrimSpace(cfg.Issuer) == "" {
-		return "", "", fmt.Errorf("dynamic client registration requires a runtime issuer")
+		return "", "", nil, fmt.Errorf("dynamic client registration requires a runtime issuer")
 	}
 
 	dynamicRegistrations.Lock()
@@ -51,13 +56,24 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 
 	if cached, ok := dynamicRegistrations.entries[alias]; ok {
 		if moduleName == "" || moduleName == cached.moduleName {
-			return cached.clientID, cached.clientSecret, nil
+			return cached.clientID, cached.clientSecret, cached.provider, nil
 		}
 	}
 
-	registrar, err := rp.NewRegistrar(ctx, cfg.Issuer, rp.WithHTTPClient(newRPHTTPClient(nil)))
+	// Single discovery for the whole window: feeds both the Registrar and the
+	// RP built afterwards, so no second discovery can hit a mock that already
+	// FINISHED on the registration POST.
+	provider, err := newMetadataClient(nil).DiscoverProvider(ctx, cfg.Issuer)
 	if err != nil {
-		return "", "", fmt.Errorf("dynamic registration setup failed: %w", err)
+		return "", "", nil, fmt.Errorf("dynamic registration discovery failed: %w", err)
+	}
+
+	registrar, err := rp.NewRegistrar(ctx, cfg.Issuer,
+		rp.WithProviderMetadata(provider),
+		rp.WithHTTPClient(newRPHTTPClient(nil)),
+	)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("dynamic registration setup failed: %w", err)
 	}
 	reg, err := registrar.Register(ctx, rp.ClientMetadata{
 		RedirectURIs:            []string{cfg.RedirectURI},
@@ -68,13 +84,22 @@ func ensureDynamicClientRegistration(ctx context.Context, cfg rpRuntimeConfig, m
 		Contacts:                []string{"dev@example.org"},
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("dynamic client registration failed: %w", err)
+		return "", "", nil, fmt.Errorf("dynamic client registration failed: %w", err)
 	}
 
 	dynamicRegistrations.entries[alias] = dynamicRegistrationEntry{
 		clientID:     reg.ClientID,
 		clientSecret: reg.ClientSecret,
 		moduleName:   moduleName,
+		provider:     &provider,
 	}
-	return reg.ClientID, reg.ClientSecret, nil
+	return reg.ClientID, reg.ClientSecret, &provider, nil
+}
+
+// shouldRegisterDynamically reports whether a runtime configuration should
+// resolve through dynamic client registration. Only full-flow modules need
+// credentials; discovery-style modules intentionally break discovery
+// (random-suffix issuers, INVALID issuer) and must not attempt registration.
+func shouldRegisterDynamically(cfg rpRuntimeConfig) bool {
+	return cfg.DynamicClientRegistration && cfg.startupAction() == startupActionFullFlow
 }

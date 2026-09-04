@@ -93,7 +93,7 @@ func TestEnsureDynamicClientRegistrationPerModule(t *testing.T) {
 		DynamicClientRegistration: true,
 	}
 
-	clientID, clientSecret, err := ensureDynamicClientRegistration(context.Background(), cfg, "module-a")
+	clientID, clientSecret, provider, err := ensureDynamicClientRegistration(context.Background(), cfg, "module-a")
 	if err != nil {
 		t.Fatalf("ensureDynamicClientRegistration() failed: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestEnsureDynamicClientRegistrationPerModule(t *testing.T) {
 	}
 
 	// Same module window: reuse, no new registration.
-	clientID2, _, err := ensureDynamicClientRegistration(context.Background(), cfg, "module-a")
+	clientID2, _, _, err := ensureDynamicClientRegistration(context.Background(), cfg, "module-a")
 	if err != nil {
 		t.Fatalf("ensureDynamicClientRegistration() same module failed: %v", err)
 	}
@@ -115,9 +115,12 @@ func TestEnsureDynamicClientRegistrationPerModule(t *testing.T) {
 	if len(registrations) != 1 {
 		t.Fatalf("registrations = %d, want 1", len(registrations))
 	}
+	if provider == nil {
+		t.Fatal("provider = nil, want cached provider metadata")
+	}
 
 	// Callback (no module name): reuse latest.
-	clientID3, _, err := ensureDynamicClientRegistration(context.Background(), cfg, "")
+	clientID3, _, provider3, err := ensureDynamicClientRegistration(context.Background(), cfg, "")
 	if err != nil {
 		t.Fatalf("ensureDynamicClientRegistration() callback failed: %v", err)
 	}
@@ -127,9 +130,12 @@ func TestEnsureDynamicClientRegistrationPerModule(t *testing.T) {
 	if len(registrations) != 1 {
 		t.Fatalf("registrations after callback = %d, want 1", len(registrations))
 	}
+	if provider3 == nil {
+		t.Fatal("provider3 = nil, want cached provider on callback reuse")
+	}
 
 	// New module window: fresh registration with fresh credentials.
-	clientID4, clientSecret4, err := ensureDynamicClientRegistration(context.Background(), cfg, "module-b")
+	clientID4, clientSecret4, _, err := ensureDynamicClientRegistration(context.Background(), cfg, "module-b")
 	if err != nil {
 		t.Fatalf("ensureDynamicClientRegistration() new module failed: %v", err)
 	}

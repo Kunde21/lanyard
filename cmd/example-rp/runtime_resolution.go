@@ -56,6 +56,7 @@ type resolvedRPRequest struct {
 	discoveryMode                       string
 	validateAuthorizationResponseIssuer bool
 	useRequestURI                       bool
+	provider                            *metadata.Provider
 	startupAction                       startupAction
 }
 
@@ -149,13 +150,14 @@ func resolveRPRequestFromRuntimeConfig(cfg rpRuntimeConfig) (resolvedRPRequest, 
 	}
 	resolved.keyProvider = keyProvider
 
-	if cfg.DynamicClientRegistration {
-		clientID, clientSecret, err := ensureDynamicClientRegistration(context.Background(), cfg, cfg.ModuleName)
+	if shouldRegisterDynamically(cfg) {
+		clientID, clientSecret, provider, err := ensureDynamicClientRegistration(context.Background(), cfg, cfg.ModuleName)
 		if err != nil {
 			return resolvedRPRequest{}, err
 		}
 		resolved.clientID = clientID
 		resolved.clientSecret = clientSecret
+		resolved.provider = provider
 	}
 
 	return resolved, nil
@@ -166,16 +168,17 @@ func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, 
 	if err != nil {
 		return resolvedRPRequest{}, err
 	}
-	if !runtimeCfg.DynamicClientRegistration {
+	if !shouldRegisterDynamically(runtimeCfg) {
 		return resolved, nil
 	}
 
-	clientID, clientSecret, err := ensureDynamicClientRegistration(context.Background(), runtimeCfg, moduleName)
+	clientID, clientSecret, provider, err := ensureDynamicClientRegistration(context.Background(), runtimeCfg, moduleName)
 	if err != nil {
 		return resolvedRPRequest{}, err
 	}
 	resolved.clientID = clientID
 	resolved.clientSecret = clientSecret
+	resolved.provider = provider
 	return resolved, nil
 }
 
@@ -379,7 +382,9 @@ func buildRPFromResolvedRequest(r *http.Request, resolved resolvedRPRequest) (*r
 	if resolved.keyProvider != nil {
 		opts = append(opts, rp.WithClientKeyProvider(resolved.keyProvider))
 	}
-	if provider, ok := providerMetadataForResolvedRequest(resolved); ok {
+	if resolved.provider != nil {
+		opts = append(opts, rp.WithProviderMetadata(*resolved.provider))
+	} else if provider, ok := providerMetadataForResolvedRequest(resolved); ok {
 		opts = append(opts, rp.WithProviderMetadata(provider))
 	}
 	if len(resolved.authorizationDetails) > 0 {
