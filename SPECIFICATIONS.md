@@ -402,6 +402,31 @@ query, and revoke grants via grant_id.
 
 ---
 
+### OpenID Connect for Identity Assurance 1.0
+
+**Status**: Implemented
+
+Request and consume verified end-user claims with verification metadata.
+
+| Feature                        | Status | Notes                                                        |
+|--------------------------------|--------|--------------------------------------------------------------|
+| Claims Request Parameter       | ✅     | WithClaims/SetClaims (OIDC Core 5.5, query + PAR + JAR)      |
+| verified_claims Request        | ✅     | Typed filters incl. evidence/check_details, value/values/max_age |
+| Claim Sets (Array Form)        | ✅     | Different verification requirements per set                  |
+| ID Token Delivery              | ✅     | CallbackResult.VerifiedClaims                               |
+| UserInfo Delivery              | ✅     | ParseVerifiedClaims (object or array)                        |
+| Verification Metadata          | ✅     | Typed trust framework/level, evidence, check details + DecodeRaw |
+| max_age Freshness              | ✅     | Verification.FreshFor (section 5.5.2 semantics)              |
+| OP Metadata                    | ✅     | trust frameworks, evidence, documents (both method spellings) |
+
+**Implementation**:
+
+- `rp/claims_parameter.go` plumbing in `rp/options.go`, `rp/authrequest.go`, `rp/par.go`, `rp/request_object.go`
+- `rp/identity_assurance_request.go` - request builders
+- `rp/identity_assurance.go` - response types, parsing, freshness
+
+---
+
 ### RFC 7591/7592: OAuth 2.0 Dynamic Client Registration (+ Management)
 
 **Status**: Implemented
@@ -701,22 +726,6 @@ OAuth extension for grant lifecycle management.
 
 ---
 
-### OpenID Connect for Identity Assurance
-
-**Status**: Not Implemented
-
-**Required for**: Identity-proofing ecosystems
-
-Verified identity claims for identity assurance.
-
-| Feature             | Status | Notes                      |
-|---------------------|--------|----------------------------|
-| verified_claims     | ❌     | Verified identity claims   |
-| Evidence Structures | ❌     | Identity proofing evidence |
-| Trust Framework     | ❌     | Trust framework metadata   |
-
----
-
 ## OAuth 2.1 Specification
 
 ### OAuth 2.1 (draft-ietf-oauth-v2-1)
@@ -852,14 +861,13 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | FAPI 1.0 Advanced                       | OpenID FAPI           | ✅     |
 | FAPI 2.0 Security Profile               | OpenID FAPI           | ✅     |
 | FAPI 2.0 Message Signing                | OpenID FAPI           | ✅     |
+| OpenID Connect for Identity Assurance   | OpenID                | ✅     |
 | JWT Secured Authorization Request (JAR) | RFC 9101              | ✅     |
 | JARM                                    | OpenID                | ✅     |
 
 ### Not Implemented (Required for Target Profiles)
 
-| Specification                           | RFC/Standard | Required For                                |
-|-----------------------------------------|--------------|---------------------------------------------|
-| OpenID Connect for Identity Assurance   | OpenID       | Identity-proofing ecosystems                |
+No remaining gaps. All specifications tracked in this document are implemented.
 
 ---
 

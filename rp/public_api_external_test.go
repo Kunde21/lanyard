@@ -154,6 +154,30 @@ func TestIntrospectionPublicAPI(t *testing.T) {
 	_, _, _ = manageable, secretExpired, opts
 	_ = rp.ClientMetadata{}
 	_ = rp.ClientUpdate{}
+
+	// Claims parameter + identity assurance surface.
+	_ = rp.WithClaims("{}")
+	_ = rp.SetClaims("{}")
+	cr := rp.NewClaimsRequest()
+	_ = cr.AddVerifiedClaimsToIDToken
+	_ = cr.AddVerifiedClaimsToUserInfo
+	_, _ = cr.JSON()
+	_ = rp.ClaimsRequest{}
+	_ = rp.VerifiedClaimsFilter{}
+	_ = rp.VerificationFilter{}
+	_ = rp.EvidenceFilter{}
+	_ = rp.CheckDetailsFilter{}
+	_ = rp.Constrainable{}
+	_ = rp.ClaimConstraint{}
+	var verified rp.VerifiedClaims
+	_ = verified.DecodeRaw
+	var verification rp.Verification
+	freshFor := verification.FreshFor
+	_ = freshFor
+	var parsed []rp.VerifiedClaims
+	parseFn := rp.ParseVerifiedClaims
+	_ = parseFn
+	_ = parsed
 	_ = rp.SetGrantManagementAction(rp.GrantActionMerge, "grant-id")
 	var cbResult rp.CallbackResult
 	_ = cbResult.GrantID

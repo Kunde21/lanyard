@@ -57,6 +57,19 @@
 // (invalid_grant), refresh errors wrap [ErrRefreshTokenRejected]; discard the
 // token and restart the authorization flow.
 //
+// # Identity assurance
+//
+// Providers supporting OpenID Connect for Identity Assurance 1.0 deliver
+// verified end-user claims in the verified_claims container. Build the
+// request with [NewClaimsRequest] and the verified-claims filters
+// ([ClaimsRequest.AddVerifiedClaimsToUserInfo] / [AddVerifiedClaimsToIDToken]),
+// then pass the rendered JSON via [WithClaims] or [SetClaims]. The ID Token's
+// verified_claims surface on [CallbackResult.VerifiedClaims]; for UserInfo
+// delivery use [ParseVerifiedClaims]. Verification metadata is typed
+// (trust framework, assurance level, evidence with checks) with opaque
+// members preserved for [VerifiedClaims.DecodeRaw], and [Verification.FreshFor]
+// evaluates the spec's max_age freshness semantics.
+//
 // # Grant management
 //
 // Providers supporting grant management (draft-ietf-oauth-grant-management,
