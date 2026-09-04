@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"log"
@@ -152,6 +153,24 @@ func resolveRPRequestFromRuntimeConfig(cfg rpRuntimeConfig) (resolvedRPRequest, 
 }
 
 func applyRuntimeConfig(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, moduleName string) (resolvedRPRequest, error) {
+	resolved, err := applyRuntimeConfigFields(resolved, runtimeCfg, moduleName)
+	if err != nil {
+		return resolvedRPRequest{}, err
+	}
+	if !runtimeCfg.DynamicClientRegistration {
+		return resolved, nil
+	}
+
+	clientID, clientSecret, err := ensureDynamicClientRegistration(context.Background(), runtimeCfg, moduleName)
+	if err != nil {
+		return resolvedRPRequest{}, err
+	}
+	resolved.clientID = clientID
+	resolved.clientSecret = clientSecret
+	return resolved, nil
+}
+
+func applyRuntimeConfigFields(resolved resolvedRPRequest, runtimeCfg rpRuntimeConfig, moduleName string) (resolvedRPRequest, error) {
 	if strings.TrimSpace(runtimeCfg.Issuer) != "" {
 		resolved.issuer = runtimeCfg.Issuer
 	}

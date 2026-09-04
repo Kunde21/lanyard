@@ -194,6 +194,13 @@ func parseHarnessConfig() (harnessConfig, error) {
 			}
 			cfg.ExcludePlanRegex = re
 		}
+		if preset.ExcludeModuleRegex != "" {
+			re, regexErr := compileRegex(preset.ExcludeModuleRegex)
+			if regexErr != nil {
+				return harnessConfig{}, fmt.Errorf("preset has invalid exclude-module-regex: %w", regexErr)
+			}
+			cfg.ExcludeModuleRegex = re
+		}
 	}
 
 	if cfg.Profile == "" {

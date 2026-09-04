@@ -32,4 +32,14 @@ So unlike grant management, every module is exercisable today — no suite upgra
 
 ## Recommendation
 
+**Update 2026-08-29 (later same day): wiring implemented.**
+
+- **Library:** nothing further needed.
+- **Example RP:** dynamic runtimes are live — `rpRuntimeConfig.DynamicClientRegistration` + `Module­Name` (provisioned per module by the harness); `ensureDynamicClientRegistration` (cmd/example-rp/dynamic_runtime.go) registers a fresh RFC 7591 client per module window (the suite mock creates a fresh client record per POST), reuses credentials for same-module/callback requests, and resolves flows with the issued credentials. The runtime registry accepts runtimes without a static client_id when dynamic.
+- **Harness:** `oidcc-client-dynamic-certification-test-plan` added to the oidc-rp profile; matrix `oidcc-dynamic-cert` forces `{response_type: code, client_registration: dynamic_client, client_request_type: request_uri}`; preset **`oidcc-dynamic-full`** with `ExcludeModuleRegex: oidcc-client-test-request-uri-signed-(rs256|none)` (new `excludeModules` support in the module filter, preset plumbed through `-preset`).
+- **Module decisions:** `idtoken-sig-none` runs (the example RP already passes `rp.WithAllowUnsecuredIDTokens(true)` for the OIDC profile); `request-uri-signed-none` is excluded permanently (the library never emits unsigned request objects by design); `request-uri-signed-rs256` is excluded for now — wiring it needs an OIDC-profile request-object key provider + `jwks_uri` in the registration metadata (follow-up). 10 of 12 modules run.
+- **Run:** `LANYARD_CONFORMANCE=1 go test ./conformance/harness -run TestHarness -preset oidcc-dynamic-full` against the local stack; record the verified result in `conformance/README.md` like the `all-rp-full` 104/104 entry.
+
+The original assessment below is retained for context.
+
 Defer until there is a concrete need for "Dynamic RP" certification evidence (the current 104/104 baseline covers Basic/Config/FormPost + FAPI). All blocking library work is done; the wiring is purely example-RP + harness orchestration.

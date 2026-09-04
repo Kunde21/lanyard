@@ -15,6 +15,7 @@ This setup is Linux-focused and is intended to run the full local RP verificatio
 - `FAPI 1.0 Advanced Final: Relying Party Tests`
 - `FAPI 2.0 Security Profile Final: Relying Party Tests`
 - `FAPI 2.0 Message Signing Final: Relying Party Tests`
+- `OpenID Connect Core: Dynamic Certification Profile Relying Party Tests` (preset `oidcc-dynamic-full`; the two request-uri signing modules are excluded — see `thoughts/research/2026-08-29-dcr-conformance-wiring.md`)
 
 Latest verified full-suite result:
 

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -964,4 +965,42 @@ func TestBuildStandaloneModuleConfig_SelfSignedTlsClientAuth_ContainsX5C(t *test
 	if !foundX5C {
 		t.Fatal("no JWK with x5c found in client.jwks")
 	}
+}
+
+func TestExcludeModules(t *testing.T) {
+	modules := []PlanModule{
+		{Name: "oidcc-client-test-discovery-webfinger-acct"},
+		{Name: "oidcc-client-test-dynamic-registration"},
+		{Name: "oidcc-client-test-request-uri-signed-rs256"},
+		{Name: "oidcc-client-test-request-uri-signed-none"},
+		{Name: "oidcc-client-test-idtoken-sig-none"},
+	}
+
+	exclude := regexp.MustCompile(`oidcc-client-test-request-uri-signed-(rs256|none)`)
+	got := excludeModules(modules, exclude)
+	want := []string{
+		"oidcc-client-test-discovery-webfinger-acct",
+		"oidcc-client-test-dynamic-registration",
+		"oidcc-client-test-idtoken-sig-none",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("excludeModules() = %v, want %v", moduleNames(got), want)
+	}
+	for i, name := range want {
+		if got[i].Name != name {
+			t.Fatalf("excludeModules()[%d] = %q, want %q", i, got[i].Name, name)
+		}
+	}
+
+	if kept := excludeModules(modules, nil); len(kept) != len(modules) {
+		t.Fatalf("excludeModules(nil regex) = %d modules, want %d", len(kept), len(modules))
+	}
+}
+
+func moduleNames(modules []PlanModule) []string {
+	names := make([]string, 0, len(modules))
+	for _, module := range modules {
+		names = append(names, module.Name)
+	}
+	return names
 }

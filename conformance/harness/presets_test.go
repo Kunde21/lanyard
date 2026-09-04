@@ -170,3 +170,22 @@ func TestResolvePreset_OIDCConfigSmoke(t *testing.T) {
 		t.Fatal("Parallel = false, want true")
 	}
 }
+
+func TestResolvePreset_OIDCCDynamicFull(t *testing.T) {
+	preset, err := resolvePreset("oidcc-dynamic-full")
+	if err != nil {
+		t.Fatalf("resolvePreset() failed: %v", err)
+	}
+	if preset.Profile != "oidc-rp" {
+		t.Fatalf("Profile = %q, want oidc-rp", preset.Profile)
+	}
+	if diff := cmp.Diff([]string{"oidcc-dynamic-cert"}, preset.Matrices); diff != "" {
+		t.Fatalf("Matrices mismatch (-want +got):\n%s", diff)
+	}
+	if preset.IncludePlanRegex != "oidcc-client-dynamic-certification-test-plan" {
+		t.Fatalf("IncludePlanRegex = %q", preset.IncludePlanRegex)
+	}
+	if preset.ExcludeModuleRegex != "oidcc-client-test-request-uri-signed-(rs256|none)" {
+		t.Fatalf("ExcludeModuleRegex = %q", preset.ExcludeModuleRegex)
+	}
+}

@@ -75,6 +75,22 @@ func expandMatrixVariants(matrixName, planName string) ([]matrixVariant, error) 
 			return nil, nil
 		}
 		return buildOIDCConfigMatrixVariants(true), nil
+	case "oidcc-dynamic-cert":
+		if planName != "oidcc-client-dynamic-certification-test-plan" {
+			return nil, nil
+		}
+		return []matrixVariant{
+			{
+				Name:     "dynamic-01",
+				PlanName: "oidcc-client-dynamic-certification-test-plan",
+				Variant: map[string]string{
+					"response_type":       "code",
+					"client_registration": "dynamic_client",
+					"client_request_type": "request_uri",
+				},
+				RPProfile: RPProfileConfig{},
+			},
+		}, nil
 	default:
 		return nil, fmt.Errorf("unknown matrix %q", matrixName)
 	}

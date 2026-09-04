@@ -37,6 +37,8 @@ type rpRuntimeRequest struct {
 	Profile                             string                    `json:"profile,omitempty"`
 	DiscoveryMode                       string                    `json:"discovery_mode,omitempty"`
 	ValidateAuthorizationResponseIssuer bool                      `json:"validate_authorization_response_issuer,omitempty"`
+	DynamicClientRegistration           bool                      `json:"dynamic_client_registration,omitempty"`
+	ModuleName                          string                    `json:"module_name,omitempty"`
 	StartupAction                       string                    `json:"startup_action,omitempty"`
 	StartupAllowError                   bool                      `json:"startup_allow_error,omitempty"`
 }
@@ -240,6 +242,7 @@ func buildRPRuntimeRequestForAlias(job RunJob, planVariant map[string]string, su
 		Profile:                             profileForPlanVariant(job.PlanName, planVariant),
 		DiscoveryMode:                       discoveryModeForPlanVariant(job.PlanName, planVariant),
 		ValidateAuthorizationResponseIssuer: validateAuthorizationResponseIssuerForPlanVariant(job.PlanName, planVariant),
+		DynamicClientRegistration:           strings.EqualFold(strings.TrimSpace(planVariant["client_registration"]), "dynamic_client"),
 	}
 }
 

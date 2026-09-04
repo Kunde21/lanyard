@@ -463,3 +463,49 @@ func TestOtherMatrices_IgnoreFAPI1AdvancedPlan(t *testing.T) {
 		}
 	}
 }
+
+func TestExpandMatrixVariants_OIDCCDynamic(t *testing.T) {
+	variants, err := expandMatrixVariants("oidcc-dynamic-cert", "oidcc-client-dynamic-certification-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if len(variants) != 1 {
+		t.Fatalf("variants = %d, want 1", len(variants))
+	}
+	want := map[string]string{
+		"response_type":       "code",
+		"client_registration": "dynamic_client",
+		"client_request_type": "request_uri",
+	}
+	if diff := cmp.Diff(want, variants[0].Variant); diff != "" {
+		t.Fatalf("variant mismatch (-want +got):\n%s", diff)
+	}
+
+	// Wrong plan is ignored.
+	variants, err = expandMatrixVariants("oidcc-dynamic-cert", "oidcc-client-config-certification-test-plan")
+	if err != nil {
+		t.Fatalf("expandMatrixVariants() failed: %v", err)
+	}
+	if variants != nil {
+		t.Fatalf("variants = %v, want nil for wrong plan", variants)
+	}
+}
+
+func TestBuildRPRuntimeRequest_MarksDynamicRegistration(t *testing.T) {
+	job := RunJob{Alias: "alias-dyn", PlanName: "oidcc-client-dynamic-certification-test-plan"}
+	req := buildRPRuntimeRequest(job, map[string]string{
+		"response_type":       "code",
+		"client_registration": "dynamic_client",
+		"client_request_type": "request_uri",
+	}, "https://suite.localhost")
+	if !req.DynamicClientRegistration {
+		t.Fatal("DynamicClientRegistration = false, want true for dynamic_client variant")
+	}
+
+	req = buildRPRuntimeRequest(job, map[string]string{
+		"response_type": "code",
+	}, "https://suite.localhost")
+	if req.DynamicClientRegistration {
+		t.Fatal("DynamicClientRegistration = true, want false without dynamic_client variant")
+	}
+}

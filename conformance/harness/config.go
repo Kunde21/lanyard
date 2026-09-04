@@ -16,6 +16,7 @@ type harnessConfig struct {
 	IncludePlanRegex     *regexp.Regexp
 	ExcludePlanRegex     *regexp.Regexp
 	ModuleRegex          *regexp.Regexp
+	ExcludeModuleRegex   *regexp.Regexp
 	ProvisionTimeout     time.Duration
 	PlanTimeout          time.Duration
 	TestTimeout          time.Duration

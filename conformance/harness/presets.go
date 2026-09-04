@@ -3,12 +3,13 @@ package conformanceharness
 import "fmt"
 
 type presetConfig struct {
-	Profile          string
-	Matrices         []string
-	Parallel         bool
-	MaxParallelRuns  int
-	IncludePlanRegex string
-	ExcludePlanRegex string
+	Profile            string
+	Matrices           []string
+	Parallel           bool
+	MaxParallelRuns    int
+	IncludePlanRegex   string
+	ExcludePlanRegex   string
+	ExcludeModuleRegex string
 }
 
 var builtInPresets = map[string]presetConfig{
@@ -77,12 +78,20 @@ var builtInPresets = map[string]presetConfig{
 		Parallel:         true,
 		MaxParallelRuns:  2,
 	},
+	"oidcc-dynamic-full": {
+		Profile:            "oidc-rp",
+		Matrices:           []string{"oidcc-dynamic-cert"},
+		IncludePlanRegex:   "oidcc-client-dynamic-certification-test-plan",
+		ExcludeModuleRegex: "oidcc-client-test-request-uri-signed-(rs256|none)",
+		Parallel:           true,
+		MaxParallelRuns:    2,
+	},
 }
 
 func resolvePreset(name string) (presetConfig, error) {
 	cfg, ok := builtInPresets[name]
 	if !ok {
-		return presetConfig{}, fmt.Errorf("unknown preset %q (available: all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full, fapi1-adv-full, fapi1-adv-smoke, oidcc-config-full, oidcc-config-smoke)", name)
+		return presetConfig{}, fmt.Errorf("unknown preset %q (available: all-rp-full, all-rp-smoke, fapi2-sp-full, fapi2-ms-full, fapi1-adv-full, fapi1-adv-smoke, oidcc-config-full, oidcc-config-smoke, oidcc-dynamic-full)", name)
 	}
 	return cfg, nil
 }

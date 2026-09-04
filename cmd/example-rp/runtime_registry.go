@@ -54,6 +54,8 @@ type rpRuntimeConfig struct {
 	ValidateAuthorizationResponseIssuer bool                      `json:"validate_authorization_response_issuer,omitempty"`
 	StartupAction                       string                    `json:"startup_action,omitempty"`
 	StartupAllowError                   bool                      `json:"startup_allow_error,omitempty"`
+	DynamicClientRegistration           bool                      `json:"dynamic_client_registration,omitempty"`
+	ModuleName                          string                    `json:"module_name,omitempty"`
 }
 
 type runtimeStartupResponse struct {
@@ -79,7 +81,7 @@ func (r *runtimeRegistry) Register(cfg rpRuntimeConfig) error {
 	if alias == "" {
 		return fmt.Errorf("alias is required")
 	}
-	if strings.TrimSpace(cfg.ClientID) == "" {
+	if strings.TrimSpace(cfg.ClientID) == "" && !cfg.DynamicClientRegistration {
 		return fmt.Errorf("client_id is required")
 	}
 	if strings.TrimSpace(cfg.RedirectURI) == "" {

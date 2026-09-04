@@ -79,6 +79,7 @@ func (jr *jobRunner) registerRuntimeAlias(ctx context.Context, alias, namespace,
 		req.Namespace = namespace
 	}
 	if strings.TrimSpace(moduleName) != "" {
+		req.ModuleName = strings.TrimSpace(moduleName)
 		req.StartupAction = startupActionForModule(moduleName)
 		req.StartupAllowError = startupAllowsErrorForModule(moduleName)
 		if moduleUsesSecondClient(moduleName) {

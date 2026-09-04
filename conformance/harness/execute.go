@@ -162,6 +162,7 @@ func (jr *jobRunner) execute(ctx context.Context) planResult {
 		modules = jr.job.Plan.Modules
 	}
 	modules = filterModules(modules, jr.cfg.ModuleRegex)
+	modules = excludeModules(modules, jr.cfg.ExcludeModuleRegex)
 
 	if len(modules) == 0 {
 		failPlan(&planRes, "plan contains no executable modules after filtering")
@@ -689,6 +690,22 @@ func filterModules(modules []PlanModule, moduleRegex *regexp.Regexp) []PlanModul
 	filtered := make([]PlanModule, 0, len(modules))
 	for _, module := range modules {
 		if moduleRegex.MatchString(module.Name) {
+			filtered = append(filtered, module)
+		}
+	}
+	return filtered
+}
+
+// excludeModules removes modules whose names match the exclusion regex,
+// used by presets to skip modules requiring behavior the example RP does not
+// implement (e.g. unsigned request objects).
+func excludeModules(modules []PlanModule, moduleRegex *regexp.Regexp) []PlanModule {
+	if moduleRegex == nil {
+		return modules
+	}
+	filtered := make([]PlanModule, 0, len(modules))
+	for _, module := range modules {
+		if !moduleRegex.MatchString(module.Name) {
 			filtered = append(filtered, module)
 		}
 	}
