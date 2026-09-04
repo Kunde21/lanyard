@@ -107,6 +107,21 @@ func (r *ClientRegistration) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Options returns the configuration options carrying this registration's
+// issued credentials, for splicing into [New]:
+//
+//	rp.New(ctx, issuer, append(reg.Options(), rp.WithRedirectURI(...), ...)...)
+//
+// Only credentials are included; redirect URI, scopes, key material, and
+// auth-method pinning remain the caller's choices.
+func (r ClientRegistration) Options() []Option {
+	opts := []Option{WithClientID(r.ClientID)}
+	if r.ClientSecret != "" {
+		opts = append(opts, WithClientSecret(r.ClientSecret))
+	}
+	return opts
+}
+
 // DecodeRaw unmarshals the preserved registration payload into target.
 func (r ClientRegistration) DecodeRaw(target any) error {
 	if target == nil {

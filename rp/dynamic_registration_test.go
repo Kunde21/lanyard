@@ -478,3 +478,44 @@ func TestRegistrar_ManagementArgValidation(t *testing.T) {
 		t.Fatalf("Delete(bad URI) error = %v, want ErrRegistrationFailed", err)
 	}
 }
+
+func TestClientRegistrationOptions(t *testing.T) {
+	withSecret := ClientRegistration{ClientID: "c1", ClientSecret: "s1"}
+	opts := withSecret.Options()
+	if len(opts) != 2 {
+		t.Fatalf("Options() = %d options, want 2 (client id + secret)", len(opts))
+	}
+
+	withoutSecret := ClientRegistration{ClientID: "c2"}
+	opts = withoutSecret.Options()
+	if len(opts) != 1 {
+		t.Fatalf("Options() = %d options, want 1 (client id only)", len(opts))
+	}
+
+	// The options splice into New without client credentials provided twice.
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer server.Close()
+	_, err := New(context.Background(), "https://issuer.test",
+		append(withoutSecret.Options(),
+			WithClientSecret("configured-secret"),
+			WithRedirectURI("https://rp.test/callback"),
+			WithProviderMetadata(metadata.Provider{
+				AuthorizationServer: metadata.AuthorizationServer{
+					Issuer:                            "https://issuer.test",
+					AuthorizationEndpoint:             "https://issuer.test/authorize",
+					TokenEndpoint:                     "https://issuer.test/token",
+					JWKSURI:                           "https://issuer.test/jwks",
+					ResponseTypesSupported:            []string{"code"},
+					TokenEndpointAuthMethodsSupported: []string{"client_secret_basic"},
+				},
+				SubjectTypesSupported:            []string{"public"},
+				IDTokenSigningAlgValuesSupported: []string{"RS256"},
+			}),
+			WithAuthMethod(AuthMethodBasic),
+			WithHTTPClient(server.Client()),
+		)...,
+	)
+	if err != nil {
+		t.Fatalf("New() with registration options failed: %v", err)
+	}
+}
