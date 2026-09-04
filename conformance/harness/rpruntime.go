@@ -270,10 +270,10 @@ func startupActionForModule(moduleName string) string {
 		return "discovery_only"
 	}
 	if strings.Contains(name, "discovery-webfinger-acct") {
-		return "discovery_only"
+		return "discovery_webfinger_acct"
 	}
 	if strings.Contains(name, "discovery-webfinger-url") {
-		return "discovery_only"
+		return "discovery_webfinger_url"
 	}
 	if strings.Contains(name, "discovery-issuer-mismatch") {
 		return "discovery_only"

@@ -664,8 +664,8 @@ func TestFrontChannelTriggerNotUsedForDiscoveryModule(t *testing.T) {
 		action string
 	}{
 		{"oidcc-client-test-discovery-openid-config", "discovery_only"},
-		{"oidcc-client-test-discovery-webfinger-acct", "discovery_only"},
-		{"oidcc-client-test-discovery-webfinger-url", "discovery_only"},
+		{"oidcc-client-test-discovery-webfinger-acct", "discovery_webfinger_acct"},
+		{"oidcc-client-test-discovery-webfinger-url", "discovery_webfinger_url"},
 		{"oidcc-client-test-discovery-issuer-mismatch", "discovery_only"},
 		{"oidcc-client-test-discovery-jwks-uri-keys", "discovery_and_jwks"},
 	}

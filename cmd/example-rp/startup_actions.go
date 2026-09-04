@@ -19,11 +19,42 @@ func executeStartupAction(ctx context.Context, cfg rpRuntimeConfig, resolved res
 		return runtimeStartupResponse{}, executeDiscoveryOnly(ctx, resolved)
 	case startupActionDiscoveryAndJWKS:
 		return runtimeStartupResponse{}, executeDiscoveryAndJWKS(ctx, resolved)
+	case startupActionDiscoveryWebFinger, startupActionDiscoveryWebFingerUR:
+		return runtimeStartupResponse{}, executeWebFingerDiscovery(ctx, resolved, action == startupActionDiscoveryWebFinger)
 	case startupActionFullFlow:
 		return prepareFullFlowStartup(ctx, resolved)
 	default:
 		return runtimeStartupResponse{}, nil
 	}
+}
+
+// executeWebFingerDiscovery resolves the issuer via WebFinger (RFC 7033) —
+// using an acct: resource or an HTTPS URL resource depending on the module —
+// and then discovers the provider at the resolved location.
+func executeWebFingerDiscovery(ctx context.Context, resolved resolvedRPRequest, acctResource bool) error {
+	var resource string
+	var err error
+	if acctResource {
+		resource, err = webFingerAcctResource(resolved.issuer)
+	} else {
+		resource, err = webFingerURLResource(resolved.issuer)
+	}
+	if err != nil {
+		return fmt.Errorf("webfinger startup: build resource: %w", err)
+	}
+
+	metadataClient := newMetadataClient(resolved.keyProvider)
+	provider, err := metadataClient.DiscoverProviderFromResource(ctx, resource)
+	if err != nil {
+		return fmt.Errorf("webfinger startup: discovery from resource %q failed: %w", resource, err)
+	}
+
+	slog.Info("webfinger startup complete",
+		"resource", resource,
+		"issuer", provider.Issuer,
+		"jwks_uri", provider.JWKSURI,
+	)
+	return nil
 }
 
 func prepareFullFlowStartup(ctx context.Context, resolved resolvedRPRequest) (runtimeStartupResponse, error) {

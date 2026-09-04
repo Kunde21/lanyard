@@ -579,8 +579,8 @@ func TestStartupActionForModule(t *testing.T) {
 		want       string
 	}{
 		{"oidcc-client-test-discovery-openid-config", "discovery_only"},
-		{"oidcc-client-test-discovery-webfinger-acct", "discovery_only"},
-		{"oidcc-client-test-discovery-webfinger-url", "discovery_only"},
+		{"oidcc-client-test-discovery-webfinger-acct", "discovery_webfinger_acct"},
+		{"oidcc-client-test-discovery-webfinger-url", "discovery_webfinger_url"},
 		{"oidcc-client-test-discovery-issuer-mismatch", "discovery_only"},
 		{"oidcc-client-test-discovery-jwks-uri-keys", "discovery_and_jwks"},
 		{"oidcc-client-test-client-secret-basic", "full_flow"},

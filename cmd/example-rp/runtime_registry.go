@@ -12,9 +12,11 @@ import (
 type startupAction string
 
 const (
-	startupActionFullFlow         startupAction = "full_flow"
-	startupActionDiscoveryOnly    startupAction = "discovery_only"
-	startupActionDiscoveryAndJWKS startupAction = "discovery_and_jwks"
+	startupActionFullFlow             startupAction = "full_flow"
+	startupActionDiscoveryOnly        startupAction = "discovery_only"
+	startupActionDiscoveryAndJWKS     startupAction = "discovery_and_jwks"
+	startupActionDiscoveryWebFinger   startupAction = "discovery_webfinger_acct"
+	startupActionDiscoveryWebFingerUR startupAction = "discovery_webfinger_url"
 )
 
 func parseStartupAction(s string) startupAction {
@@ -23,6 +25,10 @@ func parseStartupAction(s string) startupAction {
 		return startupActionDiscoveryOnly
 	case string(startupActionDiscoveryAndJWKS):
 		return startupActionDiscoveryAndJWKS
+	case string(startupActionDiscoveryWebFinger):
+		return startupActionDiscoveryWebFinger
+	case string(startupActionDiscoveryWebFingerUR):
+		return startupActionDiscoveryWebFingerUR
 	case string(startupActionFullFlow):
 		return startupActionFullFlow
 	default:
