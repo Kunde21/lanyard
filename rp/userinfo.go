@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Kunde21/lanyard/jwks"
 	"github.com/go-jose/go-jose/v4/jwt"
 )
 
@@ -295,7 +296,16 @@ func (r *RP) verifySignedUserInfo(ctx context.Context, raw string) (map[string]a
 		return nil, fmt.Errorf("signed userinfo must not use 'none' algorithm")
 	}
 
-	keySet, err := r.metadataClient.RemoteKeySet(ctx, r.issuer)
+	// Resolve the key set from the provider's known jwks_uri without a
+	// discovery round-trip: this runs right after the userinfo request, and
+	// some tests (e.g. the conformance suite's) FINISH on that request — a
+	// late discovery call against the finished mock fails the whole test.
+	var keySet *jwks.RemoteKeySet
+	if jwksURI := strings.TrimSpace(r.provider.JWKSURI); jwksURI != "" {
+		keySet, err = r.metadataClient.RemoteKeySetFromJWKSURI(jwksURI)
+	} else {
+		keySet, err = r.metadataClient.RemoteKeySet(ctx, r.issuer)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("load key set: %v", err)
 	}
