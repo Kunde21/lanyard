@@ -141,6 +141,19 @@ func TestIntrospectionPublicAPI(t *testing.T) {
 	revoke := rpInst.RevokeGrant
 	_ = query
 	_ = revoke
+
+	// Dynamic client registration surface.
+	_ = rp.ErrRegistrationFailed
+	_, _ = rp.NewRegistrar(nil, "https://issuer.example.com")
+	var regOpt rp.Option = rp.WithInitialAccessToken("token")
+	_ = regOpt
+	var reg rp.ClientRegistration
+	manageable := reg.Manageable
+	secretExpired := reg.SecretExpired
+	opts := reg.Options
+	_, _, _ = manageable, secretExpired, opts
+	_ = rp.ClientMetadata{}
+	_ = rp.ClientUpdate{}
 	_ = rp.SetGrantManagementAction(rp.GrantActionMerge, "grant-id")
 	var cbResult rp.CallbackResult
 	_ = cbResult.GrantID

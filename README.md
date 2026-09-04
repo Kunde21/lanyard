@@ -55,6 +55,7 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
     *   Token exchange support (RFC 8693).
      *   Token introspection (RFC 7662) with signed and encrypted JWT response verification (RFC 9701).
      *   Grant management: create, merge, replace, query, and revoke grants (FAPI 2.0 Grant Management).
+     *   Dynamic client registration and registration management (RFC 7591, RFC 7592).
     *   DPoP (Demonstrating Proof-of-Possession) support.
     *   mTLS sender-constrained access token support.
     *   RFC 7800 `cnf` claim parsing and binding verification for sender-constrained tokens.

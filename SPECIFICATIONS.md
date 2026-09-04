@@ -402,6 +402,32 @@ query, and revoke grants via grant_id.
 
 ---
 
+### RFC 7591/7592: OAuth 2.0 Dynamic Client Registration (+ Management)
+
+**Status**: Implemented
+
+Self-registration of clients at the authorization server and lifecycle
+management of the resulting registration.
+
+| Feature                        | Status | Notes                                                  |
+|--------------------------------|--------|--------------------------------------------------------|
+| Registration (POST)            | ✅     | Registrar.Register, initial access token support       |
+| Client Metadata Request        | ✅     | ClientMetadata incl. software_statement passthrough    |
+| Registration Response          | ✅     | ClientRegistration + DecodeRaw; SecretExpired (0=never) |
+| Read Management (GET)          | ✅     | Registrar.Read with registration access token          |
+| Update / Secret Rotation (PUT) | ✅     | Registrar.Update; ClientUpdate requires client_id      |
+| Delete (DELETE)                | ✅     | Registrar.Delete                                       |
+| Error Codes                    | ✅     | invalid_redirect_uri, invalid_client_metadata, etc. via *OAuthError |
+| MTLS Registration Alias        | ✅     | mtls_endpoint_aliases.registration_endpoint            |
+| RP Bridging                    | ✅     | ClientRegistration.Options() into New                  |
+
+**Implementation**:
+
+- `rp/dynamic_registration.go` - ClientMetadata, ClientRegistration, Registrar, ClientUpdate
+- `rp/options.go` - WithInitialAccessToken
+
+---
+
 ### RFC 7662: OAuth 2.0 Token Introspection
 
 **Status**: Implemented
@@ -813,6 +839,7 @@ Lanyard includes automated conformance testing against the OpenID Foundation con
 | OAuth 2.0 Resource Indicators           | RFC 8707              | ✅     |
 | OAuth 2.0 Pushed Authorization Requests | RFC 9126              | ✅     |
 | OAuth 2.0 Token Introspection           | RFC 7662              | ✅     |
+| Dynamic Client Registration + Mgmt     | RFC 7591/7592         | ✅     |
 | FAPI 2.0 Grant Management               | OpenID FAPI / IETF draft | ✅  |
 | JWT Introspection Response              | RFC 9701              | ✅     |
 | OAuth 2.0 DPoP                          | RFC 9449              | ✅     |

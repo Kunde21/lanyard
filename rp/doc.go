@@ -28,6 +28,21 @@
 // responses are decrypted when a key is configured via
 // [WithIntrospectionDecryptionKey].
 //
+// # Dynamic client registration
+//
+// When the authorization server supports dynamic registration (RFC 7591),
+// [NewRegistrar] registers a client from a [ClientMetadata] description and
+// returns the issued credentials as a [ClientRegistration]; splice them into
+// [New] via [ClientRegistration.Options]. Registrations whose server also
+// supports the management protocol (RFC 7592) — see
+// [ClientRegistration.Manageable] — can be read, updated (secret rotation),
+// and deleted via [Registrar.Read], [Registrar.Update], and
+// [Registrar.Delete] using the registration access token. Registration
+// endpoints are protected by access tokens, not OAuth client authentication;
+// pass an initial access token with [WithInitialAccessToken]. Persist the
+// registration (especially client_secret, whose expiry is checkable via
+// [ClientRegistration.SecretExpired]) — nothing is stored automatically.
+//
 // # Token refresh
 //
 // When the authorization code flow returns a refresh token, use
