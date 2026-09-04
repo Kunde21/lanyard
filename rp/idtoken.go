@@ -34,16 +34,17 @@ func (a *audienceClaim) UnmarshalJSON(data []byte) error {
 }
 
 type idTokenClaims struct {
-	Issuer  string        `json:"iss"`
-	Subject string        `json:"sub"`
-	Aud     audienceClaim `json:"aud"`
-	Exp     *int64        `json:"exp"`
-	Iat     *int64        `json:"iat"`
-	Nonce   string        `json:"nonce"`
-	Azp     string        `json:"azp"`
-	CHash   string        `json:"c_hash"`
-	SHash   string        `json:"s_hash"`
-	Cnf     *Confirmation `json:"cnf,omitempty"`
+	Issuer         string          `json:"iss"`
+	Subject        string          `json:"sub"`
+	Aud            audienceClaim   `json:"aud"`
+	Exp            *int64          `json:"exp"`
+	Iat            *int64          `json:"iat"`
+	Nonce          string          `json:"nonce"`
+	Azp            string          `json:"azp"`
+	CHash          string          `json:"c_hash"`
+	SHash          string          `json:"s_hash"`
+	Cnf            *Confirmation   `json:"cnf,omitempty"`
+	VerifiedClaims json.RawMessage `json:"verified_claims,omitempty"`
 }
 
 var supportedIDTokenAlgs = []jose.SignatureAlgorithm{

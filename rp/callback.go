@@ -31,6 +31,11 @@ type CallbackResult struct {
 	// it with SetGrantManagementAction / SetGrantID to merge, replace, or
 	// obtain new tokens for the same grant, and with QueryGrant / RevokeGrant.
 	GrantID string
+	// VerifiedClaims holds the identity assurance data parsed from the ID
+	// Token's verified_claims member (OpenID Connect for Identity Assurance
+	// 1.0), when present. UserInfo-delivered verified claims are available
+	// via ParseVerifiedClaims on the UserInfo payload. Nil when absent.
+	VerifiedClaims []VerifiedClaims
 }
 
 func (r *RP) parseAuthorizationResponse(ctx context.Context, params callbackParams) (code, state, iss string, err error) {
@@ -183,7 +188,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, err
 	}
 	if r.isFAPIProfile() {
-		return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, GrantID: tokenResp.GrantID, Cnf: claims.Cnf}, nil
+		return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, GrantID: tokenResp.GrantID, Cnf: claims.Cnf, VerifiedClaims: parseIDTokenVerifiedClaims(claims)}, nil
 	}
 
 	userInfoEndpoint := r.userInfoEndpoint(provider)
@@ -201,7 +206,18 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, err
 	}
 
-	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo, GrantID: tokenResp.GrantID, Cnf: claims.Cnf}, nil
+	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo, GrantID: tokenResp.GrantID, Cnf: claims.Cnf, VerifiedClaims: parseIDTokenVerifiedClaims(claims)}, nil
+}
+
+func parseIDTokenVerifiedClaims(claims idTokenClaims) []VerifiedClaims {
+	if len(claims.VerifiedClaims) == 0 {
+		return nil
+	}
+	parsed, err := parseVerifiedClaimsJSON(claims.VerifiedClaims)
+	if err != nil {
+		return nil
+	}
+	return parsed
 }
 
 func (r *RP) validateAuthorizationResponseIDToken(ctx context.Context, rawIDToken, expectedNonce, code, state, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
