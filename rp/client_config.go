@@ -25,6 +25,7 @@ type clientConfig struct {
 	resources      []string
 
 	introspectionDecryptionKey crypto.PrivateKey
+	initialAccessToken         string
 
 	optionErrors []error
 

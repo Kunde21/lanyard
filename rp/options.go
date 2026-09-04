@@ -303,6 +303,20 @@ func (o resourcesOption) applyConfig(c *clientConfig) {
 	c.resources = normalized
 }
 
+// WithInitialAccessToken sets the bearer token authorizing dynamic client
+// registration requests (RFC 7591 section 3.3) at providers that require one.
+func WithInitialAccessToken(token string) Option {
+	return initialAccessTokenOption{token: strings.TrimSpace(token)}
+}
+
+type initialAccessTokenOption struct {
+	token string
+}
+
+func (o initialAccessTokenOption) applyConfig(c *clientConfig) {
+	c.initialAccessToken = o.token
+}
+
 // WithIntrospectionDecryptionKey sets the private key used to decrypt encrypted
 // RFC 9701 introspection responses (signed-then-encrypted nested JWTs). The
 // corresponding public key must be registered with the authorization server

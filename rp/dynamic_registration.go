@@ -1,9 +1,12 @@
 package rp
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -154,4 +157,170 @@ func registrationStatusError(status int, preview string) error {
 		return fmt.Errorf("%w: registration endpoint returned status %d: %s", ErrRegistrationFailed, status, preview)
 	}
 	return fmt.Errorf("%w: registration endpoint returned status %d: %s", ErrRegistrationFailed, status, preview)
+}
+
+// Registrar registers clients at authorization servers supporting dynamic
+// client registration (RFC 7591) and manages the resulting registrations
+// (RFC 7592). Registration endpoints are protected by access tokens (an
+// initial access token for registration, the registration access token for
+// management), not by OAuth client authentication.
+type Registrar struct {
+	clientConfig
+}
+
+// NewRegistrar creates a dynamic client registration client for the given
+// issuer. Unlike [New], it requires no client credentials: the client does
+// not exist yet. Provider metadata is discovered automatically unless
+// [WithProviderMetadata] supplies it. Use [WithInitialAccessToken] when the
+// registration endpoint requires a bearer token.
+func NewRegistrar(ctx context.Context, issuer string, opts ...Option) (*Registrar, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	g := &Registrar{clientConfig: defaultClientConfig(issuer)}
+	for _, opt := range opts {
+		if _, ok := opt.(AuthCodeOption); ok {
+			return nil, fmt.Errorf("%w: auth-code option is not valid for dynamic client registration", ErrInvalidConfiguration)
+		}
+		opt.applyConfig(&g.clientConfig)
+	}
+
+	g.clientConfig.initDefaults()
+	if len(g.optionErrors) > 0 {
+		return nil, g.optionErrors[0]
+	}
+	if err := validateHTTPSAbsoluteURL("issuer", g.issuer); err != nil {
+		return nil, err
+	}
+	g.clientConfig.initMetadataClient()
+	if err := g.clientConfig.resolveProviderFromDiscovery(ctx); err != nil {
+		return nil, err
+	}
+	if g.provider.RegistrationEndpoint == "" {
+		return nil, fmt.Errorf("%w: registration endpoint is not configured", ErrInvalidConfiguration)
+	}
+	return g, nil
+}
+
+// ClientUpdate is an RFC 7592 PUT request body: the registration's metadata
+// plus the client_id the update targets (RFC 7592 section 2.2 requires it).
+type ClientUpdate struct {
+	ClientMetadata
+	ClientID string `json:"client_id"`
+}
+
+// Register registers a new client at the provider's registration endpoint
+// (RFC 7591 section 3.1). The response carries the issued credentials; when
+// the server supports registration management it also carries the
+// registration access token and client URI. The initial access token set via
+// [WithInitialAccessToken], if any, authorizes the request.
+func (g *Registrar) Register(ctx context.Context, meta ClientMetadata) (ClientRegistration, error) {
+	if err := meta.validate(); err != nil {
+		return ClientRegistration{}, err
+	}
+	return g.doRegistrationRequest(ctx, http.MethodPost, g.provider.RegistrationEndpoint, g.initialAccessToken, meta, http.StatusCreated)
+}
+
+// Read retrieves the current state of a registration from its client
+// configuration endpoint (RFC 7592 section 2.1). accessToken is the
+// registration access token issued at registration or update time.
+func (g *Registrar) Read(ctx context.Context, registrationClientURI, accessToken string) (ClientRegistration, error) {
+	if err := validateRegistrationManagementArgs(registrationClientURI, accessToken); err != nil {
+		return ClientRegistration{}, err
+	}
+	return g.doRegistrationRequest(ctx, http.MethodGet, registrationClientURI, accessToken, nil, http.StatusOK)
+}
+
+// Update replaces a registration's metadata on its client configuration
+// endpoint (RFC 7592 section 2.2) and returns the new registration state;
+// the server MAY rotate the client secret, so always persist the returned
+// value. The request is authorized with the registration access token.
+func (g *Registrar) Update(ctx context.Context, registrationClientURI, accessToken string, update ClientUpdate) (ClientRegistration, error) {
+	if err := validateRegistrationManagementArgs(registrationClientURI, accessToken); err != nil {
+		return ClientRegistration{}, err
+	}
+	if err := update.validate(); err != nil {
+		return ClientRegistration{}, err
+	}
+	if update.ClientID == "" {
+		return ClientRegistration{}, fmt.Errorf("%w: client_id is required in an update", ErrInvalidConfiguration)
+	}
+	return g.doRegistrationRequest(ctx, http.MethodPut, registrationClientURI, accessToken, update, http.StatusOK)
+}
+
+// Delete unregisters the client (RFC 7592 section 2.3). After a successful
+// delete the client_id and secret, the registration access token, and all
+// tokens issued to the client are invalid.
+func (g *Registrar) Delete(ctx context.Context, registrationClientURI, accessToken string) error {
+	if err := validateRegistrationManagementArgs(registrationClientURI, accessToken); err != nil {
+		return err
+	}
+	_, err := g.doRegistrationRequest(ctx, http.MethodDelete, registrationClientURI, accessToken, nil, http.StatusNoContent)
+	return err
+}
+
+// doRegistrationRequest executes one registration-family HTTP request and
+// decodes the success body (if any) into a ClientRegistration.
+func (g *Registrar) doRegistrationRequest(ctx context.Context, method, endpoint, accessToken string, body any, successStatus int) (ClientRegistration, error) {
+	req, err := g.registrationRequest(ctx, method, endpoint, accessToken, body)
+	if err != nil {
+		return ClientRegistration{}, fmt.Errorf("%w: %v", ErrRegistrationFailed, err)
+	}
+
+	var reg ClientRegistration
+	_, status, preview, err := doJSONStatus(req, g.httpClient, successStatus, func(body io.Reader) error {
+		data, readErr := io.ReadAll(body)
+		if readErr != nil {
+			return fmt.Errorf("failed to read registration response: %w", readErr)
+		}
+		if len(data) == 0 {
+			return nil
+		}
+		if err := json.Unmarshal(data, &reg); err != nil {
+			return &jsonDecodeError{Err: fmt.Errorf("failed to decode registration response: %w", err)}
+		}
+		return nil
+	})
+	if err != nil {
+		var decodeErr *jsonDecodeError
+		if errors.As(err, &decodeErr) {
+			return ClientRegistration{}, fmt.Errorf("%w: %v", ErrRegistrationFailed, decodeErr.Err)
+		}
+		return ClientRegistration{}, fmt.Errorf("%w: %v", ErrRegistrationFailed, err)
+	}
+	if status != successStatus {
+		return ClientRegistration{}, registrationStatusError(status, preview)
+	}
+	return reg, nil
+}
+
+func validateRegistrationManagementArgs(registrationClientURI, accessToken string) error {
+	if err := validateHTTPSAbsoluteURL("registration_client_uri", registrationClientURI); err != nil {
+		return fmt.Errorf("%w: %v", ErrRegistrationFailed, err)
+	}
+	if strings.TrimSpace(accessToken) == "" {
+		return fmt.Errorf("%w: registration access token is required", ErrRegistrationFailed)
+	}
+	return nil
+}
+
+func (g *Registrar) registrationRequest(ctx context.Context, method, endpoint, accessToken string, body any) (*http.Request, error) {
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal registration request: %w", err)
+		}
+		reader = bytes.NewReader(encoded)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, endpoint, reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build registration request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(accessToken) != "" {
+		req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(accessToken))
+	}
+	return req, nil
 }
