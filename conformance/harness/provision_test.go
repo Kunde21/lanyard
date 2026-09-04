@@ -8,12 +8,21 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestComposeUpArgs_ForceRecreateAllServices(t *testing.T) {
-	composeFile := "/tmp/docker-compose.yml"
-	got := composeUpArgs(composeFile)
+func TestComposeArgs_ForceRecreateAllServices(t *testing.T) {
+	got, err := composeArgs("up", "-d", "--force-recreate")
+	if err != nil {
+		t.Fatalf("composeArgs() failed: %v", err)
+	}
+	composeFile, err := repoPath("conformance/docker-compose.yml")
+	if err != nil {
+		t.Fatalf("repoPath() failed: %v", err)
+	}
 	want := []string{"compose", "-f", composeFile, "up", "-d", "--force-recreate"}
+	if _, statErr := os.Stat(composeFile[:strings.LastIndex(composeFile, "/")] + "/docker-compose.override.yml"); statErr == nil {
+		want = []string{"compose", "-f", composeFile, "-f", composeFile[:strings.LastIndex(composeFile, "/")] + "/docker-compose.override.yml", "up", "-d", "--force-recreate"}
+	}
 	if diff := cmp.Diff(want, got); diff != "" {
-		t.Fatalf("composeUpArgs() mismatch (-want +got):\n%s", diff)
+		t.Fatalf("composeArgs() mismatch (-want +got):\n%s", diff)
 	}
 }
 

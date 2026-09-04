@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -50,33 +51,42 @@ func buildExampleRPBinary(ctx context.Context) error {
 }
 
 func composeUp(ctx context.Context) error {
-	composeFile, err := repoPath("conformance/docker-compose.yml")
+	args, err := composeArgs("up", "-d", "--force-recreate")
 	if err != nil {
 		return err
 	}
-	if err := runCommand(ctx, "docker", composeUpArgs(composeFile)...); err != nil {
+	if err := runCommand(ctx, "docker", args...); err != nil {
 		return fmt.Errorf("docker compose up failed: %w", err)
 	}
 	return nil
 }
 
-func composeUpArgs(composeFile string) []string {
-	return []string{"compose", "-f", composeFile, "up", "-d", "--force-recreate"}
+// composeArgs assembles a docker compose command line from the base compose
+// file plus, when present, docker-compose.override.yml next to it (used for
+// machine-specific adjustments such as loopback-only port bindings).
+func composeArgs(command string, extra ...string) ([]string, error) {
+	composeFile, err := repoPath("conformance/docker-compose.yml")
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"compose", "-f", composeFile}
+	if override, err := repoPath("conformance/docker-compose.override.yml"); err == nil {
+		if _, statErr := os.Stat(override); statErr == nil {
+			args = append(args, "-f", override)
+		}
+	}
+	return append(args, append([]string{command}, extra...)...), nil
 }
 
 func composeDown(ctx context.Context) error {
-	composeFile, err := repoPath("conformance/docker-compose.yml")
+	args, err := composeArgs("down", "-v")
 	if err != nil {
 		return err
 	}
-	if err := runCommand(ctx, "docker", composeDownArgs(composeFile)...); err != nil {
+	if err := runCommand(ctx, "docker", args...); err != nil {
 		return fmt.Errorf("docker compose down failed: %w", err)
 	}
 	return nil
-}
-
-func composeDownArgs(composeFile string) []string {
-	return []string{"compose", "-f", composeFile, "down", "-v"}
 }
 
 func suiteImageExists(ctx context.Context, image string) bool {
