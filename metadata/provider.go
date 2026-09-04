@@ -24,6 +24,11 @@ type Provider struct {
 	ClaimsSupported                           []string `json:"claims_supported,omitempty"`
 	ClaimsLocalesSupported                    []string `json:"claims_locales_supported,omitempty"`
 	ClaimsParameterSupported                  *bool    `json:"claims_parameter_supported,omitempty"`
+	ClaimsInVerifiedClaimsSupported           []string `json:"claims_in_verified_claims_supported,omitempty"`
+	DocumentsSupported                        []string `json:"documents_supported,omitempty"`
+	DocumentsCheckMethodsSupported            []string `json:"documents_check_methods_supported,omitempty"`
+	DocumentsMethodsSupported                 []string `json:"documents_methods_supported,omitempty"`
+	ElectronicRecordsSupported                []string `json:"electronic_records_supported,omitempty"`
 	RequestParameterSupported                 *bool    `json:"request_parameter_supported,omitempty"`
 	RequestURIParameterSupported              *bool    `json:"request_uri_parameter_supported,omitempty"`
 	RequireRequestURIRegistration             *bool    `json:"require_request_uri_registration,omitempty"`
@@ -41,7 +46,7 @@ type Provider struct {
 	GrantManagementActionsSupported           []string        `json:"grant_management_actions_supported,omitempty"`
 	GrantManagementActionRequired             *bool           `json:"grant_management_action_required,omitempty"`
 	TrustFrameworksSupported                  []string        `json:"trust_frameworks_supported,omitempty"`
-	EvidenceSupported                         json.RawMessage `json:"evidence_supported,omitempty"`
+	EvidenceSupported                         []string        `json:"evidence_supported,omitempty"`
 	VerifiedClaimsSupported                   json.RawMessage `json:"verified_claims_supported,omitempty"`
 
 	Raw json.RawMessage `json:"-"`

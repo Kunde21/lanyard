@@ -239,6 +239,13 @@ func mergeProvider(dst, src metadata.Provider, mode providerMergeMode) metadata.
 	mergeStrings(&merged.IntrospectionEncryptionAlgValuesSupported, src.IntrospectionEncryptionAlgValuesSupported)
 	mergeStrings(&merged.IntrospectionEncryptionEncValuesSupported, src.IntrospectionEncryptionEncValuesSupported)
 	mergeString(&merged.GrantManagementEndpoint, src.GrantManagementEndpoint)
+	mergeStrings(&merged.TrustFrameworksSupported, src.TrustFrameworksSupported)
+	mergeStrings(&merged.ClaimsInVerifiedClaimsSupported, src.ClaimsInVerifiedClaimsSupported)
+	mergeStrings(&merged.EvidenceSupported, src.EvidenceSupported)
+	mergeStrings(&merged.DocumentsSupported, src.DocumentsSupported)
+	mergeStrings(&merged.DocumentsCheckMethodsSupported, src.DocumentsCheckMethodsSupported)
+	mergeStrings(&merged.DocumentsMethodsSupported, src.DocumentsMethodsSupported)
+	mergeStrings(&merged.ElectronicRecordsSupported, src.ElectronicRecordsSupported)
 	mergeStrings(&merged.GrantManagementActionsSupported, src.GrantManagementActionsSupported)
 	if merged.GrantManagementActionRequired == nil && src.GrantManagementActionRequired != nil {
 		required := *src.GrantManagementActionRequired

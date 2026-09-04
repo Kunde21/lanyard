@@ -237,3 +237,48 @@ func TestProvider_DPoPFields(t *testing.T) {
 		t.Fatalf("TLSClientCertificateBoundAccessTokens mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// TestProvider_IdentityAssuranceMetadata uses the spec section 8 example.
+func TestProvider_IdentityAssuranceMetadata(t *testing.T) {
+	body := `{
+		"issuer": "https://op.example.com",
+		"trust_frameworks_supported": ["nist_800_63A"],
+		"evidence_supported": ["document", "electronic_record", "vouch", "electronic_signature"],
+		"documents_supported": ["idcard", "passport", "driving_permit"],
+		"documents_methods_supported": ["pipp", "sripp", "eid"],
+		"electronic_records_supported": ["secure_mail"],
+		"claims_in_verified_claims_supported": ["given_name", "family_name", "birthdate"]
+	}`
+
+	var provider Provider
+	if err := json.Unmarshal([]byte(body), &provider); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	if diff := cmp.Diff([]string{"nist_800_63A"}, provider.TrustFrameworksSupported); diff != "" {
+		t.Fatalf("TrustFrameworksSupported mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"document", "electronic_record", "vouch", "electronic_signature"}, provider.EvidenceSupported); diff != "" {
+		t.Fatalf("EvidenceSupported mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff([]string{"idcard", "passport", "driving_permit"}, provider.DocumentsSupported); diff != "" {
+		t.Fatalf("DocumentsSupported mismatch (-want +got):\n%s", diff)
+	}
+	// The spec example uses "documents_methods_supported"; the prose name is
+	// "documents_check_methods_supported". Both spellings parse.
+	if diff := cmp.Diff([]string{"pipp", "sripp", "eid"}, provider.DocumentsMethodsSupported); diff != "" {
+		t.Fatalf("DocumentsMethodsSupported mismatch (-want +got):\n%s", diff)
+	}
+	if len(provider.DocumentsCheckMethodsSupported) != 0 {
+		t.Fatalf("DocumentsCheckMethodsSupported = %v, want empty for example spelling", provider.DocumentsCheckMethodsSupported)
+	}
+
+	// Prose spelling parses into its own field.
+	var prose Provider
+	if err := json.Unmarshal([]byte(`{"documents_check_methods_supported":["pipp"]}`), &prose); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+	if diff := cmp.Diff([]string{"pipp"}, prose.DocumentsCheckMethodsSupported); diff != "" {
+		t.Fatalf("DocumentsCheckMethodsSupported mismatch (-want +got):\n%s", diff)
+	}
+}
