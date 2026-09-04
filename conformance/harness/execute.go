@@ -604,9 +604,21 @@ func pollTestResultWithConfig(ctx context.Context, client testInfoGetter, testID
 					}
 
 					if shouldTrigger {
+						// Re-check immediately: the previous trigger's flow may have
+						// finished the test since the status read above; a trigger
+						// against a FINISHED mock fails the whole module
+						// (Illegal test state change).
+						if fresh, freshErr := client.GetTestInfo(ctx, testID); freshErr == nil && isTestDone(fresh) {
+							return fresh, nil
+						}
 						waitingTriggerAttempts++
 						lastWaitingTrigger = time.Now()
 						if err := onWaiting(ctx, testID); err != nil {
+							// A trigger that hit an already-finished test is benign:
+							// the next status read observes the terminal state.
+							if strings.Contains(err.Error(), "Illegal test state change") {
+								continue
+							}
 							waitingTriggerErr = err
 						}
 					}
