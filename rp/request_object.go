@@ -24,6 +24,7 @@ type requestObjectClaims struct {
 	CodeChallengeMethod   string            `json:"code_challenge_method,omitempty"`
 	AuthorizationDetails  json.RawMessage   `json:"authorization_details,omitempty"`
 	Resource              []string          `json:"resource,omitempty"`
+	Claims                json.RawMessage   `json:"claims,omitempty"`
 	GrantID               string            `json:"grant_id,omitempty"`
 	GrantManagementAction string            `json:"grant_management_action,omitempty"`
 	ResponseMode          string            `json:"response_mode,omitempty"`
@@ -34,7 +35,7 @@ type requestObjectClaims struct {
 	Extra                 map[string]string `json:"-"`
 }
 
-func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDetails string, resources []string, grant *grantManagementRequest, extra url.Values) (string, error) {
+func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDetails string, resources []string, grant *grantManagementRequest, claimsParam string, extra url.Values) (string, error) {
 	now := r.now()
 	parsedAuthorizationDetails, err := parseAuthorizationDetailsClaim(authorizationDetails)
 	if err != nil {
@@ -55,6 +56,7 @@ func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDeta
 		Resource:              append([]string(nil), resources...),
 		GrantID:               grant.grantIDValue(),
 		GrantManagementAction: grant.actionValue(),
+		Claims:                json.RawMessage(claimsParam),
 		IssuedAt:              now.Unix(),
 		NotBefore:             now.Unix(),
 		Expiration:            now.Add(5 * time.Minute).Unix(),
@@ -92,7 +94,7 @@ func isStandardRequestObjectClaim(key string) bool {
 	case "iss", "aud", "client_id", "response_type", "redirect_uri",
 		"scope", "state", "nonce", "code_challenge", "code_challenge_method",
 		"authorization_details", "response_mode", "resource", "grant_id",
-		"grant_management_action", "iat", "nbf", "exp", "jti":
+		"grant_management_action", "claims", "iat", "nbf", "exp", "jti":
 		return true
 	}
 	return false
@@ -189,6 +191,12 @@ func claimsToMap(claims requestObjectClaims) map[string]any {
 	}
 	if len(claims.Resource) > 0 {
 		m["resource"] = claims.Resource
+	}
+	if len(claims.Claims) > 0 && string(claims.Claims) != "null" {
+		var parsed map[string]any
+		if err := json.Unmarshal(claims.Claims, &parsed); err == nil {
+			m["claims"] = parsed
+		}
 	}
 	for k, v := range claims.Extra {
 		m[k] = v

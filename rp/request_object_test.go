@@ -37,7 +37,7 @@ func TestBuildSignedRequestObject_ContainsExpectedClaims(t *testing.T) {
 		responseMode: "query.jwt",
 	}
 
-	signed, err := r.buildSignedRequestObject("test-state", "test-nonce", "challenge-value", "", nil, nil, nil)
+	signed, err := r.buildSignedRequestObject("test-state", "test-nonce", "challenge-value", "", nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestBuildSignedRequestObject_OmitsNonceWithoutOpenIDScope(t *testing.T) {
 		redirectURI: "https://rp.example.com/callback",
 	}
 
-	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil, nil)
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -129,7 +129,7 @@ func TestBuildSignedRequestObject_UsesConfiguredResponseType(t *testing.T) {
 		responseType: "code id_token",
 	}
 
-	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil, nil)
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestBuildSignedRequestObject_RequiresKeyProvider(t *testing.T) {
 		redirectURI: "https://rp.example.com/callback",
 	}
 
-	_, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil, nil)
+	_, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil, "", nil)
 	if err == nil {
 		t.Fatal("expected error without key provider")
 	}
@@ -178,7 +178,7 @@ func TestBuildSignedRequestObject_ES256(t *testing.T) {
 		redirectURI: "https://rp.example.com/callback",
 	}
 
-	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil, nil)
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestBuildSignedRequestObject_AuthorizationDetails(t *testing.T) {
 	}
 
 	details := `[{"type":"account_information"}]`
-	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", details, nil, nil, nil)
+	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", details, nil, nil, "", nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestBuildSignedRequestObject_IncludesResourceArray(t *testing.T) {
 	signed, err := r.buildSignedRequestObject(
 		"state", "nonce", "challenge", "",
 		[]string{"https://api.example.com/", "https://payments.example.com/"},
-		nil, nil,
+		nil, "", nil,
 	)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)

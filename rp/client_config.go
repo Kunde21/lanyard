@@ -16,13 +16,14 @@ import (
 )
 
 type clientConfig struct {
-	issuer         string
-	clientID       string
-	clientSecret   string
-	scopes         []string
-	scopesExplicit bool
-	authMethod     AuthMethod
-	resources      []string
+	issuer          string
+	clientID        string
+	clientSecret    string
+	scopes          []string
+	scopesExplicit  bool
+	authMethod      AuthMethod
+	resources       []string
+	claimsParameter string
 
 	introspectionDecryptionKey crypto.PrivateKey
 	initialAccessToken         string

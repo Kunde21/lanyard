@@ -116,7 +116,7 @@ func TestBuildAuthorizationParametersGrantManagement(t *testing.T) {
 	r := &RP{clientConfig: clientConfig{clientID: "client-123"}}
 
 	params := r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "", nil,
-		&grantManagementRequest{action: GrantActionMerge, grantID: "TSdqirmAxDa0"}, nil)
+		&grantManagementRequest{action: GrantActionMerge, grantID: "TSdqirmAxDa0"}, "", nil)
 	if diff := cmp.Diff("merge", params.Get("grant_management_action")); diff != "" {
 		t.Fatalf("grant_management_action mismatch (-want +got):\n%s", diff)
 	}
@@ -124,7 +124,7 @@ func TestBuildAuthorizationParametersGrantManagement(t *testing.T) {
 		t.Fatalf("grant_id mismatch (-want +got):\n%s", diff)
 	}
 
-	params = r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "", nil, nil, nil)
+	params = r.buildAuthorizationParameters("state", "nonce", "verifier", "challenge", "", nil, nil, "", nil)
 	if params.Get("grant_management_action") != "" || params.Get("grant_id") != "" {
 		t.Fatal("expected no grant management parameters for nil request")
 	}
@@ -186,7 +186,7 @@ func TestBuildSignedRequestObjectGrantManagementClaims(t *testing.T) {
 	}
 
 	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil,
-		&grantManagementRequest{action: GrantActionReplace, grantID: "TSdqirmAxDa0"}, nil)
+		&grantManagementRequest{action: GrantActionReplace, grantID: "TSdqirmAxDa0"}, "", nil)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}
@@ -222,7 +222,7 @@ func TestGrantManagementExtraParametersNotDuplicated(t *testing.T) {
 
 	extra := url.Values{"grant_id": {"injected-via-extra"}}
 	signed, err := r.buildSignedRequestObject("state", "nonce", "challenge", "", nil,
-		&grantManagementRequest{action: GrantActionMerge, grantID: "canonical"}, extra)
+		&grantManagementRequest{action: GrantActionMerge, grantID: "canonical"}, "", extra)
 	if err != nil {
 		t.Fatalf("buildSignedRequestObject() failed: %v", err)
 	}

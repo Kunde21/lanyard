@@ -43,6 +43,7 @@ type authorizationURLConfig struct {
 	parameters           url.Values
 	resources            []string
 	grantManagement      *grantManagementRequest
+	claims               string
 	err                  error
 }
 
@@ -248,6 +249,54 @@ func SetResources(resources ...string) AuthorizationURLOption {
 		}
 		cfg.resources = normalized
 	}
+}
+
+// SetClaims overrides the claims request parameter (OIDC Core section 5.5)
+// for one authorization request. raw must be a JSON object; it is passed
+// through verbatim as the claims parameter value.
+func SetClaims(raw string) AuthorizationURLOption {
+	return func(cfg *authorizationURLConfig) {
+		if cfg == nil {
+			return
+		}
+		if strings.TrimSpace(raw) == "" {
+			cfg.claims = ""
+			return
+		}
+		if !isValidClaimsJSON(raw) {
+			cfg.err = fmt.Errorf("%w: claims parameter must be a JSON object", ErrInvalidConfiguration)
+			return
+		}
+		cfg.claims = raw
+	}
+}
+
+// WithClaims sets the default claims request parameter (OIDC Core section
+// 5.5) for authorization requests. raw must be a JSON object; override it per
+// request with [SetClaims].
+func WithClaims(raw string) Option {
+	return claimsOption{raw: raw}
+}
+
+type claimsOption struct {
+	raw string
+}
+
+func (o claimsOption) applyConfig(c *clientConfig) {
+	if strings.TrimSpace(o.raw) == "" {
+		return
+	}
+	if !isValidClaimsJSON(o.raw) {
+		c.optionErrors = append(c.optionErrors, fmt.Errorf(
+			"%w: claims parameter must be a JSON object", ErrInvalidConfiguration))
+		return
+	}
+	c.claimsParameter = o.raw
+}
+
+func isValidClaimsJSON(raw string) bool {
+	var parsed map[string]any
+	return json.Unmarshal([]byte(raw), &parsed) == nil
 }
 
 // SetGrantManagementAction sets the grant management parameters

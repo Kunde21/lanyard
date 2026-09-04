@@ -73,6 +73,11 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 		selectedResources = cfg.resources
 	}
 
+	selectedClaims := r.claimsParameter
+	if cfg.claims != "" {
+		selectedClaims = cfg.claims
+	}
+
 	if err := cfg.grantManagement.validateSupported(metadata.GrantManagementActionsSupported); err != nil {
 		return "", err
 	}
@@ -103,12 +108,12 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 		return "", err
 	}
 
-	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, cfg.parameters)
+	params := r.buildAuthorizationParameters(state, nonce, verifier, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, selectedClaims, cfg.parameters)
 
 	if r.shouldUsePAR() {
 		parParams := params
 		if r.requestMethod.isSigned() {
-			signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, cfg.parameters)
+			signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, selectedClaims, cfg.parameters)
 			if err != nil {
 				return "", err
 			}
@@ -133,7 +138,7 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 
 	redirectParams := params
 	if r.requestMethod.isSigned() {
-		signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, cfg.parameters)
+		signed, err := r.buildSignedRequestObject(state, nonce, challenge, cfg.authorizationDetails, selectedResources, cfg.grantManagement, selectedClaims, cfg.parameters)
 		if err != nil {
 			return "", err
 		}

@@ -38,7 +38,7 @@ func (r *RP) buildPARRequest(ctx context.Context, parEndpoint string, params url
 	return req, nil
 }
 
-func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge, authorizationDetails string, resources []string, grant *grantManagementRequest, extra url.Values) url.Values {
+func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge, authorizationDetails string, resources []string, grant *grantManagementRequest, claims string, extra url.Values) url.Values {
 	params := url.Values{}
 	params.Set("response_type", r.authorizationResponseType())
 	params.Set("client_id", r.clientID)
@@ -56,6 +56,9 @@ func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge, aut
 	}
 	addResourceParameters(params, resources)
 	grant.applyTo(params)
+	if strings.TrimSpace(claims) != "" {
+		params.Set("claims", claims)
+	}
 	for key, values := range extra {
 		for _, value := range values {
 			params.Add(key, value)
