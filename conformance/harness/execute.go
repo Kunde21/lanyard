@@ -148,7 +148,7 @@ func (jr *jobRunner) execute(ctx context.Context) planResult {
 	defer runtimeCleanup()
 
 	planVariant := mergePlanVariant(jr.job.PlanVariant, jr.cfg.ForcedVariants)
-	planConfig := buildPlanConfig(planVariant, jr.job.Alias, jr.cfg.WaitTimeoutSeconds)
+	planConfig := buildPlanConfig(jr.job.PlanName, planVariant, jr.job.Alias, jr.cfg.WaitTimeoutSeconds)
 	created, err := jr.client.CreatePlan(planCtx, jr.job.PlanName, planVariant, planConfig)
 	if err != nil {
 		failPlan(&planRes, fmt.Sprintf("create plan failed: %v", err))
@@ -821,7 +821,23 @@ func scopeStringForPlanVariant(planVariant map[string]string) string {
 	return strings.Join(scopesForPlanVariant(planVariant), " ")
 }
 
-func buildPlanConfig(planVariant map[string]string, alias string, waitTimeoutSeconds int) map[string]any {
+func buildPlanConfig(planName string, planVariant map[string]string, alias string, waitTimeoutSeconds int) map[string]any {
+	if isDynamicClientPlan(planName) || strings.EqualFold(strings.TrimSpace(planVariant["client_registration"]), "dynamic_client") {
+		// Dynamic plans: the example RP registers itself; the suite still needs
+		// the alias (mock AS routing) and wait timeout, but no static client
+		// credentials.
+		if waitTimeoutSeconds <= 0 {
+			waitTimeoutSeconds = 5
+		}
+		if strings.TrimSpace(alias) == "" {
+			alias = "lanyard-local"
+		}
+		return map[string]any{
+			"alias":              alias,
+			"description":        "Lanyard automated local conformance run",
+			"waitTimeoutSeconds": waitTimeoutSeconds,
+		}
+	}
 	if !usesStaticClientRegistration(planVariant) && !isFAPI2PlanVariant(planVariant) {
 		return map[string]any{}
 	}

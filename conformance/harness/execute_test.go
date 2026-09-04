@@ -466,7 +466,7 @@ func TestNewJobRunner_IsolatesMutableExecutionState(t *testing.T) {
 
 func TestBuildPlanConfig_RARAddsAuthorizationDetailsTypesSupported(t *testing.T) {
 	skipIfConformanceCertsMissing(t)
-	cfg := buildPlanConfig(map[string]string{
+	cfg := buildPlanConfig("fapi2-security-profile-final-client-test-plan", map[string]string{
 		"client_auth_type":           "private_key_jwt",
 		"authorization_request_type": "rar",
 		"fapi_client_type":           "plain_oauth",
@@ -484,7 +484,7 @@ func TestBuildPlanConfig_RARAddsAuthorizationDetailsTypesSupported(t *testing.T)
 
 func TestBuildPlanConfig_FAPI1EncryptedIDTokenClientMetadata(t *testing.T) {
 	skipIfConformanceCertsMissing(t)
-	cfg := buildPlanConfig(map[string]string{
+	cfg := buildPlanConfig("fapi2-security-profile-final-client-test-plan", map[string]string{
 		"client_auth_type":         "private_key_jwt",
 		"fapi_auth_request_method": "by_value",
 		"fapi_request_method":      "signed_non_repudiation",
@@ -580,7 +580,7 @@ func TestIsNegativeTestModule(t *testing.T) {
 
 func TestBuildPlanConfig_OIDCConfigPrivateKeyJWT(t *testing.T) {
 	skipIfConformanceCertsMissing(t)
-	cfg := buildPlanConfig(map[string]string{
+	cfg := buildPlanConfig("fapi2-security-profile-final-client-test-plan", map[string]string{
 		"client_auth_type":    "private_key_jwt",
 		"request_type":        "plain_http_request",
 		"client_registration": "static_client",
@@ -604,7 +604,7 @@ func TestBuildPlanConfig_OIDCConfigPrivateKeyJWT(t *testing.T) {
 }
 
 func TestBuildPlanConfig_OIDCConfigClientSecretBasic_NoJWKS(t *testing.T) {
-	cfg := buildPlanConfig(map[string]string{
+	cfg := buildPlanConfig("fapi2-security-profile-final-client-test-plan", map[string]string{
 		"client_auth_type":    "client_secret_basic",
 		"request_type":        "plain_http_request",
 		"client_registration": "static_client",
@@ -779,7 +779,7 @@ func TestExecuteModule_DiscoveryModuleKeepsPlanAssociation(t *testing.T) {
 
 func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_ContainsX5C(t *testing.T) {
 	skipIfConformanceCertsMissing(t)
-	cfg := buildPlanConfig(map[string]string{
+	cfg := buildPlanConfig("fapi2-security-profile-final-client-test-plan", map[string]string{
 		"client_auth_type":    "self_signed_tls_client_auth",
 		"request_type":        "plain_http_request",
 		"client_registration": "static_client",
@@ -836,7 +836,7 @@ func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_ContainsX5C(t *testin
 
 func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_RequestObject_ContainsX5C(t *testing.T) {
 	skipIfConformanceCertsMissing(t)
-	cfg := buildPlanConfig(map[string]string{
+	cfg := buildPlanConfig("fapi2-security-profile-final-client-test-plan", map[string]string{
 		"client_auth_type":    "self_signed_tls_client_auth",
 		"request_type":        "request_object",
 		"client_registration": "static_client",
@@ -887,7 +887,7 @@ func TestBuildPlanConfig_OIDCConfigSelfSignedTlsClientAuth_RequestObject_Contain
 
 func TestBuildPlanConfig_OIDCConfigPrivateKeyJWT_NoX5C(t *testing.T) {
 	skipIfConformanceCertsMissing(t)
-	cfg := buildPlanConfig(map[string]string{
+	cfg := buildPlanConfig("fapi2-security-profile-final-client-test-plan", map[string]string{
 		"client_auth_type":    "private_key_jwt",
 		"request_type":        "plain_http_request",
 		"client_registration": "static_client",
@@ -1003,4 +1003,20 @@ func moduleNames(modules []PlanModule) []string {
 		names = append(names, module.Name)
 	}
 	return names
+}
+
+func TestBuildPlanConfig_DynamicClientPlan(t *testing.T) {
+	cfg := buildPlanConfig("oidcc-client-dynamic-certification-test-plan", map[string]string{
+		"client_auth_type": "client_secret_basic",
+	}, "alias-dyn", 30)
+
+	if cfg["alias"] != "alias-dyn" {
+		t.Fatalf("alias = %v, want alias-dyn (mock AS routing depends on it)", cfg["alias"])
+	}
+	if _, hasClient := cfg["client"]; hasClient {
+		t.Fatal("dynamic plan config must not carry static client credentials")
+	}
+	if cfg["waitTimeoutSeconds"] != 30 {
+		t.Fatalf("waitTimeoutSeconds = %v, want 30", cfg["waitTimeoutSeconds"])
+	}
 }
