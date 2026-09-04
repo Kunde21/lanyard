@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -95,6 +96,16 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	handleLoginWithFlow(flow)(w, r)
 }
 
+// claimsOptionFromRequest validates the claims query parameter up front so
+// mistakes surface as 400s instead of a broken redirect.
+func claimsOptionFromRequest(raw string) (rp.AuthorizationURLOption, error) {
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil, fmt.Errorf("claims parameter must be a JSON object")
+	}
+	return rp.SetClaims(raw), nil
+}
+
 func handleLoginUserInfoBody(w http.ResponseWriter, r *http.Request) {
 	clientID, clientSecret := defaultClientCredentialsForRequest(r)
 	flow, err := rpClientFromRequest(r,
@@ -127,15 +138,16 @@ func handleLoginWithFlow(flow flowHandler) http.HandlerFunc {
 
 		authOpts := []rp.AuthorizationURLOption{grantOption}
 		if rawClaims := strings.TrimSpace(r.URL.Query().Get("claims")); rawClaims != "" {
-			authOpts = append(authOpts, rp.SetClaims(rawClaims))
+			claimsOption, claimsErr := claimsOptionFromRequest(rawClaims)
+			if claimsErr != nil {
+				http.Error(w, fmt.Sprintf("invalid claims parameter: %v", claimsErr), http.StatusBadRequest)
+				return
+			}
+			authOpts = append(authOpts, claimsOption)
 		}
 
 		authURL, err := flow.AuthorizationURL(w, r, authOpts...)
 		if err != nil {
-			if strings.Contains(err.Error(), "claims parameter must be a JSON object") {
-				http.Error(w, fmt.Sprintf("invalid claims parameter: %v", err), http.StatusBadRequest)
-				return
-			}
 			slog.Info("login initialization failed", "err", err)
 			http.Error(w, "failed to initialize login", http.StatusInternalServerError)
 			return
