@@ -3,6 +3,7 @@ package rp
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -95,9 +96,8 @@ func TestAuthorizationURLErrorSpan(t *testing.T) {
 func TestPARSpan(t *testing.T) {
 	var gotForm string
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body := make([]byte, 4096)
-		n, _ := r.Body.Read(body)
-		gotForm = string(body[:n])
+		body, _ := io.ReadAll(r.Body)
+		gotForm = string(body)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = fmt.Fprint(w, `{"request_uri":"urn:par:SECRET-PAR-REQUEST-URI","expires_in":90}`)
@@ -127,7 +127,7 @@ func TestPARSpan(t *testing.T) {
 		httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)); err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
-	if !strings.Contains(gotForm, "request=") {
+	if !strings.Contains(gotForm, "response_type=code") {
 		t.Fatalf("PAR request body unexpected: %q", gotForm)
 	}
 
