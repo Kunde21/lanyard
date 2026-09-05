@@ -1,6 +1,7 @@
 package rp
 
 import (
+	"context"
 	"crypto"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,8 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type requestObjectClaims struct {
@@ -36,6 +39,17 @@ type requestObjectClaims struct {
 }
 
 func (r *RP) buildSignedRequestObject(state, nonce, challenge, authorizationDetails string, resources []string, grant *grantManagementRequest, claimsParam string, extra url.Values) (string, error) {
+	_, span := r.spanStart(context.Background(), "rp.signed_request_object",
+		attribute.Bool("lanyard.asymmetric", r.clientKeyProvider != nil),
+	)
+	defer span.End()
+
+	signed, err := r.buildSignedRequestObjectInner(state, nonce, challenge, authorizationDetails, resources, grant, claimsParam, extra)
+	spanError(span, err)
+	return signed, err
+}
+
+func (r *RP) buildSignedRequestObjectInner(state, nonce, challenge, authorizationDetails string, resources []string, grant *grantManagementRequest, claimsParam string, extra url.Values) (string, error) {
 	now := r.now()
 	parsedAuthorizationDetails, err := parseAuthorizationDetailsClaim(authorizationDetails)
 	if err != nil {

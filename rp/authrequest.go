@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 func (r *RP) saveCorrelation(ctx context.Context, w http.ResponseWriter, req *http.Request, state, nonce, verifier string, resources []string, parResp *parResponse) error {
@@ -49,6 +51,19 @@ func buildAuthorizationRedirect(endpoint string, params url.Values) (string, err
 
 // AuthorizationURL builds an authorization request URL and stores callback state.
 func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...AuthorizationURLOption) (string, error) {
+	ctx, span := r.spanStart(req.Context(), "rp.authorization_url",
+		attribute.Bool("lanyard.par", r.shouldUsePAR()),
+		attribute.Bool("lanyard.signed_request_object", r.requestMethod.isSigned()),
+		attribute.StringSlice("lanyard.scopes", r.scopes),
+	)
+	defer span.End()
+
+	redirect, err := r.authorizationURL(ctx, w, req, opts...)
+	spanError(span, err)
+	return redirect, err
+}
+
+func (r *RP) authorizationURL(ctx context.Context, w http.ResponseWriter, req *http.Request, opts ...AuthorizationURLOption) (string, error) {
 	metadata := r.provider
 	authorizationEndpoint := r.authorizationEndpoint(metadata)
 	if authorizationEndpoint == "" {
@@ -124,12 +139,12 @@ func (r *RP) AuthorizationURL(w http.ResponseWriter, req *http.Request, opts ...
 			}
 		}
 
-		parResp, err := r.pushAuthorizationRequest(req.Context(), parParams)
+		parResp, err := r.pushAuthorizationRequest(ctx, parParams)
 		if err != nil {
 			return "", err
 		}
 
-		if err := r.saveCorrelation(req.Context(), w, req, state, nonce, verifier, selectedResources, parResp); err != nil {
+		if err := r.saveCorrelation(ctx, w, req, state, nonce, verifier, selectedResources, parResp); err != nil {
 			return "", err
 		}
 

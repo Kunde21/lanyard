@@ -2,11 +2,15 @@ package metadata
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -104,14 +108,19 @@ func TestJWKSSpanStripsQuery(t *testing.T) {
 }
 
 func TestSafeErrorDescription(t *testing.T) {
-	if got := safeErrorDescription(ErrDiscoveryFailed); got != "discovery failed" {
-		t.Fatalf("sentinel description = %q", got)
+	// Wrapped chains must still resolve to the sentinel description.
+	wrapped := fmt.Errorf("fetch failed: %w", ErrDiscoveryFailed)
+	if diff := cmp.Diff(ErrDiscoveryFailed, wrapped, cmpopts.EquateErrors()); diff != "" {
+		t.Fatalf("fixture does not wrap the sentinel (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("discovery failed", safeErrorDescription(wrapped)); diff != "" {
+		t.Fatalf("wrapped sentinel description mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("http status 404", safeErrorDescription(&HTTPStatusError{StatusCode: 404})); diff != "" {
+		t.Fatalf("http status description mismatch (-want +got):\n%s", diff)
 	}
 	if got := safeErrorDescription(context.Canceled); got == "" {
 		t.Fatal("fallback description empty")
 	}
-	custom := &HTTPStatusError{StatusCode: 404}
-	if got := safeErrorDescription(custom); got != "http status 404" {
-		t.Fatalf("http status description = %q", got)
-	}
+	_ = errors.Is // keep errors imported for flow assertions
 }

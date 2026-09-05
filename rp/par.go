@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type parResponse struct {
@@ -68,6 +70,17 @@ func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge, aut
 }
 
 func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*parResponse, error) {
+	ctx, span := r.spanStart(ctx, "rp.par_request",
+		attribute.String("lanyard.auth_method", string(r.resolvedAuthMethod)),
+	)
+	defer span.End()
+
+	parResp, err := r.pushAuthorizationRequestInner(ctx, params)
+	spanError(span, err)
+	return parResp, err
+}
+
+func (r *RP) pushAuthorizationRequestInner(ctx context.Context, params url.Values) (*parResponse, error) {
 	parEndpoint := r.pushedAuthorizationRequestEndpoint(r.provider)
 	if parEndpoint == "" {
 		return nil, fmt.Errorf("%w: pushed authorization request endpoint not available", ErrInvalidConfiguration)
