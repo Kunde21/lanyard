@@ -10,6 +10,18 @@ import (
 
 // RefreshToken exchanges a refresh token for a new token at the provider's token endpoint.
 func (r *RP) RefreshToken(ctx context.Context, refreshToken string) (Token, error) {
+	ctx, span := r.spanStart(ctx, "rp.refresh_token")
+	defer span.End()
+
+	token, err := r.refreshToken(ctx, refreshToken)
+	if err == nil && token.RefreshToken != "" {
+		span.AddEvent("rotation")
+	}
+	spanError(span, err)
+	return token, err
+}
+
+func (r *RP) refreshToken(ctx context.Context, refreshToken string) (Token, error) {
 	if refreshToken == "" {
 		return Token{}, fmt.Errorf("%w: refresh token is required", ErrRefreshTokenFailed)
 	}

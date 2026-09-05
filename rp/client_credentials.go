@@ -67,6 +67,15 @@ func (c *ClientCredentials) validate() error {
 
 // Token requests an access token using the client credentials grant.
 func (c *ClientCredentials) Token(ctx context.Context) (*Token, error) {
+	ctx, span := c.spanStart(ctx, "rp.client_credentials")
+	defer span.End()
+
+	token, err := c.token(ctx)
+	spanError(span, err)
+	return token, err
+}
+
+func (c *ClientCredentials) token(ctx context.Context) (*Token, error) {
 	token, err := executeTokenGrant(&c.clientConfig, func(method AuthMethod) (tokenGrantResult, error) {
 		tokenResp, status, preview, err := c.requestToken(ctx, method)
 		if tokenResp == nil {
