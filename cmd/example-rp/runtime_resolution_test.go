@@ -23,6 +23,7 @@ import (
 
 func TestNewRPHTTPClient_LogsRequestAndResponseDumps(t *testing.T) {
 	t.Setenv("RP_INSECURE_TLS", "true")
+	t.Setenv("RP_HTTP_DUMP", "true")
 
 	var buf bytes.Buffer
 	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
@@ -519,5 +520,28 @@ func TestShouldAllowUnsecuredIDTokens(t *testing.T) {
 				t.Fatalf("shouldAllowUnsecuredIDTokens() mismatch (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestNewRPHTTPClient_DumpDisabledByDefault(t *testing.T) {
+	t.Setenv("RP_INSECURE_TLS", "true")
+
+	var buf bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := newRPHTTPClient(nil)
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("Get() failed: %v", err)
+	}
+	resp.Body.Close()
+
+	if strings.Contains(buf.String(), "dump") {
+		t.Fatalf("dump logging enabled without RP_HTTP_DUMP: %q", buf.String())
 	}
 }

@@ -57,6 +57,23 @@
 // (invalid_grant), refresh errors wrap [ErrRefreshTokenRejected]; discard the
 // token and restart the authorization flow.
 //
+// # OpenTelemetry tracing
+//
+// The library emits OpenTelemetry spans for its public operations and their
+// internal phases: discovery and JWKS resolution, authorization request
+// construction (PAR, signed request objects), callback processing (state
+// validation, token exchange, ID token validation, userinfo), refresh with
+// rotation, client credentials, introspection, grant management, and dynamic
+// client registration. Enable them with [WithTracerProvider] (and
+// metadata.WithTracerProvider for the discovery client); without it the
+// global no-op tracer is used and nothing is recorded.
+//
+// Redaction is a hard guarantee: spans carry identifiers, enums, status
+// codes, and durations — never tokens, credentials, authorization codes,
+// state/nonce/PKCE values, request objects, claim values, or URLs with
+// query strings. Error statuses reduce to sentinel names and HTTP status
+// codes; response previews never enter telemetry.
+//
 // # Identity assurance
 //
 // Providers supporting OpenID Connect for Identity Assurance 1.0 deliver

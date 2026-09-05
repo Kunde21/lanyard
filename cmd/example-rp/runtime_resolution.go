@@ -334,6 +334,15 @@ func newRPHTTPClient(keyProvider rp.ClientKeyProvider) *http.Client {
 	}
 
 	baseTransport := &http.Transport{TLSClientConfig: tlsConfig}
+
+	// The dump transport logs full requests and responses — including
+	// tokens and credentials — so it is disabled unless RP_HTTP_DUMP is
+	// explicitly set. Use OpenTelemetry tracing (rp.WithTracerProvider)
+	// for redaction-safe observability.
+	if !envTrue("RP_HTTP_DUMP") {
+		return &http.Client{Timeout: 15 * time.Second, Transport: baseTransport}
+	}
+
 	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		requestDump, err := httputil.DumpRequest(req, true)
 		if err != nil {

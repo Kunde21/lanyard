@@ -57,6 +57,7 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
      *   Grant management: create, merge, replace, query, and revoke grants (FAPI 2.0 Grant Management).
      *   Dynamic client registration and registration management (RFC 7591, RFC 7592).
      *   Identity assurance: verified_claims request builders, response parsing, and freshness checks (OpenID Connect for Identity Assurance 1.0).
+     *   OpenTelemetry tracing with redaction-safe spans across all flows.
     *   DPoP (Demonstrating Proof-of-Possession) support.
     *   mTLS sender-constrained access token support.
     *   RFC 7800 `cnf` claim parsing and binding verification for sender-constrained tokens.

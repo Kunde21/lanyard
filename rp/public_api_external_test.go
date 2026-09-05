@@ -158,6 +158,9 @@ func TestIntrospectionPublicAPI(t *testing.T) {
 	// Claims parameter + identity assurance surface.
 	_ = rp.WithClaims("{}")
 	_ = rp.SetClaims("{}")
+
+	// OpenTelemetry surface.
+	_ = rp.WithTracerProvider(nil)
 	cr := rp.NewClaimsRequest()
 	_ = cr.AddVerifiedClaimsToIDToken
 	_ = cr.AddVerifiedClaimsToUserInfo
