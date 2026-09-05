@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
 )
 
 const (
@@ -75,6 +77,18 @@ func (c *Client) authorizationServerRefreshOpts() discoveryRefreshOptions {
 
 // DiscoverProvider fetches, validates, and caches OIDC provider information.
 func (c *Client) DiscoverProvider(ctx context.Context, issuer string) (Provider, error) {
+	ctx, span := c.spanStart(ctx, "metadata.discovery",
+		attribute.String("lanyard.discovery.mode", "oidc"),
+		attribute.String("lanyard.issuer", issuer),
+	)
+	defer span.End()
+
+	provider, err := c.discoverProvider(ctx, issuer)
+	spanError(span, err)
+	return provider, err
+}
+
+func (c *Client) discoverProvider(ctx context.Context, issuer string) (Provider, error) {
 	if _, err := validateIssuerURL(issuer); err != nil {
 		return Provider{}, err
 	}
@@ -110,6 +124,18 @@ func (c *Client) DiscoverProvider(ctx context.Context, issuer string) (Provider,
 
 // DiscoverAuthorizationServer fetches, validates, and caches OAuth AS information.
 func (c *Client) DiscoverAuthorizationServer(ctx context.Context, issuer string) (AuthorizationServer, error) {
+	ctx, span := c.spanStart(ctx, "metadata.discovery",
+		attribute.String("lanyard.discovery.mode", "oauth2"),
+		attribute.String("lanyard.issuer", issuer),
+	)
+	defer span.End()
+
+	server, err := c.discoverAuthorizationServer(ctx, issuer)
+	spanError(span, err)
+	return server, err
+}
+
+func (c *Client) discoverAuthorizationServer(ctx context.Context, issuer string) (AuthorizationServer, error) {
 	if _, err := validateIssuerURL(issuer); err != nil {
 		return AuthorizationServer{}, err
 	}
