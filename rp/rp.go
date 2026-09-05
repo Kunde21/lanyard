@@ -14,6 +14,7 @@ import (
 	"github.com/Kunde21/lanyard/metadata"
 	"github.com/Kunde21/lanyard/rp/store/memory"
 	"github.com/Kunde21/lanyard/validateurl"
+	"go.opentelemetry.io/otel"
 )
 
 const defaultClockSkew = 5 * time.Minute
@@ -292,6 +293,7 @@ func newRP(issuer string) *RP {
 			scopes:     []string{"openid"},
 			httpClient: http.DefaultClient,
 			logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+			tracer:     otel.GetTracerProvider().Tracer(tracerName),
 			now:        func() time.Time { return time.Now().UTC() },
 			randReader: rand.Reader,
 		},

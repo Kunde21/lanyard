@@ -8,8 +8,14 @@ import (
 
 	"github.com/Kunde21/lanyard/cache"
 	"github.com/Kunde21/lanyard/jwks"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/singleflight"
 )
+
+// metadataTracerName identifies the lanyard metadata package in
+// OpenTelemetry.
+const metadataTracerName = "github.com/Kunde21/lanyard/metadata"
 
 const defaultDiscoveryTTL = time.Hour
 
@@ -17,6 +23,7 @@ const defaultDiscoveryTTL = time.Hour
 type Client struct {
 	httpClient *http.Client
 	logger     *slog.Logger
+	tracer     trace.Tracer
 
 	discoveryCache CacheStore
 	jwksCache      jwks.CacheStore
@@ -36,6 +43,7 @@ func NewClient(opts ...Option) *Client {
 	c := &Client{
 		httpClient:                   http.DefaultClient,
 		logger:                       logger,
+		tracer:                       otel.GetTracerProvider().Tracer(metadataTracerName),
 		discoveryCache:               cache.NewStore[*CacheEntry](),
 		jwksCache:                    cache.NewStore[*jwks.CacheEntry](),
 		defaultDiscoveryTTL:          defaultDiscoveryTTL,

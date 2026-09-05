@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Kunde21/lanyard/metadata"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // WithClientID sets the OAuth client identifier.
@@ -364,6 +365,25 @@ type initialAccessTokenOption struct {
 
 func (o initialAccessTokenOption) applyConfig(c *clientConfig) {
 	c.initialAccessToken = o.token
+}
+
+// WithTracerProvider sets the OpenTelemetry tracer provider the RP creates
+// its tracer from. When unset, the global provider is used (a no-op tracer
+// unless the application installs one). Spans never contain tokens,
+// credentials, or other secret values; see the package documentation.
+func WithTracerProvider(tp trace.TracerProvider) Option {
+	return tracerProviderOption{provider: tp}
+}
+
+type tracerProviderOption struct {
+	provider trace.TracerProvider
+}
+
+func (o tracerProviderOption) applyConfig(c *clientConfig) {
+	if o.provider == nil {
+		return
+	}
+	c.tracer = o.provider.Tracer(tracerName)
 }
 
 // WithIntrospectionDecryptionKey sets the private key used to decrypt encrypted

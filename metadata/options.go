@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Kunde21/lanyard/jwks"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Option configures a Client.
@@ -21,10 +22,22 @@ func WithHTTPClient(client *http.Client) Option {
 }
 
 // WithLogger sets the structured logger.
+// WithLogger sets the debug logger for discovery operations.
 func WithLogger(logger *slog.Logger) Option {
 	return func(c *Client) {
 		if logger != nil {
 			c.logger = logger
+		}
+	}
+}
+
+// WithTracerProvider sets the OpenTelemetry tracer provider the metadata
+// client creates its tracer from. When unset, the global provider is used
+// (a no-op tracer unless the application installs one).
+func WithTracerProvider(tp trace.TracerProvider) Option {
+	return func(c *Client) {
+		if tp != nil {
+			c.tracer = tp.Tracer(metadataTracerName)
 		}
 	}
 }

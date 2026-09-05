@@ -13,7 +13,12 @@ import (
 	"time"
 
 	"github.com/Kunde21/lanyard/metadata"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
+
+// tracerName identifies the lanyard rp package in OpenTelemetry.
+const tracerName = "github.com/Kunde21/lanyard/rp"
 
 type clientConfig struct {
 	issuer          string
@@ -24,6 +29,7 @@ type clientConfig struct {
 	authMethod      AuthMethod
 	resources       []string
 	claimsParameter string
+	tracer          trace.Tracer
 
 	introspectionDecryptionKey crypto.PrivateKey
 	initialAccessToken         string
@@ -238,6 +244,7 @@ func defaultClientConfig(issuer string) clientConfig {
 		issuer:     strings.TrimSpace(issuer),
 		httpClient: http.DefaultClient,
 		logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		tracer:     otel.GetTracerProvider().Tracer(tracerName),
 		now:        func() time.Time { return time.Now().UTC() },
 		randReader: rand.Reader,
 	}
