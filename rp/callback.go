@@ -9,6 +9,8 @@ import (
 
 	"github.com/Kunde21/lanyard/metadata"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // CallbackResult contains the validated identity data returned from
@@ -90,13 +92,24 @@ func (r *RP) providerForCallback(ctx context.Context, issuer string) (metadata.P
 
 // HandleCallback validates callback state and performs token/userinfo processing.
 func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*CallbackResult, error) {
+	ctx, span := r.spanStart(req.Context(), "rp.handle_callback",
+		attribute.Bool("lanyard.jarm", r.isJARMResponse(extractCallbackParams(req))),
+	)
+	defer span.End()
+
+	result, err := r.handleCallback(ctx, w, req)
+	spanError(span, err)
+	return result, err
+}
+
+func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *http.Request) (*CallbackResult, error) {
 	if req == nil {
 		return nil, fmt.Errorf("%w: missing callback request", ErrInvalidState)
 	}
 
 	params := extractCallbackParams(req)
 
-	code, state, authzResponseIss, err := r.parseAuthorizationResponse(req.Context(), params)
+	code, state, authzResponseIss, err := r.parseAuthorizationResponse(ctx, params)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +121,12 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, fmt.Errorf("%w", ErrMissingCode)
 	}
 
-	data, ok, err := r.stateStore.ConsumeCorrelation(req.Context(), w, req, state)
+	stateCtx, stateSpan := r.spanStart(ctx, "rp.state_validation")
+	data, ok, err := r.stateStore.ConsumeCorrelation(stateCtx, w, req, state)
+	if err != nil || !ok {
+		stateSpan.SetStatus(codes.Error, safeSpanErrorDescription(ErrInvalidState))
+	}
+	stateSpan.End()
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to consume state: %v", ErrInvalidState, err)
 	}
@@ -155,7 +173,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 	issuer := expectedIssuer
 	r.issuer = issuer
 
-	provider, err := r.providerForCallback(req.Context(), issuer)
+	provider, err := r.providerForCallback(ctx, issuer)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +183,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, fmt.Errorf("%w: provider missing token endpoint", ErrTokenExchangeFailed)
 	}
 
-	tokenResp, err := r.exchangeToken(req.Context(), tokenEndpoint, code, data.CodeVerifier, data.Resources)
+	tokenResp, err := r.exchangeTokenSpan(ctx, tokenEndpoint, code, data.CodeVerifier, data.Resources)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +201,7 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		return nil, fmt.Errorf("%w: token response missing id_token", ErrIDTokenValidationFailed)
 	}
 
-	claims, err := r.validateIDToken(req.Context(), tokenResp.IDToken, data.Nonce, provider.JWKSURI, provider.IDTokenSigningAlgValuesSupported)
+	claims, err := r.validateIDTokenSpan(ctx, tokenResp.IDToken, data.Nonce, provider.JWKSURI, provider.IDTokenSigningAlgValuesSupported)
 	if err != nil {
 		return nil, err
 	}
@@ -201,12 +219,48 @@ func (r *RP) HandleCallback(w http.ResponseWriter, req *http.Request) (*Callback
 		transport = r.userInfoTokenTransport
 	}
 
-	userinfo, err := r.fetchUserInfo(req.Context(), userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
+	userinfo, err := r.fetchUserInfoSpan(ctx, userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
 	if err != nil {
 		return nil, err
 	}
 
 	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo, GrantID: tokenResp.GrantID, Cnf: claims.Cnf, VerifiedClaims: parseIDTokenVerifiedClaims(claims)}, nil
+}
+
+// exchangeTokenSpan wraps the code-for-token exchange with a child span.
+func (r *RP) exchangeTokenSpan(ctx context.Context, tokenEndpoint, code, verifier string, resources []string) (Token, error) {
+	ctx, span := r.spanStart(ctx, "rp.token_exchange",
+		attribute.String("lanyard.auth_method", string(r.resolvedAuthMethod)),
+	)
+	defer span.End()
+
+	token, err := r.exchangeToken(ctx, tokenEndpoint, code, verifier, resources)
+	spanError(span, err)
+	return token, err
+}
+
+// validateIDTokenSpan wraps ID token validation with a child span. The token
+// itself never enters telemetry; only algorithm identifiers do.
+func (r *RP) validateIDTokenSpan(ctx context.Context, rawIDToken, expectedNonce, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
+	ctx, span := r.spanStart(ctx, "rp.id_token_validation")
+	defer span.End()
+
+	claims, err := r.validateIDToken(ctx, rawIDToken, expectedNonce, jwksURL, providerAllowedAlgs)
+	spanError(span, err)
+	return claims, err
+}
+
+// fetchUserInfoSpan wraps the userinfo request with a child span. The access
+// token and response payload never enter telemetry.
+func (r *RP) fetchUserInfoSpan(ctx context.Context, endpoint, accessToken, expectedSub string, transport UserInfoTokenTransport) (map[string]any, error) {
+	ctx, span := r.spanStart(ctx, "rp.userinfo",
+		attribute.String("lanyard.userinfo_transport", string(transport)),
+	)
+	defer span.End()
+
+	payload, err := r.fetchUserInfo(ctx, endpoint, accessToken, expectedSub, transport)
+	spanError(span, err)
+	return payload, err
 }
 
 func parseIDTokenVerifiedClaims(claims idTokenClaims) []VerifiedClaims {
