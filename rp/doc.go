@@ -79,7 +79,7 @@
 // Providers supporting OpenID Connect for Identity Assurance 1.0 deliver
 // verified end-user claims in the verified_claims container. Build the
 // request with [NewClaimsRequest] and the verified-claims filters
-// ([ClaimsRequest.AddVerifiedClaimsToUserInfo] / [AddVerifiedClaimsToIDToken]),
+// ([ClaimsRequest.AddVerifiedClaimsToUserInfo] / [ClaimsRequest.AddVerifiedClaimsToIDToken]),
 // then pass the rendered JSON via [WithClaims] or [SetClaims]. The ID Token's
 // verified_claims surface on [CallbackResult.VerifiedClaims]; for UserInfo
 // delivery use [ParseVerifiedClaims]. Verification metadata is typed

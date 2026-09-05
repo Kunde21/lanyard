@@ -21,7 +21,7 @@
 //
 // # When to use this package directly
 //
-// Most callers should use the [metadata] or [rp] packages, which construct a
+// Most callers should use the metadata or rp packages, which construct a
 // RemoteKeySet as part of provider discovery. Use this package directly when
 // you have a JWKS URL and need key retrieval without OIDC discovery.
 package jwks

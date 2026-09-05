@@ -77,6 +77,8 @@ type IntrospectionResponse struct {
 
 type introspectionResponseJSON IntrospectionResponse
 
+// UnmarshalJSON decodes the introspection response and preserves the raw
+// payload for DecodeRaw.
 func (r *IntrospectionResponse) UnmarshalJSON(data []byte) error {
 	if r == nil {
 		return fmt.Errorf("introspection response is nil")

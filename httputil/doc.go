@@ -5,6 +5,6 @@
 // decoding to the caller. [CalculateFreshUntil] centralizes Cache-Control and
 // Expires handling with a caller-provided fallback TTL.
 //
-// Most applications should use the higher-level [metadata], [jwks], or [rp]
+// Most applications should use the higher-level metadata, jwks, or rp
 // packages instead of this package directly.
 package httputil
