@@ -190,6 +190,15 @@ func (c *clientConfig) grantResourceURL(grantID string) (string, error) {
 }
 
 func (c *clientConfig) queryGrant(ctx context.Context, accessToken, grantID string) (GrantStatus, error) {
+	ctx, span := c.spanStart(ctx, "rp.grant_query")
+	defer span.End()
+
+	status, err := c.queryGrantInner(ctx, accessToken, grantID)
+	spanError(span, err)
+	return status, err
+}
+
+func (c *clientConfig) queryGrantInner(ctx context.Context, accessToken, grantID string) (GrantStatus, error) {
 	resourceURL, err := c.grantResourceURL(grantID)
 	if err != nil {
 		return GrantStatus{}, err
@@ -219,6 +228,15 @@ func (c *clientConfig) queryGrant(ctx context.Context, accessToken, grantID stri
 }
 
 func (c *clientConfig) revokeGrant(ctx context.Context, accessToken, grantID string) error {
+	ctx, span := c.spanStart(ctx, "rp.grant_revoke")
+	defer span.End()
+
+	err := c.revokeGrantInner(ctx, accessToken, grantID)
+	spanError(span, err)
+	return err
+}
+
+func (c *clientConfig) revokeGrantInner(ctx context.Context, accessToken, grantID string) error {
 	resourceURL, err := c.grantResourceURL(grantID)
 	if err != nil {
 		return err

@@ -238,6 +238,15 @@ type ClientUpdate struct {
 // registration access token and client URI. The initial access token set via
 // [WithInitialAccessToken], if any, authorizes the request.
 func (g *Registrar) Register(ctx context.Context, meta ClientMetadata) (ClientRegistration, error) {
+	ctx, span := g.spanStart(ctx, "rp.registration_register")
+	defer span.End()
+
+	reg, err := g.register(ctx, meta)
+	spanError(span, err)
+	return reg, err
+}
+
+func (g *Registrar) register(ctx context.Context, meta ClientMetadata) (ClientRegistration, error) {
 	if err := meta.validate(); err != nil {
 		return ClientRegistration{}, err
 	}
@@ -248,6 +257,15 @@ func (g *Registrar) Register(ctx context.Context, meta ClientMetadata) (ClientRe
 // configuration endpoint (RFC 7592 section 2.1). accessToken is the
 // registration access token issued at registration or update time.
 func (g *Registrar) Read(ctx context.Context, registrationClientURI, accessToken string) (ClientRegistration, error) {
+	ctx, span := g.spanStart(ctx, "rp.registration_read")
+	defer span.End()
+
+	reg, err := g.read(ctx, registrationClientURI, accessToken)
+	spanError(span, err)
+	return reg, err
+}
+
+func (g *Registrar) read(ctx context.Context, registrationClientURI, accessToken string) (ClientRegistration, error) {
 	if err := validateRegistrationManagementArgs(registrationClientURI, accessToken); err != nil {
 		return ClientRegistration{}, err
 	}
@@ -259,6 +277,18 @@ func (g *Registrar) Read(ctx context.Context, registrationClientURI, accessToken
 // the server MAY rotate the client secret, so always persist the returned
 // value. The request is authorized with the registration access token.
 func (g *Registrar) Update(ctx context.Context, registrationClientURI, accessToken string, update ClientUpdate) (ClientRegistration, error) {
+	ctx, span := g.spanStart(ctx, "rp.registration_update")
+	defer span.End()
+
+	reg, err := g.update(ctx, registrationClientURI, accessToken, update)
+	if err == nil && reg.ClientSecret != "" {
+		span.AddEvent("secret_rotated")
+	}
+	spanError(span, err)
+	return reg, err
+}
+
+func (g *Registrar) update(ctx context.Context, registrationClientURI, accessToken string, update ClientUpdate) (ClientRegistration, error) {
 	if err := validateRegistrationManagementArgs(registrationClientURI, accessToken); err != nil {
 		return ClientRegistration{}, err
 	}
@@ -275,6 +305,15 @@ func (g *Registrar) Update(ctx context.Context, registrationClientURI, accessTok
 // delete the client_id and secret, the registration access token, and all
 // tokens issued to the client are invalid.
 func (g *Registrar) Delete(ctx context.Context, registrationClientURI, accessToken string) error {
+	ctx, span := g.spanStart(ctx, "rp.registration_delete")
+	defer span.End()
+
+	err := g.delete(ctx, registrationClientURI, accessToken)
+	spanError(span, err)
+	return err
+}
+
+func (g *Registrar) delete(ctx context.Context, registrationClientURI, accessToken string) error {
 	if err := validateRegistrationManagementArgs(registrationClientURI, accessToken); err != nil {
 		return err
 	}

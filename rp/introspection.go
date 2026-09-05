@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // ErrIntrospectionFailed indicates a token introspection request failed.
@@ -197,6 +198,23 @@ func (r *RP) IntrospectToken(ctx context.Context, req IntrospectionRequest) (Int
 }
 
 func (c *clientConfig) introspectToken(ctx context.Context, in IntrospectionRequest) (IntrospectionResponse, error) {
+	ctx, span := c.spanStart(ctx, "rp.introspection",
+		attribute.Bool("lanyard.jwt_response_preferred", in.PreferJWTResponse),
+	)
+	defer span.End()
+
+	resp, err := c.introspectTokenInner(ctx, in)
+	if err == nil {
+		span.SetAttributes(attribute.Bool("lanyard.active", resp.Active))
+		if resp.RawJWT() != "" {
+			span.AddEvent("jwt_response")
+		}
+	}
+	spanError(span, err)
+	return resp, err
+}
+
+func (c *clientConfig) introspectTokenInner(ctx context.Context, in IntrospectionRequest) (IntrospectionResponse, error) {
 	if strings.TrimSpace(in.Token) == "" {
 		return IntrospectionResponse{}, fmt.Errorf("%w: token is required", ErrIntrospectionFailed)
 	}
