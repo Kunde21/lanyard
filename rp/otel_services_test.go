@@ -27,7 +27,7 @@ func otelIssuerServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server,
 			AuthorizationServer: metadata.AuthorizationServer{
 				Issuer:                            "https://issuer.test",
 				AuthorizationEndpoint:             "https://issuer.test/authorize",
-				TokenEndpoint:                     "https://issuer.test/token",
+				TokenEndpoint:                     server.URL + "/token",
 				JWKSURI:                           "https://issuer.test/jwks",
 				IntrospectionEndpoint:             server.URL + "/introspect",
 				RegistrationEndpoint:              server.URL + "/register",
