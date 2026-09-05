@@ -110,6 +110,7 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 		freshSet, freshErr := jwks.NewRemoteKeySet(
 			jwksURL,
 			jwks.WithHTTPClient(r.httpClient),
+			jwks.WithLogger(r.logger),
 			jwks.WithDefaultTTL(time.Second),
 			jwks.WithMinRefreshInterval(0),
 		)
