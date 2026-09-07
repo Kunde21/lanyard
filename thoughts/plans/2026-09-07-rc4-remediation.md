@@ -1,5 +1,7 @@
 # Fourth RC Review Remediation Plan
 
+**STATUS: COMPLETE 2026-09-07.** R1 6370a49 (go-jose v4.1.4 + govulncheck CI gate, 0 reachable vulns), R6 0bb19da (FAPI JARM PS256/ES256), R4 f25c9c1 (explicit DPoP proof attachment independent of auth method + keyless rejection), R3 54804dd (clientConfig-level cert wiring in all four constructors + MTLS-without-cert rejection), R5 b7f584e (issuer-validation opt-out rejected under FAPI, FAPI1 hybrid default, FAPI1 DPoP rejection), R7 c5eeaf0 (__Host- cookie store default + prefix rules + browser regression), R2 c487922 (endpoint https validation incl. preloaded+extension+mTLS aliases with loopback exemption; sensitive-request redirect policy rejecting downgrade/cross-origin). Full suite + race green throughout.
+
 **Source:** `thoughts/reviews/stable-rc-readiness-348fa1d.md` (revision `348fa1d`).
 **Goal:** all seven findings fixed, atomic commits, regression coverage each.
 
