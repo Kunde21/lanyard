@@ -84,7 +84,7 @@ func (c *ClientCredentials) token(ctx context.Context) (*Token, error) {
 		return tokenGrantResult{token: *tokenResp, status: status, preview: preview}, err
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrClientCredentialsFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrClientCredentialsFailed, err)
 	}
 	return &token, nil
 }

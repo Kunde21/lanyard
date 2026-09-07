@@ -47,7 +47,7 @@ func (r *RP) refreshToken(ctx context.Context, refreshToken string) (Token, erro
 		if errors.As(err, &oauthErr) && oauthErr.Code == oauthErrorInvalidGrant {
 			return Token{}, fmt.Errorf("%w: %w: %w", ErrRefreshTokenFailed, ErrRefreshTokenRejected, err)
 		}
-		return Token{}, fmt.Errorf("%w: %v", ErrRefreshTokenFailed, err)
+		return Token{}, fmt.Errorf("%w: %w", ErrRefreshTokenFailed, err)
 	}
 	return tokenResp, nil
 }

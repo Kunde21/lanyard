@@ -339,7 +339,7 @@ func (r *RP) resolveProvider(ctx context.Context) error {
 
 	discovered, err := r.discoverProviderMetadataForMode(ctx, r.issuer, mode)
 	if err != nil {
-		return fmt.Errorf("%w: failed to discover provider: %v", ErrInvalidConfiguration, err)
+		return fmt.Errorf("%w: failed to discover provider: %w", ErrInvalidConfiguration, err)
 	}
 
 	if r.configuredProviderSet {

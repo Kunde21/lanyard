@@ -636,3 +636,72 @@ func TestBuildTokenRequestEnvelopeBasicAuthURLEncodesCredentials(t *testing.T) {
 		t.Fatalf("round-tripped username = %q", decodedID)
 	}
 }
+
+// TestPublicErrorsPreserveCauses: sentinel AND cause chains survive public
+// boundaries so consumers can errors.Is on sentinels and errors.As on
+// *OAuthError (RC review F12).
+func TestPublicErrorsPreserveCauses(t *testing.T) {
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = io.WriteString(w, `{"error":"invalid_client","error_description":"bad credentials"}`)
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = ts.URL
+
+	// Client credentials: sentinel + OAuthError both reachable.
+	cc, err := NewClientCredentials(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("wrong-secret"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+	_, err = cc.Token(context.Background())
+	if !errors.Is(err, ErrClientCredentialsFailed) {
+		t.Fatalf("client credentials error = %v, want ErrClientCredentialsFailed", err)
+	}
+	var oauthErr *OAuthError
+	if !errors.As(err, &oauthErr) {
+		t.Fatalf("client credentials error = %v, want *OAuthError chain", err)
+	}
+	if oauthErr.Code != "invalid_client" || oauthErr.Description != "bad credentials" {
+		t.Fatalf("OAuthError = %+v", oauthErr)
+	}
+
+	// Refresh: sentinel + OAuthError both reachable for non-grant errors.
+	r, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("wrong-secret"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	_, err = r.RefreshToken(context.Background(), "some-refresh")
+	if !errors.Is(err, ErrRefreshTokenFailed) {
+		t.Fatalf("refresh error = %v, want ErrRefreshTokenFailed", err)
+	}
+	if !errors.As(err, &oauthErr) {
+		t.Fatalf("refresh error = %v, want *OAuthError chain", err)
+	}
+
+	// Discovery failure keeps its cause for diagnostics.
+	_, err = New(context.Background(), "https://unreachable.invalid",
+		WithClientID("client"),
+		WithRedirectURI("https://rp.test/callback"),
+	)
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("New() error = %v, want ErrInvalidConfiguration", err)
+	}
+	if !strings.Contains(err.Error(), "failed to discover provider") {
+		t.Fatalf("New() error = %v, want discovery cause text", err)
+	}
+}
