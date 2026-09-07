@@ -392,6 +392,13 @@ func signIDToken(t *testing.T, key *rsa.PrivateKey, kid string, claims map[strin
 	return signIDTokenWithAlg(t, key, kid, claims, jose.RS256)
 }
 
+// signIDTokenPS256 signs with PS256 for FAPI-profile fixtures (FAPI accepts
+// only PS256/ES256).
+func signIDTokenPS256(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]any) string {
+	t.Helper()
+	return signIDTokenWithAlg(t, key, kid, claims, jose.PS256)
+}
+
 func signIDTokenWithAlg(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]any, alg jose.SignatureAlgorithm) string {
 	t.Helper()
 
@@ -737,5 +744,77 @@ func TestValidateIDToken_UsesProviderJWKSWihoutDiscovery(t *testing.T) {
 	}
 	if claims.Subject != "sub-123" {
 		t.Fatalf("subject = %q", claims.Subject)
+	}
+}
+
+// TestFAPIProfileRejectsDisallowedIDTokenAlgorithms: FAPI profiles accept
+// only PS256/ES256 ID tokens even when the provider advertises more (FAPI
+// policy audit A1).
+func TestFAPIProfileRejectsDisallowedIDTokenAlgorithms(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	now := time.Now().UTC()
+
+	r := claimsTestRP(t, WithProfile(FAPI2SecurityProfile),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithProviderMetadata(providerWithPAR(providerForAuthMethods("private_key_jwt", "tls_client_auth"), "https://issuer.test/par")),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid", "PS256", testTLSCertificate(key))),
+		WithRequestMethod("signed_non_repudiation"),
+	)
+
+	rs256 := signIDToken(t, key, "kid", map[string]any{
+		"iss": "https://issuer.test", "sub": "sub", "aud": []string{"client"},
+		"exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "n",
+	})
+	if _, err := r.validateIDToken(context.Background(), rs256, "n", "", []string{"RS256", "PS256"}); err == nil {
+		t.Fatal("RS256 id_token accepted under FAPI profile")
+	}
+
+	ps256 := signIDTokenPS256(t, key, "kid", map[string]any{
+		"iss": "https://issuer.test", "sub": "sub", "aud": []string{"client"},
+		"exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "n",
+	})
+	_, psErr := r.validateIDToken(context.Background(), ps256, "n", "", []string{"PS256"})
+	if psErr != nil && strings.Contains(psErr.Error(), `expected ["PS256" "ES256"]`) {
+		t.Fatalf("PS256 id_token rejected by the algorithm gate: %v", psErr)
+	}
+}
+
+// TestFAPIProfileEnforcesKeyPolicy: FAPI construction rejects RS256 signing
+// material and RSA keys under 2048 bits (FAPI policy audit A2+A4).
+func TestFAPIProfileEnforcesKeyPolicy(t *testing.T) {
+	weakKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatalf("GenerateKey(1024) failed: %v", err)
+	}
+	strongKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey(2048) failed: %v", err)
+	}
+
+	newFAPI := func(key *rsa.PrivateKey, alg string) (*RP, error) {
+		return New(context.Background(), "https://issuer.test",
+			WithClientID("client"),
+			WithRedirectURI("https://rp.test/callback"),
+			WithProviderMetadata(providerWithPAR(providerForAuthMethods(), "https://issuer.test/par")),
+			WithProfile(FAPI2SecurityProfile),
+			WithAuthMethod(AuthMethodPrivateKeyJWT),
+			WithSenderConstrain(SenderConstraintMTLS),
+			WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid", alg, testTLSCertificate(strongKey))),
+			WithRequestMethod("signed_non_repudiation"),
+		)
+	}
+
+	if _, err := newFAPI(strongKey, "RS256"); err == nil || !strings.Contains(err.Error(), "PS256 or ES256") {
+		t.Fatalf("RS256 signing material err = %v, want PS256/ES256 restriction", err)
+	}
+	if _, err := newFAPI(weakKey, "PS256"); err == nil || !strings.Contains(err.Error(), "at least 2048") {
+		t.Fatalf("weak key err = %v, want 2048-bit floor", err)
+	}
+	if _, err := newFAPI(strongKey, "PS256"); err != nil {
+		t.Fatalf("compliant configuration rejected: %v", err)
 	}
 }

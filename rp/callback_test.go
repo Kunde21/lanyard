@@ -631,7 +631,7 @@ func callbackRequestWithIDToken(code, state, iss, idToken string) (*httptest.Res
 }
 
 func providerMetadataJSONWithEndpoints(issuer string) string {
-	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}`
+	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256","PS256"]}`
 }
 
 func TestHandleCallback_RejectsInvalidAuthorizationResponseIDTokenBeforeTokenExchange(t *testing.T) {
@@ -979,7 +979,7 @@ func TestHandleCallback_FAPISkipsUserInfo(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
 		case "/token":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"access_token":"access","token_type":"Bearer","id_token":"` + signIDToken(t, signingKey, "kid-1", map[string]any{
+			_, _ = w.Write([]byte(`{"access_token":"access","token_type":"Bearer","id_token":"` + signIDTokenPS256(t, signingKey, "kid-1", map[string]any{
 				"iss":   issuer,
 				"sub":   "subject-123",
 				"aud":   []string{"client-id"},
@@ -1038,7 +1038,7 @@ func TestHandleCallback_FAPISkipsUserInfo(t *testing.T) {
 }
 
 func providerMetadataJSONWithMTLSEndpoints(issuer string) string {
-	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","mtls_endpoint_aliases":{"token_endpoint":"` + issuer + `/mtls/token","userinfo_endpoint":"` + issuer + `/mtls/userinfo","pushed_authorization_request_endpoint":"` + issuer + `/mtls/par"},"pushed_authorization_request_endpoint":"` + issuer + `/par","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256"]}`
+	return `{"issuer":"` + issuer + `","authorization_endpoint":"` + issuer + `/authorize","token_endpoint":"` + issuer + `/token","userinfo_endpoint":"` + issuer + `/userinfo","jwks_uri":"` + issuer + `/jwks","mtls_endpoint_aliases":{"token_endpoint":"` + issuer + `/mtls/token","userinfo_endpoint":"` + issuer + `/mtls/userinfo","pushed_authorization_request_endpoint":"` + issuer + `/mtls/par"},"pushed_authorization_request_endpoint":"` + issuer + `/par","response_types_supported":["code"],"subject_types_supported":["public"],"id_token_signing_alg_values_supported":["RS256","PS256"]}`
 }
 
 func formPostCallbackRequest(code, state string) (*httptest.ResponseRecorder, *http.Request) {
@@ -1209,7 +1209,7 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 			if storedNonce != "" {
 				tokenClaims["nonce"] = storedNonce
 			}
-			tokenBody := `{"access_token":"access-token-123","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, signingKey, "kid-1", tokenClaims) + `"}`
+			tokenBody := `{"access_token":"access-token-123","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDTokenPS256(t, signingKey, "kid-1", tokenClaims) + `"}`
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(tokenBody))
 		default:
@@ -1294,7 +1294,7 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 		"c_hash": cHash,
 		"s_hash": sHash,
 	}
-	authzIDToken := signIDToken(t, signingKey, "kid-1", authzIDTokenClaims)
+	authzIDToken := signIDTokenPS256(t, signingKey, "kid-1", authzIDTokenClaims)
 
 	rec, req := callbackRequestWithIDToken(code, state, "", authzIDToken)
 	propagateBindingCookie(loginRec, req)
@@ -1355,7 +1355,7 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 			if tokenNonce != "" {
 				tokenClaims["nonce"] = tokenNonce
 			}
-			tokenBody := `{"access_token":"access-token-456","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDToken(t, signingKey, "kid-1", tokenClaims) + `"}`
+			tokenBody := `{"access_token":"access-token-456","token_type":"Bearer","expires_in":3600,"id_token":"` + signIDTokenPS256(t, signingKey, "kid-1", tokenClaims) + `"}`
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(tokenBody))
 		default:
@@ -1446,7 +1446,7 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 		"c_hash": cHash,
 		"s_hash": sHash,
 	}
-	authzIDToken := signIDToken(t, signingKey, "kid-1", authzIDTokenClaims)
+	authzIDToken := signIDTokenPS256(t, signingKey, "kid-1", authzIDTokenClaims)
 
 	rec, req := callbackRequestWithIDToken(code, state, issuer, authzIDToken)
 	propagateBindingCookie(loginRec, req)

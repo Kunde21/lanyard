@@ -47,6 +47,14 @@ type idTokenClaims struct {
 	VerifiedClaims json.RawMessage `json:"verified_claims,omitempty"`
 }
 
+// fapiSupportedIDTokenAlgs restricts accepted ID token algorithms under
+// FAPI profiles to the PS256/ES256 set the specifications require
+// (FAPI 1.0 Advanced section 8.6, FAPI 2.0 Security Profile section 5.2).
+var fapiSupportedIDTokenAlgs = []jose.SignatureAlgorithm{
+	jose.PS256,
+	jose.ES256,
+}
+
 var supportedIDTokenAlgs = []jose.SignatureAlgorithm{
 	jose.RS256,
 	jose.RS384,
@@ -65,12 +73,16 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 }
 
 func (r *RP) validateIDTokenAs(ctx context.Context, rawIDToken, expectedNonce, jwksURL string, providerAllowedAlgs []string, id flowIdentity) (idTokenClaims, error) {
+	parseAlgs := supportedIDTokenAlgs
+	if r.profile.isFAPI() {
+		parseAlgs = fapiSupportedIDTokenAlgs
+	}
 	rawIDToken, _, err := r.decryptIDTokenIfNeeded(rawIDToken)
 	if err != nil {
 		return idTokenClaims{}, err
 	}
 
-	parsed, err := jwt.ParseSigned(rawIDToken, supportedIDTokenAlgs)
+	parsed, err := jwt.ParseSigned(rawIDToken, parseAlgs)
 	if err != nil {
 		return idTokenClaims{}, fmt.Errorf("%w: parse id_token: %v", ErrIDTokenValidationFailed, err)
 	}

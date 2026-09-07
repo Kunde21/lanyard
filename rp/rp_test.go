@@ -1321,3 +1321,60 @@ func TestWithRequestMethodUnknownValueRejected(t *testing.T) {
 		t.Fatalf("error = %v, want unknown-request-method message", err)
 	}
 }
+
+// TestMTLSClientCertificateWiredIntoTransport: configuring mTLS client
+// authentication presents the key provider's certificate on the RP's own
+// connections - a configured certificate is not a mutual-TLS connection
+// until it reaches the transport (FAPI policy audit A3).
+func TestMTLSClientCertificateWiredIntoTransport(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	cert := testTLSCertificate(key)
+
+	r, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(providerWithPAR(providerForAuthMethods(), "https://issuer.test/par")),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid", "PS256", cert)),
+		WithRequestMethod("signed_non_repudiation"),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	transport, ok := r.httpClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport = %T, want *http.Transport", r.httpClient.Transport)
+	}
+	if transport.TLSClientConfig == nil || transport.TLSClientConfig.GetClientCertificate == nil {
+		t.Fatal("GetClientCertificate not wired into the RP transport")
+	}
+	presented, err := transport.TLSClientConfig.GetClientCertificate(nil)
+	if err != nil {
+		t.Fatalf("GetClientCertificate() failed: %v", err)
+	}
+	if len(presented.Certificate) == 0 {
+		t.Fatal("wired certificate carries no certificate chain")
+	}
+	if presentedKey, ok := presented.PrivateKey.(*rsa.PrivateKey); !ok || !presentedKey.Equal(key) {
+		t.Fatal("wired certificate does not match the key provider's")
+	}
+
+	// Non-mTLS configuration leaves the consumer's transport untouched.
+	plain, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(providerForAuthMethods()),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if plain.httpClient.Transport != nil {
+		t.Fatal("non-mTLS configuration modified the consumer transport")
+	}
+}
