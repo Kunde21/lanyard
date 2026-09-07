@@ -1,12 +1,14 @@
 package memory
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -70,8 +72,8 @@ func TestCorrelationBrowserBindingCrossSiteCallbacks(t *testing.T) {
 			rpURL = browserSiteURL(rpServer.URL, "rp.test")
 			issuerURL = browserSiteURL(issuerServer.URL, "issuer.test")
 			close(ready)
-			profileDir := t.TempDir()
-			output := runChromium(t, browser, profileDir, rpURL+"/start")
+			profileDir := chromiumProfileDir(t)
+			output := runChromiumAwait(t, browser, profileDir, rpURL+"/start", []string{"callback-accepted"})
 			if !strings.Contains(output, "callback-accepted") {
 				t.Fatalf("cross-site %s callback was not accepted; browser output:\n%s", mode, output)
 			}
@@ -111,17 +113,17 @@ func TestCorrelationBrowserBindingRejectsDifferentBrowser(t *testing.T) {
 	defer rpServer.Close()
 	rpURL = browserSiteURL(rpServer.URL, "rp.test")
 
-	initiatingProfile := t.TempDir()
-	if output := runChromium(t, browser, initiatingProfile, rpURL+"/bind"); !strings.Contains(output, "binding-created") {
+	initiatingProfile := chromiumProfileDir(t)
+	if output := runChromiumAwait(t, browser, initiatingProfile, rpURL+"/bind", []string{"binding-created"}); !strings.Contains(output, "binding-created") {
 		t.Fatalf("initiating browser did not create binding; browser output:\n%s", output)
 	}
 
-	otherProfile := t.TempDir()
-	if output := runChromium(t, browser, otherProfile, rpURL+"/callback"); !strings.Contains(output, "callback-rejected") {
+	otherProfile := chromiumProfileDir(t)
+	if output := runChromiumAwait(t, browser, otherProfile, rpURL+"/callback", []string{"callback-rejected"}); !strings.Contains(output, "callback-rejected") {
 		t.Fatalf("different browser was not rejected; browser output:\n%s", output)
 	}
 
-	if output := runChromium(t, browser, initiatingProfile, rpURL+"/callback"); !strings.Contains(output, "callback-accepted") {
+	if output := runChromiumAwait(t, browser, initiatingProfile, rpURL+"/callback", []string{"callback-accepted"}); !strings.Contains(output, "callback-accepted") {
 		t.Fatalf("initiating browser could not consume correlation; browser output:\n%s", output)
 	}
 }
@@ -138,6 +140,26 @@ func chromiumPath(t *testing.T) string {
 	return ""
 }
 
+// chromiumProfileDir creates a scratch profile directory whose cleanup
+// tolerates Chromium child processes still writing after the kill that
+// follows marker detection (t.TempDir fails hard on that race).
+func chromiumProfileDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "chromium-profile-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp() failed: %v", err)
+	}
+	t.Cleanup(func() {
+		for attempt := 0; attempt < 10; attempt++ {
+			if err := os.RemoveAll(dir); err == nil {
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	})
+	return dir
+}
+
 func browserSiteURL(serverURL, host string) string {
 	parsed, err := url.Parse(serverURL)
 	if err != nil {
@@ -148,9 +170,18 @@ func browserSiteURL(serverURL, host string) string {
 	return parsed.String()
 }
 
-func runChromium(t *testing.T, browser, profileDir, target string) string {
+// runChromiumAwait launches headless Chromium with --dump-dom and returns
+// its output as soon as one of the markers appears on stdout. Success is
+// driven by the page content, not by process exit: some CI environments
+// (notably snap Chromium on GitHub runners) dump the DOM but then hang at
+// shutdown, which must not fail an otherwise successful navigation
+// (third RC review T6).
+func runChromiumAwait(t *testing.T, browser, profileDir, target string, markers []string) string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+
+	// Generous deadline: cold-start fontconfig cache builds on 2-core CI
+	// runners can make the first Chromium launch slow.
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 
 	args := []string{
@@ -159,6 +190,8 @@ func runChromium(t *testing.T, browser, profileDir, target string) string {
 		"--disable-gpu",
 		"--disable-dev-shm-usage",
 		"--disable-background-networking",
+		"--disable-crash-reporter",
+		"--disable-component-update",
 		"--no-first-run",
 		"--no-proxy-server",
 		"--ignore-certificate-errors",
@@ -167,9 +200,42 @@ func runChromium(t *testing.T, browser, profileDir, target string) string {
 		"--dump-dom",
 		target,
 	}
-	output, err := exec.CommandContext(ctx, browser, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, browser, args...)
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		t.Fatalf("Chromium failed: %v\n%s", err, output)
+		t.Fatalf("Chromium stdout pipe failed: %v", err)
 	}
-	return string(output)
+	cmd.Stderr = nil
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Chromium failed to start: %v", err)
+	}
+
+	var collected strings.Builder
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			collected.WriteString(line)
+			collected.WriteByte('\n')
+			for _, marker := range markers {
+				if strings.Contains(line, marker) {
+					_ = cmd.Process.Kill()
+					return
+				}
+			}
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		_ = cmd.Process.Kill()
+		<-done
+		t.Fatalf("Chromium timed out after %v; browser output:\n%s", 90*time.Second, collected.String())
+	}
+	_ = cmd.Wait()
+	return collected.String()
 }
