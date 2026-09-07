@@ -19,11 +19,19 @@ func pushedAuthorizationRequestEndpointWithAuthMethod(provider metadata.Provider
 	return provider.PushedAuthorizationRequestEndpoint
 }
 
-func (r *RP) tokenEndpoint(provider metadata.Provider) string {
-	if r.usesMTLSForTokenEndpoint() && provider.MTLSEndpointAliases.TokenEndpoint != "" {
+// effectiveTokenEndpoint selects the token endpoint, honoring the mTLS
+// endpoint alias when the configuration uses mTLS (tls_client_auth,
+// self_signed_tls_client_auth, or mTLS sender constraining). Shared by the
+// RP flows and the client-credentials grant (third RC review T4).
+func (c *clientConfig) effectiveTokenEndpoint(provider metadata.Provider) string {
+	if c.usesMTLSForTokenEndpoint() && provider.MTLSEndpointAliases.TokenEndpoint != "" {
 		return provider.MTLSEndpointAliases.TokenEndpoint
 	}
 	return provider.TokenEndpoint
+}
+
+func (r *RP) tokenEndpoint(provider metadata.Provider) string {
+	return r.effectiveTokenEndpoint(provider)
 }
 
 func (r *RP) userInfoEndpoint(provider metadata.Provider) string {
@@ -34,8 +42,12 @@ func (r *RP) userInfoEndpoint(provider metadata.Provider) string {
 }
 
 func (r *RP) usesMTLSForTokenEndpoint() bool {
-	method, _ := r.authMethodState()
-	return method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth || r.senderConstrain == SenderConstraintMTLS
+	return r.clientConfig.usesMTLSForTokenEndpoint()
+}
+
+func (c *clientConfig) usesMTLSForTokenEndpoint() bool {
+	method, _ := c.authMethodState()
+	return method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth || c.senderConstrain == SenderConstraintMTLS
 }
 
 func (c *clientConfig) introspectionEndpoint(provider metadata.Provider) string {

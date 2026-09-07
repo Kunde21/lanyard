@@ -1165,3 +1165,38 @@ func TestSelectAuthMethod_CredentialAware(t *testing.T) {
 		t.Fatalf("method = %q, want private_key_jwt", method2)
 	}
 }
+
+// TestClientCredentialsUsesMTLSEndpointAlias: with mTLS client auth, the
+// grant targets the provider's advertised mTLS token endpoint alias for
+// transport, assertion audience, and DPoP nonce bookkeeping (third RC
+// review T4).
+func TestClientCredentialsUsesMTLSEndpointAlias(t *testing.T) {
+	var hitPath string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hitPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"access_token":"at","token_type":"Bearer","expires_in":3600}`)
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = ts.URL + "/ordinary"
+	provider.MTLSEndpointAliases.TokenEndpoint = ts.URL + "/mtls"
+
+	cc, err := NewClientCredentials(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+	if _, err := cc.Token(context.Background()); err != nil {
+		t.Fatalf("Token() failed: %v", err)
+	}
+	if hitPath != "/mtls" {
+		t.Fatalf("request path = %q, want /mtls", hitPath)
+	}
+}

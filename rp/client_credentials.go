@@ -125,7 +125,7 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 	case AuthMethodClientSecretJWT:
 		audience := c.issuer
 		if audience == "" {
-			audience = c.provider.TokenEndpoint
+			audience = c.effectiveTokenEndpoint(c.provider)
 		}
 		assertion, err := buildClientSecretJWTAssertion(c.clientID, c.clientSecret, audience, c.now(), c.randReader)
 		if err != nil {
@@ -151,11 +151,11 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 			return c.clientConfig.attachDPoPProof(req, nonce)
 		},
 		storeNonce: func(resp *http.Response) {
-			c.clientConfig.extractAndStoreDPoPNonce(resp, c.provider.TokenEndpoint)
+			c.clientConfig.extractAndStoreDPoPNonce(resp, c.effectiveTokenEndpoint(c.provider))
 		},
 		httpClient:  c.httpClient,
 		useDPoP:     useDPoP,
-		cachedNonce: c.clientConfig.cachedDPoPNonce(c.provider.TokenEndpoint),
+		cachedNonce: c.clientConfig.cachedDPoPNonce(c.effectiveTokenEndpoint(c.provider)),
 	})
 	if err != nil {
 		return nil, 0, "", err
@@ -173,9 +173,9 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 }
 
 func (c *ClientCredentials) buildTokenRequest(ctx context.Context, method AuthMethod, form url.Values) (*http.Request, error) {
-	return buildTokenRequestEnvelope(ctx, c.provider.TokenEndpoint, form, method, c.clientID, c.clientSecret)
+	return buildTokenRequestEnvelope(ctx, c.effectiveTokenEndpoint(c.provider), form, method, c.clientID, c.clientSecret)
 }
 
 func (c *ClientCredentials) buildClientAssertion() (string, error) {
-	return buildPrivateKeyClientAssertion(c.clientID, c.provider.TokenEndpoint, c.clientKeyProvider, c.now(), c.randReader)
+	return buildPrivateKeyClientAssertion(c.clientID, c.effectiveTokenEndpoint(c.provider), c.clientKeyProvider, c.now(), c.randReader)
 }
