@@ -130,7 +130,15 @@ func (s *Store) SaveCorrelation(_ context.Context, w http.ResponseWriter, req *h
 	return s.saveSessionPayload(session, current, req, w)
 }
 
-// ConsumeCorrelation atomically loads and removes callback correlation state.
+// ConsumeCorrelation loads and removes callback correlation state by
+// rewriting the session cookie.
+//
+// Consumption contract: the removal lives in the updated cookie sent on the
+// response. A client that replays the ORIGINAL cookie value can re-read the
+// correlation until its expiry; the authorization server's single-use
+// authorization code remains the replay barrier for token redemption.
+// Applications needing strict one-time consumption server-side should use
+// the default memory store or their own server-backed StateStore.
 func (s *Store) ConsumeCorrelation(_ context.Context, w http.ResponseWriter, req *http.Request, state string) (rpstore.CallbackCorrelation, bool, error) {
 	if state == "" {
 		return rpstore.CallbackCorrelation{}, false, fmt.Errorf("state must not be empty")
@@ -543,4 +551,13 @@ func ttlToMaxAge(ttl time.Duration) int {
 		return 1
 	}
 	return seconds
+}
+
+// pruneExpiredStates drops expired correlation states from the payload.
+func (s *Store) pruneExpiredStates(p *payload, now time.Time) {
+	for state, entry := range p.States {
+		if s.isExpired(entry, now) {
+			delete(p.States, state)
+		}
+	}
 }
