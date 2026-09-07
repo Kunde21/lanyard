@@ -684,3 +684,58 @@ func mustJSON(t *testing.T, v any) []byte {
 	}
 	return encoded
 }
+
+// TestValidateIDToken_UsesProviderJWKSWihoutDiscovery: with preloaded
+// provider metadata, signed-ID-token validation resolves keys from the
+// configured jwks_uri and never touches a discovery endpoint (RC review F5).
+func TestValidateIDToken_UsesProviderJWKSWihoutDiscovery(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+
+	// The issuer host serves ONLY /jwks; every discovery request 404s.
+	jwksOnly := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/jwks" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+	}))
+	defer jwksOnly.Close()
+
+	provider := providerForAuthMethods()
+	provider.JWKSURI = jwksOnly.URL + "/jwks"
+
+	r, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("a-very-secret-secret-0123456789abcdef"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(jwksOnly.Client()),
+		WithProviderMetadata(provider),
+		WithDiscoveryMode(DiscoveryDisabled),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	signed := signIDToken(t, key, "kid-1", map[string]any{
+		"iss":   "https://issuer.test",
+		"sub":   "sub-123",
+		"aud":   []string{"client"},
+		"exp":   now.Add(5 * time.Minute).Unix(),
+		"iat":   now.Unix(),
+		"nonce": "nonce-123",
+	})
+
+	claims, err := r.validateIDToken(context.Background(), signed, "nonce-123", "", []string{"RS256"})
+	if err != nil {
+		t.Fatalf("validateIDToken() failed (discovery was required?): %v", err)
+	}
+	if claims.Subject != "sub-123" {
+		t.Fatalf("subject = %q", claims.Subject)
+	}
+}

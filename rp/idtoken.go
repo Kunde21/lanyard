@@ -102,7 +102,15 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 		return claims, nil
 	}
 
-	keySet, err := r.metadataClient.RemoteKeySet(ctx, r.issuer)
+	// Resolve the key set from the provider's known jwks_uri. Going through
+	// RemoteKeySet(issuer) would re-run discovery, which breaks consumers
+	// that preloaded complete metadata or disabled discovery (RC review F5).
+	var keySet *jwks.RemoteKeySet
+	if jwksURI := strings.TrimSpace(r.provider.JWKSURI); jwksURI != "" {
+		keySet, err = r.metadataClient.RemoteKeySetFromJWKSURI(jwksURI)
+	} else {
+		keySet, err = r.metadataClient.RemoteKeySet(ctx, r.issuer)
+	}
 	if err != nil {
 		return idTokenClaims{}, fmt.Errorf("%w: load key set: %v", ErrIDTokenValidationFailed, err)
 	}
