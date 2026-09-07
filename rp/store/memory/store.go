@@ -30,6 +30,7 @@ type Store struct {
 	mu    sync.RWMutex
 	ttl   time.Duration
 	items map[string]stateEntry
+	now   func() time.Time
 }
 
 type stateEntry struct {
@@ -50,6 +51,7 @@ func New(ttl time.Duration) *Store {
 	return &Store{
 		ttl:   ttl,
 		items: make(map[string]stateEntry),
+		now:   time.Now,
 	}
 }
 
@@ -61,7 +63,7 @@ func (s *Store) SaveCorrelation(_ context.Context, w http.ResponseWriter, r *htt
 		return fmt.Errorf("state must not be empty")
 	}
 
-	now := time.Now().UTC()
+	now := s.currentTime()
 	if correlation.CreatedAt.IsZero() {
 		correlation.CreatedAt = now
 	}
@@ -75,16 +77,18 @@ func (s *Store) SaveCorrelation(_ context.Context, w http.ResponseWriter, r *htt
 				return fmt.Errorf("generate state binding: %w", err)
 			}
 			binding = base64.RawURLEncoding.EncodeToString(token)
-			http.SetCookie(w, &http.Cookie{
-				Name:     bindingCookieName,
-				Value:    binding,
-				Path:     "/",
-				MaxAge:   int((s.ttl + time.Minute).Seconds()),
-				HttpOnly: true,
-				Secure:   true,
-				SameSite: http.SameSiteNoneMode,
-			})
 		}
+		bindingLifetime := s.ttl + time.Minute
+		http.SetCookie(w, &http.Cookie{
+			Name:     bindingCookieName,
+			Value:    binding,
+			Path:     "/",
+			Expires:  now.Add(bindingLifetime),
+			MaxAge:   int(bindingLifetime.Seconds()),
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteNoneMode,
+		})
 	}
 
 	s.mu.Lock()
@@ -120,7 +124,7 @@ func (s *Store) ConsumeCorrelation(_ context.Context, _ http.ResponseWriter, r *
 	if !ok {
 		return rpstore.CallbackCorrelation{}, false, nil
 	}
-	if s.isExpired(entry, time.Now().UTC()) {
+	if s.isExpired(entry, s.currentTime()) {
 		delete(s.items, state)
 		return rpstore.CallbackCorrelation{}, false, nil
 	}
@@ -149,7 +153,7 @@ func bindingCookieValue(r *http.Request) string {
 // sweepLocked evicts expired entries and, when the store is over capacity,
 // the soonest-to-expire survivors. Caller holds the write lock.
 func (s *Store) sweepLocked() {
-	now := time.Now().UTC()
+	now := s.currentTime()
 	for key, entry := range s.items {
 		if s.isExpired(entry, now) {
 			delete(s.items, key)
@@ -188,7 +192,7 @@ func (s *Store) LoadState(_ context.Context, _ *http.Request, state string) (rps
 	if !ok {
 		return rpstore.StateScope{}, false, nil
 	}
-	if s.isExpired(entry, time.Now().UTC()) {
+	if s.isExpired(entry, s.currentTime()) {
 		s.mu.Lock()
 		delete(s.items, state)
 		s.mu.Unlock()
@@ -225,7 +229,7 @@ func (s *Store) SaveValue(_ context.Context, _ http.ResponseWriter, _ *http.Requ
 
 	entry := s.items[state]
 	if entry.createdAt.IsZero() {
-		entry.createdAt = time.Now().UTC()
+		entry.createdAt = s.currentTime()
 	}
 	if entry.values == nil {
 		entry.values = make(map[string][]byte)
@@ -245,7 +249,7 @@ func (s *Store) LoadValue(_ context.Context, _ *http.Request, state, name string
 		return nil, false, fmt.Errorf("value name must not be empty")
 	}
 
-	now := time.Now().UTC()
+	now := s.currentTime()
 	s.mu.RLock()
 	entry, statePresent := s.items[state]
 	expired := statePresent && s.isExpired(entry, now)
@@ -263,7 +267,7 @@ func (s *Store) LoadValue(_ context.Context, _ *http.Request, state, name string
 	}
 	if expired {
 		s.mu.Lock()
-		if current, present := s.items[state]; present && s.isExpired(current, time.Now().UTC()) {
+		if current, present := s.items[state]; present && s.isExpired(current, s.currentTime()) {
 			delete(s.items, state)
 		}
 		s.mu.Unlock()
@@ -318,7 +322,7 @@ func (s *Store) ConsumeValue(_ context.Context, _ http.ResponseWriter, _ *http.R
 	if !ok {
 		return nil, false, nil
 	}
-	if s.isExpired(entry, time.Now().UTC()) {
+	if s.isExpired(entry, s.currentTime()) {
 		delete(s.items, state)
 		return nil, false, nil
 	}
@@ -335,6 +339,13 @@ func (s *Store) ConsumeValue(_ context.Context, _ http.ResponseWriter, _ *http.R
 	s.items[state] = entry
 
 	return cloneBytes(value), true, nil
+}
+
+func (s *Store) currentTime() time.Time {
+	if s.now == nil {
+		return time.Now().UTC()
+	}
+	return s.now().UTC()
 }
 
 func (s *Store) isExpired(entry stateEntry, now time.Time) bool {

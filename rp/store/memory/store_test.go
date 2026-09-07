@@ -322,8 +322,76 @@ func TestCorrelationBrowserBinding(t *testing.T) {
 	}
 }
 
-// TestStoreSweepBoundsMemory: saving beyond capacity evicts expired and
-// then soonest-to-expire entries (RC review F11).
+// TestCorrelationBrowserBindingRenewedForNearExpiryLogin verifies a reused
+// browser binding is renewed for every newly saved correlation.
+func TestCorrelationBrowserBindingRenewedForNearExpiryLogin(t *testing.T) {
+	const ttl = 10 * time.Minute
+	current := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	store := New(ttl)
+	store.now = func() time.Time { return current }
+
+	firstResponse := httptest.NewRecorder()
+	firstRequest := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	if err := store.SaveCorrelation(context.Background(), firstResponse, firstRequest, "state-1",
+		rpstore.CallbackCorrelation{Nonce: "first"}); err != nil {
+		t.Fatalf("first SaveCorrelation() failed: %v", err)
+	}
+	firstCookies := firstResponse.Result().Cookies()
+	if len(firstCookies) != 1 {
+		t.Fatalf("first binding cookies = %d, want 1", len(firstCookies))
+	}
+	firstCookie := firstCookies[0]
+
+	// Start another login shortly before the original browser binding expires.
+	// The correlation remains valid longer than that original cookie would.
+	current = current.Add(ttl + 30*time.Second)
+	secondResponse := httptest.NewRecorder()
+	secondRequest := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	secondRequest.AddCookie(&http.Cookie{Name: firstCookie.Name, Value: firstCookie.Value})
+	if err := store.SaveCorrelation(context.Background(), secondResponse, secondRequest, "state-2",
+		rpstore.CallbackCorrelation{Nonce: "second"}); err != nil {
+		t.Fatalf("second SaveCorrelation() failed: %v", err)
+	}
+	secondCookies := secondResponse.Result().Cookies()
+	if len(secondCookies) != 1 {
+		t.Fatalf("renewal binding cookies = %d, want 1", len(secondCookies))
+	}
+	renewed := secondCookies[0]
+	if diff := cmp.Diff(firstCookie.Value, renewed.Value); diff != "" {
+		t.Fatalf("renewed binding value mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(int((ttl + time.Minute).Seconds()), renewed.MaxAge); diff != "" {
+		t.Fatalf("renewed MaxAge mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(current.Add(ttl+time.Minute), renewed.Expires); diff != "" {
+		t.Fatalf("renewed Expires mismatch (-want +got):\n%s", diff)
+	}
+	if renewed.Path != "/" || !renewed.Secure || !renewed.HttpOnly || renewed.SameSite != http.SameSiteNoneMode {
+		t.Fatalf("renewed cookie attributes = Path:%q Secure:%t HttpOnly:%t SameSite:%v",
+			renewed.Path, renewed.Secure, renewed.HttpOnly, renewed.SameSite)
+	}
+
+	// This is after the original cookie's expiry but well within both the
+	// renewed binding lifetime and the second correlation's TTL.
+	current = current.Add(time.Minute)
+	callbackRequest := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", nil)
+	callbackRequest.AddCookie(&http.Cookie{Name: renewed.Name, Value: renewed.Value})
+	got, ok, err := store.ConsumeCorrelation(
+		context.Background(), httptest.NewRecorder(), callbackRequest, "state-2",
+	)
+	if err != nil {
+		t.Fatalf("ConsumeCorrelation() failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("second correlation was not consumable with renewed browser binding")
+	}
+	if diff := cmp.Diff("second", got.Nonce); diff != "" {
+		t.Fatalf("Nonce mismatch (-want +got):\n%s", diff)
+	}
+}
+
+// TestStoreSweepBoundsMemory verifies saving beyond capacity evicts expired
+// and then soonest-to-expire entries (RC review F11).
 func TestStoreSweepBoundsMemory(t *testing.T) {
 	store := New(time.Minute)
 	for i := 0; i < maxEntries+50; i++ {
