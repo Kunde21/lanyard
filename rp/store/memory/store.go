@@ -2,6 +2,8 @@ package memory
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"sync"
@@ -10,7 +12,18 @@ import (
 	rpstore "github.com/Kunde21/lanyard/rp/store"
 )
 
-const defaultTTL = 10 * time.Minute
+const (
+	defaultTTL = 10 * time.Minute
+
+	// bindingCookieName binds a saved correlation to the browser session
+	// that initiated the login, defeating cross-browser login-CSRF handoffs
+	// (RC review F1).
+	bindingCookieName = "lanyard_state_binding"
+
+	// maxEntries bounds memory use; the sweep evicts expired entries first
+	// and then the soonest-to-expire survivors (RC review F11).
+	maxEntries = 4096
+)
 
 // Store keeps RP state in process memory.
 type Store struct {
@@ -23,9 +36,12 @@ type stateEntry struct {
 	correlation rpstore.CallbackCorrelation
 	values      map[string][]byte
 	createdAt   time.Time
+	binding     string
 }
 
-// New creates an in-memory state store.
+// New creates an in-memory state store. Correlations saved through an HTTP
+// response are bound to the initiating browser via a cookie and can only be
+// consumed by a request presenting that cookie.
 func New(ttl time.Duration) *Store {
 	if ttl <= 0 {
 		ttl = defaultTTL
@@ -37,8 +53,10 @@ func New(ttl time.Duration) *Store {
 	}
 }
 
-// SaveCorrelation stores RP-managed callback correlation data.
-func (s *Store) SaveCorrelation(_ context.Context, _ http.ResponseWriter, _ *http.Request, state string, correlation rpstore.CallbackCorrelation) error {
+// SaveCorrelation stores RP-managed callback correlation data. When a
+// response writer and request are available, the correlation is bound to
+// the browser session via a secure cookie.
+func (s *Store) SaveCorrelation(_ context.Context, w http.ResponseWriter, r *http.Request, state string, correlation rpstore.CallbackCorrelation) error {
 	if state == "" {
 		return fmt.Errorf("state must not be empty")
 	}
@@ -46,6 +64,27 @@ func (s *Store) SaveCorrelation(_ context.Context, _ http.ResponseWriter, _ *htt
 	now := time.Now().UTC()
 	if correlation.CreatedAt.IsZero() {
 		correlation.CreatedAt = now
+	}
+
+	binding := ""
+	if w != nil && r != nil {
+		binding = bindingCookieValue(r)
+		if binding == "" {
+			token := make([]byte, 32)
+			if _, err := rand.Read(token); err != nil {
+				return fmt.Errorf("generate state binding: %w", err)
+			}
+			binding = base64.RawURLEncoding.EncodeToString(token)
+			http.SetCookie(w, &http.Cookie{
+				Name:     bindingCookieName,
+				Value:    binding,
+				Path:     "/",
+				MaxAge:   int((s.ttl + time.Minute).Seconds()),
+				HttpOnly: true,
+				Secure:   true,
+				SameSite: http.SameSiteLaxMode,
+			})
+		}
 	}
 
 	s.mu.Lock()
@@ -59,13 +98,17 @@ func (s *Store) SaveCorrelation(_ context.Context, _ http.ResponseWriter, _ *htt
 	if entry.values == nil {
 		entry.values = make(map[string][]byte)
 	}
+	entry.binding = binding
 	s.items[state] = entry
+	s.sweepLocked()
 
 	return nil
 }
 
-// ConsumeCorrelation atomically loads and removes callback correlation data.
-func (s *Store) ConsumeCorrelation(_ context.Context, _ http.ResponseWriter, _ *http.Request, state string) (rpstore.CallbackCorrelation, bool, error) {
+// ConsumeCorrelation atomically loads and removes callback correlation
+// data. A correlation saved with browser binding is only consumed by a
+// request presenting the same binding cookie.
+func (s *Store) ConsumeCorrelation(_ context.Context, _ http.ResponseWriter, r *http.Request, state string) (rpstore.CallbackCorrelation, bool, error) {
 	if state == "" {
 		return rpstore.CallbackCorrelation{}, false, fmt.Errorf("state must not be empty")
 	}
@@ -82,8 +125,47 @@ func (s *Store) ConsumeCorrelation(_ context.Context, _ http.ResponseWriter, _ *
 		return rpstore.CallbackCorrelation{}, false, nil
 	}
 
+	if entry.binding != "" && bindingCookieValue(r) != entry.binding {
+		// Bound to a different (or absent) browser session: login-CSRF
+		// handoff rejected. The entry stays for the legitimate browser.
+		return rpstore.CallbackCorrelation{}, false, nil
+	}
+
 	delete(s.items, state)
 	return entry.correlation, true, nil
+}
+
+func bindingCookieValue(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	cookie, err := r.Cookie(bindingCookieName)
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
+}
+
+// sweepLocked evicts expired entries and, when the store is over capacity,
+// the soonest-to-expire survivors. Caller holds the write lock.
+func (s *Store) sweepLocked() {
+	now := time.Now().UTC()
+	for key, entry := range s.items {
+		if s.isExpired(entry, now) {
+			delete(s.items, key)
+		}
+	}
+	for len(s.items) > maxEntries {
+		var oldestKey string
+		var oldestExpiry time.Time
+		for key, entry := range s.items {
+			expiry := entry.createdAt.Add(s.ttl)
+			if oldestKey == "" || expiry.Before(oldestExpiry) {
+				oldestKey, oldestExpiry = key, expiry
+			}
+		}
+		delete(s.items, oldestKey)
+	}
 }
 
 // LoadState loads a state scope when present and not expired.

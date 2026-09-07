@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -18,6 +19,22 @@ import (
 
 // TestConcurrentRPUse: one shared RP serving simultaneous login and callback
 // requests must be race-free (RC review F3). Run with -race.
+// propagateBindingCookie replays the state-binding cookie set during login,
+// as a real browser would.
+func propagateBindingCookie(rec *httptest.ResponseRecorder, req *http.Request) {
+	for _, raw := range rec.Header().Values("Set-Cookie") {
+		parts := strings.SplitN(raw, ";", 2)
+		if len(parts) == 0 {
+			continue
+		}
+		nameValue := strings.SplitN(parts[0], "=", 2)
+		if len(nameValue) != 2 {
+			continue
+		}
+		req.AddCookie(&http.Cookie{Name: nameValue[0], Value: nameValue[1]})
+	}
+}
+
 func TestConcurrentRPUse(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -110,6 +127,7 @@ func TestConcurrentRPUse(t *testing.T) {
 
 				cbRec := httptest.NewRecorder()
 				cbReq := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?code="+url.QueryEscape(code)+"&state="+url.QueryEscape(state), nil).WithContext(context.Background())
+				propagateBindingCookie(rec, cbReq)
 				result, err := r.HandleCallback(cbRec, cbReq)
 				if err != nil {
 					errs <- fmt.Errorf("HandleCallback: %w", err)

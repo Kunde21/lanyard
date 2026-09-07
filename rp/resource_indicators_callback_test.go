@@ -53,7 +53,8 @@ func TestHandleCallback_SendsAuthorizationResourcesToTokenEndpoint(t *testing.T)
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	authURL, err := r.AuthorizationURL(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://rp.example.com/login", nil))
+	loginRec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(loginRec, httptest.NewRequest(http.MethodGet, "https://rp.example.com/login", nil))
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -61,6 +62,7 @@ func TestHandleCallback_SendsAuthorizationResourcesToTokenEndpoint(t *testing.T)
 	state := parsed.Query().Get("state")
 
 	callbackReq := httptest.NewRequest(http.MethodGet, "https://rp.example.com/callback?code=code-123&state="+url.QueryEscape(state), nil)
+	propagateBindingCookie(loginRec, callbackReq)
 	if _, err := r.HandleCallback(httptest.NewRecorder(), callbackReq); err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}

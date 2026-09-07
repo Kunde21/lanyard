@@ -3,6 +3,9 @@ package memory
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -176,4 +179,66 @@ func TestStoreConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+// TestCorrelationBrowserBinding: a correlation saved in one browser session
+// cannot be consumed by a different one (login-CSRF, RC review F1).
+func TestCorrelationBrowserBinding(t *testing.T) {
+	store := New(time.Minute)
+
+	// Attacker initiates login: binding cookie lands in the attacker's
+	// browser.
+	attackRec := httptest.NewRecorder()
+	attackReq := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
+	if err := store.SaveCorrelation(context.Background(), attackRec, attackReq, "state-1",
+		rpstore.CallbackCorrelation{Nonce: "n"}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+	if len(attackRec.Header().Values("Set-Cookie")) == 0 {
+		t.Fatal("binding cookie not set")
+	}
+
+	// Victim browser (no cookie) replays the attacker's callback URL:
+	// rejected.
+	victimRec := httptest.NewRecorder()
+	victimReq := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?state=state-1", nil)
+	if _, ok, _ := store.ConsumeCorrelation(context.Background(), victimRec, victimReq, "state-1"); ok {
+		t.Fatal("correlation consumed without the binding cookie")
+	}
+
+	// A different browser's cookie is also rejected.
+	otherReq := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?state=state-1", nil)
+	otherReq.AddCookie(&http.Cookie{Name: "lanyard_state_binding", Value: "other-browser"})
+	if _, ok, _ := store.ConsumeCorrelation(context.Background(), victimRec, otherReq, "state-1"); ok {
+		t.Fatal("correlation consumed with a foreign binding cookie")
+	}
+
+	// The initiating browser succeeds.
+	attackerCallbackReq := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?state=state-1", nil)
+	for _, raw := range attackRec.Header().Values("Set-Cookie") {
+		parts := strings.SplitN(raw, ";", 2)
+		nameValue := strings.SplitN(parts[0], "=", 2)
+		attackerCallbackReq.AddCookie(&http.Cookie{Name: nameValue[0], Value: nameValue[1]})
+	}
+	if _, ok, _ := store.ConsumeCorrelation(context.Background(), httptest.NewRecorder(), attackerCallbackReq, "state-1"); !ok {
+		t.Fatal("correlation not consumable by the initiating browser")
+	}
+}
+
+// TestStoreSweepBoundsMemory: saving beyond capacity evicts expired and
+// then soonest-to-expire entries (RC review F11).
+func TestStoreSweepBoundsMemory(t *testing.T) {
+	store := New(time.Minute)
+	for i := 0; i < maxEntries+50; i++ {
+		if err := store.SaveCorrelation(context.Background(), nil, nil,
+			fmt.Sprintf("s-%d", i), rpstore.CallbackCorrelation{}); err != nil {
+			t.Fatalf("SaveCorrelation() failed: %v", err)
+		}
+	}
+	store.mu.RLock()
+	size := len(store.items)
+	store.mu.RUnlock()
+	if size > maxEntries {
+		t.Fatalf("store size = %d, want <= %d", size, maxEntries)
+	}
 }

@@ -1176,8 +1176,8 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
-	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(rec, req)
+	loginRec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(loginRec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -1228,7 +1228,8 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 	}
 	authzIDToken := signIDToken(t, signingKey, "kid-1", authzIDTokenClaims)
 
-	rec, req = callbackRequestWithIDToken(code, state, "", authzIDToken)
+	rec, req := callbackRequestWithIDToken(code, state, "", authzIDToken)
+	propagateBindingCookie(loginRec, req)
 	result, err := r.HandleCallback(rec, req)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
@@ -1323,8 +1324,8 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)
-	rec := httptest.NewRecorder()
-	authURL, err := r.AuthorizationURL(rec, req)
+	loginRec := httptest.NewRecorder()
+	authURL, err := r.AuthorizationURL(loginRec, req)
 	if err != nil {
 		t.Fatalf("AuthorizationURL() failed: %v", err)
 	}
@@ -1379,7 +1380,8 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 	}
 	authzIDToken := signIDToken(t, signingKey, "kid-1", authzIDTokenClaims)
 
-	rec, req = callbackRequestWithIDToken(code, state, issuer, authzIDToken)
+	rec, req := callbackRequestWithIDToken(code, state, issuer, authzIDToken)
+	propagateBindingCookie(loginRec, req)
 	result, err := r.HandleCallback(rec, req)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
