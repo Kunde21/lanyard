@@ -1546,3 +1546,65 @@ func TestHandleCallback_ExposesTokenLifecycle(t *testing.T) {
 		t.Fatalf("source token = %q", source.CurrentRefreshToken())
 	}
 }
+
+// TestHandleCallback_UserInfoOptional: a valid signed identity completes
+// the callback when the provider has no userinfo endpoint (RC review F8).
+func TestHandleCallback_UserInfoOptional(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	pub := jose.JSONWebKey{KeyID: "kid-1", Algorithm: string(jose.RS256), Use: "sig", Key: &key.PublicKey}
+	now := time.Now().UTC()
+	issuer := ""
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			metadata := providerMetadataJSONWithEndpoints(issuer)
+			// Remove the userinfo endpoint advertisement.
+			metadata = strings.Replace(metadata, `,"userinfo_endpoint":"`+issuer+`/userinfo"`, "", 1)
+			_, _ = w.Write([]byte(metadata))
+		case "/jwks":
+			_ = json.NewEncoder(w).Encode(jose.JSONWebKeySet{Keys: []jose.JSONWebKey{pub}})
+		case "/token":
+			claims := map[string]any{
+				"iss": issuer, "sub": "sub-123", "aud": []string{"client-id"},
+				"exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(), "nonce": "nonce-1",
+			}
+			fmt.Fprintf(w, `{"access_token":"at-1","token_type":"Bearer","expires_in":3600,
+				"id_token":"%s"}`, signIDToken(t, key, "kid-1", claims))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+	issuer = ts.URL
+
+	r, err := New(context.Background(), issuer,
+		WithClientID("client-id"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, "state-1", CallbackCorrelation{
+		Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("SaveCorrelation() failed: %v", err)
+	}
+
+	result, err := r.HandleCallback(callbackRequest("code-1", "state-1"))
+	if err != nil {
+		t.Fatalf("HandleCallback() failed: %v", err)
+	}
+	if result.Subject != "sub-123" {
+		t.Fatalf("subject = %q", result.Subject)
+	}
+	if result.UserInfo != nil {
+		t.Fatalf("UserInfo = %v, want nil", result.UserInfo)
+	}
+}

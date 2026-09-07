@@ -228,19 +228,24 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		}, nil
 	}
 
+	// UserInfo is fetched only when the provider advertises a userinfo
+	// endpoint; identity-only consumers must not fail (or be forced to
+	// grant profile scopes) because the optional service is absent
+	// (RC review F8).
 	userInfoEndpoint := r.userInfoEndpoint(provider)
-	if userInfoEndpoint == "" {
-		return nil, fmt.Errorf("%w: provider missing userinfo endpoint", ErrUserInfoValidationFailed)
-	}
 
 	transport := UserInfoTokenTransport(data.UserInfoTokenTransport)
 	if transport == "" {
 		transport = r.userInfoTokenTransport
 	}
 
-	userinfo, err := r.fetchUserInfoSpan(ctx, userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
-	if err != nil {
-		return nil, err
+	var userinfo map[string]any
+	if userInfoEndpoint != "" {
+		var err error
+		userinfo, err = r.fetchUserInfoSpan(ctx, userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	tokenCopy := tokenResp
