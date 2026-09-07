@@ -232,6 +232,19 @@ func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 		return nil, fmt.Errorf("%w: FAPI2 Message Signing requires a JWT response mode, got %q",
 			ErrInvalidConfiguration, r.responseMode)
 	}
+	// FAPI profiles mandate authorization response issuer validation; an
+	// explicit opt-out contradicts the profile (fourth RC review R5).
+	if r.profile.isFAPI() && r.profile != profilePlainFAPI &&
+		r.validateAuthorizationResponseIssuerSet && !r.validateAuthorizationResponseIssuer {
+		return nil, fmt.Errorf("%w: %v requires authorization response issuer validation; WithValidateAuthorizationResponseIssuer(false) contradicts the profile",
+			ErrInvalidConfiguration, r.profile)
+	}
+	// FAPI 1.0 Advanced sender constrains via mTLS only; DPoP is outside
+	// its profile (fourth RC review R5).
+	if r.profile == profileFAPI1Adv && r.senderConstrain == SenderConstraintDPoP {
+		return nil, fmt.Errorf("%w: FAPI 1.0 Advanced sender constrains tokens via mTLS only; DPoP is not part of the profile",
+			ErrInvalidConfiguration)
+	}
 	if err := r.validateFAPIProfileRequirements(); err != nil {
 		return nil, err
 	}
@@ -494,6 +507,12 @@ func (r *RP) applyProfileDefaults() {
 		}
 		if !r.requestMethodExplicit {
 			r.requestMethod = requestMethodSignedNonRepudiation
+		}
+		// FAPI 1.0 Advanced protects the authorization response through the
+		// hybrid flow: the front-channel ID token carries iss/aud and its
+		// signature (fourth RC review R5).
+		if !r.responseTypeExplicit {
+			r.responseType = "code id_token"
 		}
 	case profileFAPI2SecurityProfile:
 		if !r.scopesExplicit {

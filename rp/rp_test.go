@@ -1378,3 +1378,54 @@ func TestMTLSClientCertificateWiredIntoTransport(t *testing.T) {
 		t.Fatal("non-mTLS configuration modified the consumer transport")
 	}
 }
+
+// TestFAPIProfileInvariants: issuer validation cannot be disabled under
+// FAPI, FAPI1 Advanced defaults to hybrid response protection, and DPoP
+// sender constraining is rejected for FAPI1 Advanced (fourth RC review R5).
+func TestFAPIProfileInvariants(t *testing.T) {
+	base := func(profile Profile, extra ...Option) []Option {
+		key := fapiTestKeyProvider(t)
+		opts := []Option{
+			WithClientID("client"),
+			WithRedirectURI("https://rp.test/callback"),
+			WithProviderMetadata(providerWithPAR(providerForAuthMethods("private_key_jwt", "tls_client_auth"), "https://issuer.test/par")),
+			WithProfile(profile),
+			WithAuthMethod(AuthMethodPrivateKeyJWT),
+			WithSenderConstrain(SenderConstraintMTLS),
+			WithClientKeyProvider(key),
+			WithRequestMethod("signed_non_repudiation"),
+		}
+		return append(opts, extra...)
+	}
+
+	// Issuer-validation opt-out rejected under FAPI2.
+	_, err := New(context.Background(), "https://issuer.test",
+		base(FAPI2SecurityProfile, WithValidateAuthorizationResponseIssuer(false))...)
+	if !errors.Is(err, ErrInvalidConfiguration) || !strings.Contains(err.Error(), "issuer validation") {
+		t.Fatalf("issuer opt-out err = %v, want contradiction rejection", err)
+	}
+
+	// FAPI1 Advanced defaults to the hybrid response type.
+	r, err := New(context.Background(), "https://issuer.test", base(FAPI1Adv)...)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if got := r.authorizationResponseType(); got != "code id_token" {
+		t.Fatalf("FAPI1 default response type = %q, want hybrid code id_token", got)
+	}
+	// Explicit response type is still honored.
+	r2, err := New(context.Background(), "https://issuer.test", base(FAPI1Adv, WithResponseType("code"))...)
+	if err != nil {
+		t.Fatalf("New() with explicit response type failed: %v", err)
+	}
+	if got := r2.authorizationResponseType(); got != "code" {
+		t.Fatalf("explicit response type = %q", got)
+	}
+
+	// DPoP sender constraining is outside FAPI1 Advanced.
+	_, err = New(context.Background(), "https://issuer.test",
+		base(FAPI1Adv, WithSenderConstrain(SenderConstraintDPoP))...)
+	if !errors.Is(err, ErrInvalidConfiguration) || !strings.Contains(err.Error(), "DPoP") {
+		t.Fatalf("FAPI1+DPoP err = %v, want profile rejection", err)
+	}
+}

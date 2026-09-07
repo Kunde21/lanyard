@@ -1842,7 +1842,6 @@ func TestFAPIJARMAlgorithmPolicy(t *testing.T) {
 		WithSenderConstrain(SenderConstraintMTLS),
 		WithClientKeyProvider(fapiTestKeyProvider(t)),
 		WithRequestMethod("signed_non_repudiation"),
-		WithValidateAuthorizationResponseIssuer(false),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
