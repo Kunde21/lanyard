@@ -47,7 +47,7 @@ Lanyard implements a fully featured OIDC relying party (RP) with support for the
 *   **Client Credentials Grant** (RFC 6749 §4.4):
     *   OAuth 2.0 Client Credentials flow for service-to-service authentication.
     *   Per-request scope customization via context.
-    *   TokenSource interface for caching and reuse.
+    *   TokenSource interface (note: not golang.org/x/oauth2.TokenSource; ClientCredentials.Token performs a token request per call - wrap it with your own expiry-aware cache).
 
 *   **Token & User Info**:
     *   ID Token validation (signature, claims, audience, expiration).
@@ -101,9 +101,11 @@ import (
 )
 
 func setupRP(ctx context.Context) (*rp.RP, error) {
+	// Fixture keys for illustration only: generate real 32-byte signing
+	// and 16/24/32-byte encryption keys and load them from configuration.
 	stateStore, err := cookie.New(
-		[]byte("0123456789abcdef0123456789abcdef"),
-		[]byte("abcdef0123456789abcdef0123456789"),
+		[]byte("0123456789abcdef0123456789abcdef"), // signing key (fixture)
+		[]byte("abcdef0123456789abcdef0123456789"), // encryption key (fixture)
 		cookie.WithTTL(10*time.Minute),
 	)
 	if err != nil {
@@ -238,9 +240,8 @@ func main() {
 		panic(err)
 	}
 
-	fmt.Printf("access token: %s\n", token.AccessToken)
-	fmt.Printf("token type: %s\n", token.TokenType)
-	fmt.Printf("expires in: %d\n", token.ExpiresIn)
+	fmt.Printf("token issued, type %s, expires in %ds\n", token.TokenType, token.ExpiresIn)
+	// Never log token values.
 
 	adminCtx := rp.WithTokenScopes(ctx, "admin:all")
 	adminToken, err := client.Token(adminCtx)
