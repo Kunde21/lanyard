@@ -470,6 +470,7 @@ func WithRequestMethod(method string) AuthCodeOption {
 		if r != nil {
 			r.requestMethod = normalizeRequestMethod(method)
 			r.requestMethodExplicit = true
+			r.requestMethodRaw = method
 		}
 	})
 }

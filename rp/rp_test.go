@@ -2,10 +2,16 @@ package rp
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -374,6 +380,11 @@ func providerWithMergeFields(base string) metadata.Provider {
 		IDTokenEncryptionEncValuesSupported:    []string{"A128CBC-HS256"},
 		Raw:                                    raw,
 	}
+}
+
+func providerWithPAR(p metadata.Provider, parEndpoint string) metadata.Provider {
+	p.PushedAuthorizationRequestEndpoint = parEndpoint
+	return p
 }
 
 func providerWithEndpoints(authorizationEndpoint, tokenEndpoint, jwksURI string) metadata.Provider {
@@ -1080,6 +1091,9 @@ func TestWithProfile_FAPI1Adv_DefaultsCanBeOverridden(t *testing.T) {
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI1Adv),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
 		WithScopes("accounts"),
 		WithProviderMetadata(providerWithEndpoints(
 			"https://issuer.test/authorize",
@@ -1108,6 +1122,9 @@ func TestWithProfile_FAPI2_SetsSignedRequestMethod(t *testing.T) {
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI2MessageSigning),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
 		WithProviderMetadata(providerWithEndpoints(
 			"https://issuer.test/authorize",
 			"https://issuer.test/token",
@@ -1135,17 +1152,133 @@ func TestWithProfile_FAPI1Adv_SignedRequestMethodCanBeOverridden(t *testing.T) {
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(failOnRequest),
 		WithProfile(FAPI1Adv),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequirePAR(true),
 		WithRequestMethod(""),
-		WithProviderMetadata(providerWithEndpoints(
+		WithProviderMetadata(providerWithPAR(providerWithEndpoints(
 			"https://issuer.test/authorize",
 			"https://issuer.test/token",
 			"https://issuer.test/jwks",
-		)),
+		), "https://issuer.test/par")),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
 	if got.requestMethod.isSigned() {
 		t.Fatal("explicit request method should override profile default")
+	}
+}
+
+// fapiTestKeyProvider supplies an RSA key for FAPI-profile fixtures
+// (asymmetric client authentication + mTLS sender constraint).
+
+func fapiTestKeyProvider(t *testing.T) ClientKeyProvider {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	return NewStaticClientKeyProvider(key, "fapi-kid", "PS256", testTLSCertificate(key))
+}
+
+// testTLSCertificate builds a throwaway self-signed certificate for
+// tls_client_auth fixtures.
+func testTLSCertificate(key *rsa.PrivateKey) *tls.Certificate {
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "fapi-test-client"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t := &testing.T{}
+		t.Fatalf("CreateCertificate() failed: %v", err)
+	}
+	cert := tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+	return &cert
+}
+
+// TestFAPIProfileRejectsInsecureConfiguration: FAPI profiles reject
+// symmetric auth, plain requests, and missing sender constraint
+// (RC review F7).
+func TestFAPIProfileRejectsInsecureConfiguration(t *testing.T) {
+	base := func(extra ...Option) []Option {
+		return append([]Option{
+			WithClientID("client"),
+			WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+			WithRedirectURI("https://rp.test/callback"),
+			WithProviderMetadata(providerForAuthMethods()),
+		}, extra...)
+	}
+
+	// Secret + plain + no constraint: rejected with all violations listed.
+	_, err := New(context.Background(), "https://issuer.test", base(WithProfile(FAPI2SecurityProfile))...)
+	if err == nil {
+		t.Fatal("insecure FAPI configuration accepted")
+	}
+	for _, want := range []string{"not permitted", "sender-constrained"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q missing violation %q", err, want)
+		}
+	}
+
+	// Compliant auth + sender constraint, but the request method is
+	// explicitly overridden to plain without PAR.
+	_, err = New(context.Background(), "https://issuer.test", base(
+		WithProfile(FAPI2SecurityProfile),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod(""),
+	)...)
+	if err == nil || !strings.Contains(err.Error(), "PAR or a signed request object") {
+		t.Fatalf("plain request method under FAPI err = %v, want PAR-or-signed violation", err)
+	}
+
+	// DPoP without asymmetric auth still rejected.
+	_, err = New(context.Background(), "https://issuer.test", base(
+		WithProfile(PlainFAPI),
+		WithSenderConstrain(SenderConstraintDPoP),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
+	)...)
+	if err == nil || !strings.Contains(err.Error(), "not permitted") {
+		t.Fatalf("secret auth with FAPI err = %v, want not-permitted", err)
+	}
+
+	// Fully compliant configuration constructs.
+	r, err := New(context.Background(), "https://issuer.test", base(
+		WithProfile(FAPI2SecurityProfile),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
+	)...)
+	if err != nil {
+		t.Fatalf("compliant FAPI configuration rejected: %v", err)
+	}
+	_ = r
+}
+
+// TestWithRequestMethodUnknownValueRejected: typos fail construction instead
+// of silently downgrading to plain requests (RC review F7).
+func TestWithRequestMethodUnknownValueRejected(t *testing.T) {
+	_, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(providerForAuthMethods()),
+		WithRequestMethod("signed_nonrepudiation"),
+	)
+	if !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("New() error = %v, want ErrInvalidConfiguration", err)
+	}
+	if !strings.Contains(err.Error(), "unknown request method") {
+		t.Fatalf("error = %v, want unknown-request-method message", err)
 	}
 }

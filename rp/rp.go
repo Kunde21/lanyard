@@ -62,6 +62,48 @@ func normalizeRequestMethod(raw string) requestMethodType {
 	return requestMethodPlain
 }
 
+// validateRequestMethodExplicit rejects unknown request-method values: a
+// typo must fail construction, not silently fall back to plain requests
+// (RC review F7).
+func validateRequestMethodExplicit(raw string) error {
+	normalized := strings.TrimSpace(raw)
+	if normalized == "" {
+		return nil // explicit empty selects plain deliberately
+	}
+	if !strings.EqualFold(normalized, "signed_non_repudiation") && !strings.EqualFold(normalized, "plain") {
+		return fmt.Errorf("%w: unknown request method %q (want \"plain\" or \"signed_non_repudiation\")", ErrInvalidConfiguration, raw)
+	}
+	return nil
+}
+
+// validateFAPIProfileRequirements enforces the FAPI security profile
+// invariants at construction: asymmetric client authentication, PAR or
+// signed request objects, and sender-constrained tokens (RC review F7).
+func (r *RP) validateFAPIProfileRequirements() error {
+	if !r.profile.isFAPI() {
+		return nil
+	}
+	var violations []string
+	method, _ := r.authMethodState()
+	switch method {
+	case AuthMethodPrivateKeyJWT, AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth:
+	default:
+		violations = append(violations, fmt.Sprintf(
+			"client authentication %q is not permitted (FAPI requires private_key_jwt or TLS client auth)", method))
+	}
+	if !r.requirePAR && !r.requestMethod.isSigned() {
+		violations = append(violations, "PAR or a signed request object is required")
+	}
+	if r.senderConstrain == SenderConstraintNone {
+		violations = append(violations, "sender-constrained tokens are required (mTLS or DPoP)")
+	}
+	if len(violations) > 0 {
+		return fmt.Errorf("%w: FAPI profile %v is incompatible with this configuration: %s",
+			ErrInvalidConfiguration, r.profile, strings.Join(violations, "; "))
+	}
+	return nil
+}
+
 func (r requestMethodType) isSigned() bool {
 	return r == requestMethodSignedNonRepudiation
 }
@@ -88,6 +130,7 @@ type RP struct {
 	responseTypeExplicit                bool
 	requestMethod                       requestMethodType
 	requestMethodExplicit               bool
+	requestMethodRaw                    string
 	requestURIHandler                   RequestURIHandler
 	validateAuthorizationResponseIssuer bool
 
@@ -153,6 +196,15 @@ func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 	}
 
 	r.finalizeSecurityDefaults()
+
+	if r.requestMethodExplicit {
+		if err := validateRequestMethodExplicit(r.requestMethodRaw); err != nil {
+			return nil, err
+		}
+	}
+	if err := r.validateFAPIProfileRequirements(); err != nil {
+		return nil, err
+	}
 
 	return r, nil
 }

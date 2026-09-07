@@ -671,6 +671,10 @@ func TestHandleCallback_RejectsInvalidAuthorizationResponseIDTokenBeforeTokenExc
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithProfile(PlainFAPI),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -743,6 +747,10 @@ func TestHandleCallback_RejectsAuthorizationResponseIDTokenWithOldIATBeforeToken
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithProfile(PlainFAPI),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -930,6 +938,10 @@ func TestHandleCallback_FAPISkipsUserInfo(t *testing.T) {
 		WithRedirectURI("https://rp.test/callback"),
 		WithHTTPClient(ts.Client()),
 		WithProfile(PlainFAPI),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
@@ -1149,9 +1161,13 @@ func TestHandleCallback_HybridFlow_ByValueJAR(t *testing.T) {
 		WithHTTPClient(ts.Client()),
 		WithStateStore(stateStore),
 		WithProfile(PlainFAPI),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
 		WithResponseType("code id_token"),
 		WithRequestMethod("signed_non_repudiation"),
-		WithClientKeyProvider(NewStaticClientKeyProvider(clientKey, "client-kid-1", "PS256", nil)),
+		WithClientKeyProvider(NewStaticClientKeyProvider(clientKey, "client-kid-1", "PS256", testTLSCertificate(clientKey))),
 		withNow(func() time.Time { return now }),
 		withRandReader(strings.NewReader(strings.Repeat("a", 256))),
 	)
@@ -1290,6 +1306,10 @@ func TestHandleCallback_HybridFlow_PushedJAR(t *testing.T) {
 		WithHTTPClient(ts.Client()),
 		WithStateStore(stateStore),
 		WithProfile(PlainFAPI),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
 		WithResponseType("code id_token"),
 		WithRequestMethod("signed_non_repudiation"),
 		WithClientKeyProvider(NewStaticClientKeyProvider(clientKey, "client-kid-1", "PS256", &tls.Certificate{})),
