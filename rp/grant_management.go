@@ -140,6 +140,10 @@ func NewGrantManager(ctx context.Context, issuer string, opts ...Option) (*Grant
 	if m.provider.GrantManagementEndpoint == "" {
 		return nil, fmt.Errorf("%w: grant management endpoint is not configured", ErrInvalidConfiguration)
 	}
+	m.clientConfig.wireMTLSClientCertificate()
+	if err := m.clientConfig.validateExplicitDPoP(); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 

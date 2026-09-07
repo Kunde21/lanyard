@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/rand"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -210,9 +211,75 @@ func (c *clientConfig) shouldUseDPoP() bool {
 
 // validateExplicitDPoP rejects an explicitly required DPoP constraint
 // without a signing key: proofs cannot be produced (fourth RC review R4).
+// wireMTLSClientCertificate presents the client key provider's TLS
+// certificate on the RP's own HTTPS connections when mTLS client
+// authentication (or mTLS sender constraining) is configured. A configured
+// certificate alone is not a mutual-TLS connection: without this wiring,
+// construction succeeds while every token-endpoint call fails against a
+// real mTLS endpoint (FAPI policy audit A3).
+//
+// Transports already presenting a client certificate are left untouched.
+// Custom non-*http.Transport round trippers cannot be modified; consumers
+// using them must wire the certificate themselves.
+func (c *clientConfig) wireMTLSClientCertificate() {
+	if c.clientKeyProvider == nil {
+		return
+	}
+	cert := c.clientKeyProvider.TLSCertificate()
+	if cert == nil || c.httpClient == nil {
+		return
+	}
+	method, _ := c.authMethodState()
+	if method == "" {
+		// Constructors that do not perform token-endpoint auth negotiation
+		// (grant management) keep the explicitly configured method.
+		method = c.authMethod
+	}
+	mtls := method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth ||
+		c.senderConstrain == SenderConstraintMTLS
+	if !mtls {
+		return
+	}
+
+	transport, ok := c.httpClient.Transport.(*http.Transport)
+	if !ok || transport == nil {
+		if c.httpClient.Transport == nil {
+			transport = http.DefaultTransport.(*http.Transport).Clone()
+		} else {
+			return // custom round tripper: consumer's responsibility
+		}
+	} else {
+		if transport.TLSClientConfig != nil && transport.TLSClientConfig.GetClientCertificate != nil {
+			return
+		}
+		transport = transport.Clone()
+	}
+
+	clientCert := *cert
+	tlsConfig := transport.TLSClientConfig
+	if tlsConfig == nil {
+		tlsConfig = &tls.Config{}
+	} else {
+		tlsConfig = tlsConfig.Clone()
+	}
+	tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		return &clientCert, nil
+	}
+	transport.TLSClientConfig = tlsConfig
+
+	client := *c.httpClient
+	client.Transport = transport
+	c.httpClient = &client
+}
+
 func (c *clientConfig) validateExplicitDPoP() error {
 	if c.senderConstrain == SenderConstraintDPoP && c.clientKeyProvider == nil {
 		return fmt.Errorf("%w: DPoP sender constraining requires a client key provider", ErrInvalidConfiguration)
+	}
+	// mTLS sender constraining is only real with a presented certificate
+	// (fourth RC review R3).
+	if c.senderConstrain == SenderConstraintMTLS && (c.clientKeyProvider == nil || c.clientKeyProvider.TLSCertificate() == nil) {
+		return fmt.Errorf("%w: mTLS sender constraining requires a client key provider with a TLS certificate", ErrInvalidConfiguration)
 	}
 	return nil
 }

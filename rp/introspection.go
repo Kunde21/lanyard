@@ -151,6 +151,10 @@ func NewIntrospector(ctx context.Context, issuer string, opts ...Option) (*Intro
 	if i.introspectionEndpoint(i.provider) == "" {
 		return nil, fmt.Errorf("%w: introspection endpoint is not configured", ErrInvalidConfiguration)
 	}
+	i.clientConfig.wireMTLSClientCertificate()
+	if err := i.clientConfig.validateExplicitDPoP(); err != nil {
+		return nil, err
+	}
 	return i, nil
 }
 

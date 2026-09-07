@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -221,7 +220,8 @@ func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 	}
 
 	r.finalizeSecurityDefaults()
-	r.wireMTLSClientCertificate()
+	r.clientConfig.wireMTLSClientCertificate()
+	r.initMetadataClient()
 
 	if r.requestMethodExplicit {
 		if err := validateRequestMethodExplicit(r.requestMethodRaw); err != nil {
@@ -395,61 +395,9 @@ func (r *RP) initDefaults() {
 	}
 }
 
-// wireMTLSClientCertificate presents the client key provider's TLS
-// certificate on the RP's own HTTPS connections when mTLS client
-// authentication (or mTLS sender constraining) is configured. A configured
-// certificate alone is not a mutual-TLS connection: without this wiring,
-// construction succeeds while every token-endpoint call fails against a
-// real mTLS endpoint (FAPI policy audit A3).
-//
-// Transports already presenting a client certificate are left untouched.
-// Custom non-*http.Transport round trippers cannot be modified; consumers
-// using them must wire the certificate themselves.
 func (r *RP) wireMTLSClientCertificate() {
-	if r.clientKeyProvider == nil {
-		return
-	}
-	cert := r.clientKeyProvider.TLSCertificate()
-	if cert == nil || r.httpClient == nil {
-		return
-	}
-	method, _ := r.authMethodState()
-	mtls := method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth ||
-		r.senderConstrain == SenderConstraintMTLS
-	if !mtls {
-		return
-	}
-
-	transport, ok := r.httpClient.Transport.(*http.Transport)
-	if !ok || transport == nil {
-		if r.httpClient.Transport == nil {
-			transport = http.DefaultTransport.(*http.Transport).Clone()
-		} else {
-			return // custom round tripper: consumer's responsibility
-		}
-	} else {
-		if transport.TLSClientConfig != nil && transport.TLSClientConfig.GetClientCertificate != nil {
-			return
-		}
-		transport = transport.Clone()
-	}
-
-	clientCert := *cert
-	tlsConfig := transport.TLSClientConfig
-	if tlsConfig == nil {
-		tlsConfig = &tls.Config{}
-	} else {
-		tlsConfig = tlsConfig.Clone()
-	}
-	tlsConfig.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		return &clientCert, nil
-	}
-	transport.TLSClientConfig = tlsConfig
-
-	client := *r.httpClient
-	client.Transport = transport
-	r.httpClient = &client
-	r.metadataClient = nil // rebuild on the updated client
+	r.clientConfig.wireMTLSClientCertificate()
+	r.metadataClient = nil
 	r.initMetadataClient()
 }
 

@@ -821,7 +821,7 @@ func TestClientCredentials_Token_MTLSSenderConstrainDisablesDPoP(t *testing.T) {
 	client, err := NewClientCredentials(ctx, "https://auth.example.com",
 		WithClientID("client-id"),
 		WithProviderMetadata(provider),
-		WithClientKeyProvider(keyProvider),
+		WithClientKeyProvider(certBearingKeyProvider(t, keyProvider)),
 		WithAuthMethod(AuthMethodPrivateKeyJWT),
 		WithSenderConstrain(SenderConstraintMTLS),
 	)
@@ -1199,4 +1199,65 @@ func TestClientCredentialsUsesMTLSEndpointAlias(t *testing.T) {
 	if hitPath != "/mtls" {
 		t.Fatalf("request path = %q, want /mtls", hitPath)
 	}
+}
+
+// certBearingKeyProvider upgrades a fixture key provider with a TLS
+// certificate for mTLS-sender-constrained configurations.
+func certBearingKeyProvider(t *testing.T, base ClientKeyProvider) ClientKeyProvider {
+	t.Helper()
+	key, _ := base.PrivateKey().(*rsa.PrivateKey)
+	if key == nil {
+		t.Fatal("fixture key provider is not RSA")
+	}
+	return NewStaticClientKeyProvider(key, base.KeyID(), base.SigningAlgorithm(), testTLSCertificate(key))
+}
+
+// TestStandaloneConstructorsWireMTLSCertificate: the standalone
+// ClientCredentials/Introspector/GrantManager constructors present the
+// client certificate exactly like RP.New (fourth RC review R3).
+func TestStandaloneConstructorsWireMTLSCertificate(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	provider := providerForAuthMethods("tls_client_auth")
+	provider.TokenEndpoint = "https://issuer.test/token"
+	provider.IntrospectionEndpoint = "https://issuer.test/introspect"
+	provider.GrantManagementEndpoint = "https://issuer.test/grants"
+	opts := []Option{
+		WithClientID("client"),
+		WithHTTPClient(&http.Client{}),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodTLSClientAuth),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid", "RS256", testTLSCertificate(key))),
+	}
+
+	assertWired := func(t *testing.T, c *clientConfig, name string) {
+		t.Helper()
+		transport, ok := c.httpClient.Transport.(*http.Transport)
+		if !ok {
+			t.Fatalf("%s transport = %T", name, c.httpClient.Transport)
+		}
+		if transport.TLSClientConfig == nil || transport.TLSClientConfig.GetClientCertificate == nil {
+			t.Fatalf("%s: GetClientCertificate not wired", name)
+		}
+	}
+
+	cc, err := NewClientCredentials(context.Background(), "https://issuer.test", opts...)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+	assertWired(t, &cc.clientConfig, "client credentials")
+
+	i, err := NewIntrospector(context.Background(), "https://issuer.test", opts...)
+	if err != nil {
+		t.Fatalf("NewIntrospector() failed: %v", err)
+	}
+	assertWired(t, &i.clientConfig, "introspector")
+
+	g, err := NewGrantManager(context.Background(), "https://issuer.test", opts...)
+	if err != nil {
+		t.Fatalf("NewGrantManager() failed: %v", err)
+	}
+	assertWired(t, &g.clientConfig, "grant manager")
 }

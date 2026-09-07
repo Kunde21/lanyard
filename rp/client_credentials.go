@@ -50,6 +50,10 @@ func NewClientCredentials(ctx context.Context, issuer string, opts ...Option) (*
 		return nil, err
 	}
 
+	c.clientConfig.wireMTLSClientCertificate()
+	if err := c.clientConfig.validateExplicitDPoP(); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 

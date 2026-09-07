@@ -454,6 +454,7 @@ func TestHandleCallback_UsesMTLSAliasForUserInfoWhenSenderConstrainMTLS(t *testi
 		WithHTTPClient(ts.Client()),
 		WithAuthMethod(AuthMethodPost),
 		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
 		withNow(func() time.Time { return now }),
 	)
 	if err != nil {
