@@ -235,6 +235,9 @@ func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 	if err := r.validateFAPIProfileRequirements(); err != nil {
 		return nil, err
 	}
+	if err := r.validateExplicitDPoP(); err != nil {
+		return nil, err
+	}
 
 	return r, nil
 }

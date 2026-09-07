@@ -208,6 +208,15 @@ func (c *clientConfig) shouldUseDPoP() bool {
 	return c.clientKeyProvider != nil && isDPoPSupported(method)
 }
 
+// validateExplicitDPoP rejects an explicitly required DPoP constraint
+// without a signing key: proofs cannot be produced (fourth RC review R4).
+func (c *clientConfig) validateExplicitDPoP() error {
+	if c.senderConstrain == SenderConstraintDPoP && c.clientKeyProvider == nil {
+		return fmt.Errorf("%w: DPoP sender constraining requires a client key provider", ErrInvalidConfiguration)
+	}
+	return nil
+}
+
 func (c *clientConfig) attachDPoPProof(req *http.Request, nonce string) error {
 	proof, err := buildDPoPProof(c.clientKeyProvider, c.randReader, c.now, req.Method, req.URL.String(), "", nonce)
 	if err != nil {

@@ -773,3 +773,52 @@ func TestExplicitDPoPRequiresDPoPTokenType(t *testing.T) {
 		t.Fatalf("opportunistic DPoP incorrectly rejected Bearer response: %v", err)
 	}
 }
+
+// TestExplicitDPoPSendsProofWithSymmetricAuth: an explicitly required DPoP
+// constraint sends proofs regardless of the client authentication method
+// (fourth RC review R4), and a DPoP-typed response is accepted.
+func TestExplicitDPoPSendsProofWithSymmetricAuth(t *testing.T) {
+	var proofHeader string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proofHeader = r.Header.Get("DPoP")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"at","token_type":"DPoP","expires_in":3600}`)
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = ts.URL
+
+	r, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithSenderConstrain(SenderConstraintDPoP),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if _, err := r.RefreshToken(context.Background(), "rt"); err != nil {
+		t.Fatalf("RefreshToken() failed: %v", err)
+	}
+	if proofHeader == "" {
+		t.Fatal("no DPoP proof attached with Basic client auth")
+	}
+
+	// Explicit DPoP without a key provider is rejected at construction.
+	_, err = New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithSenderConstrain(SenderConstraintDPoP),
+	)
+	if !errors.Is(err, ErrInvalidConfiguration) || !strings.Contains(err.Error(), "client key provider") {
+		t.Fatalf("keyless explicit DPoP err = %v, want ErrInvalidConfiguration", err)
+	}
+}

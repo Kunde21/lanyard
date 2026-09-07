@@ -256,9 +256,14 @@ func (r *RP) shouldUseDPoP() bool {
 }
 
 func (r *RP) shouldUseDPoPWithAuthMethod(method AuthMethod) bool {
-	return r.senderConstrain == SenderConstraintDPoP &&
-		r.clientKeyProvider != nil &&
-		isDPoPSupported(method)
+	if r.senderConstrain != SenderConstraintDPoP {
+		return false
+	}
+	// Explicitly required DPoP is independent of the client authentication
+	// method (fourth RC review R4): a Basic-auth client must still send
+	// proofs. Opportunistic DPoP (no explicit constraint) stays limited to
+	// methods where the provider is known to accept it.
+	return r.clientKeyProvider != nil
 }
 
 // ShouldUseDPoP reports whether the RP is configured to use DPoP.
