@@ -30,6 +30,19 @@ Dynamic client registration (Dynamic RP profile):
   never emits unsigned request objects by design; see `thoughts/research/2026-08-29-dcr-conformance-wiring.md`)
 - artifact: `artifacts/20260904-150941/report.json`
 
+Post-RC-hardening regression verification (2026-09-07, commit `9ef2dc8`, after the stable-RC
+review remediation `374e643..5973799` — signed-ID-token policy, browser-bound state store,
+concurrency, FAPI construction validation, userinfo optionality, error causes):
+
+- `all-rp-smoke`: PASS (17 plans incl. dynamic 11/11) — artifact `artifacts/20260907-033621/report.json`
+- `oidcc-dynamic-full`: PASS (11/11) — artifact `artifacts/20260907-033435/report.json`
+- `fapi1-adv-smoke`: PASS — artifact `artifacts/20260907-034307/report.json`
+
+The `all-rp` presets exclude plan families the harness cannot yet drive: CIBA (no backchannel
+flow in the example RP), Brazil DCR, the client-credentials-grant profile, and the dynamic
+plan's `private_key_jwt` variant (asymmetric registration metadata). These are capability
+gaps, not regressions — see `thoughts/plans/2026-09-05-rc-readiness-remediation.md`.
+
 The example RP implements Authorization Code + PKCE, ID token validation, UserInfo validation,
 PAR, JAR, JARM, RAR, DPoP, mTLS, and RP-hosted `request_uri` support. It uses the supported
 cookie-backed RP state store (`rp/store/cookie`) so login and callback state is bound to the
