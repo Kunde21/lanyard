@@ -66,3 +66,49 @@ func TestTokenGrantIDMarshalRoundTrip(t *testing.T) {
 		t.Fatalf("GrantID round-trip mismatch (-want +got):\n%s", diff)
 	}
 }
+
+// TestTokenRoundTripPreservesLifecycleFields: explicit fields beat stale raw
+// data, and synthesized refresh tokens survive persistence (RC review F10).
+func TestTokenRoundTripPreservesLifecycleFields(t *testing.T) {
+	var token Token
+	if err := json.Unmarshal([]byte(`{"access_token":"at","token_type":"Bearer",
+		"expires_in":3600,"refresh_token":"old"}`), &token); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+
+	// The server rotated; the caller (or RefreshTokenSource) updated the field.
+	token.RefreshToken = "new"
+
+	encoded, err := json.Marshal(token)
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	var restored Token
+	if err := json.Unmarshal(encoded, &restored); err != nil {
+		t.Fatalf("round-trip Unmarshal() failed: %v", err)
+	}
+	if restored.RefreshToken != "new" {
+		t.Fatalf("round-trip refresh token = %q, want new (stale raw won)", restored.RefreshToken)
+	}
+
+	// A synthesized refresh token on a response that omitted one persists.
+	var omitted Token
+	if err := json.Unmarshal([]byte(`{"access_token":"at","token_type":"Bearer"}`), &omitted); err != nil {
+		t.Fatalf("Unmarshal() failed: %v", err)
+	}
+	omitted.RefreshToken = "synthesized"
+	enc2, err := json.Marshal(omitted)
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	var restored2 Token
+	if err := json.Unmarshal(enc2, &restored2); err != nil {
+		t.Fatalf("round-trip Unmarshal() failed: %v", err)
+	}
+	if restored2.RefreshToken != "synthesized" {
+		t.Fatalf("synthesized refresh token lost: %q", restored2.RefreshToken)
+	}
+	if restored2.AccessToken != "at" {
+		t.Fatalf("raw-filled access token = %q", restored2.AccessToken)
+	}
+}

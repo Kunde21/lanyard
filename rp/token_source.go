@@ -32,7 +32,12 @@ type Token struct {
 
 type tokenJSON Token
 
-// UnmarshalJSON decodes token fields and preserves the full payload in Raw.
+// UnmarshalJSON decodes token fields and preserves the full provider
+// payload in raw. Explicitly stored lifecycle fields take precedence over
+// the raw payload: a Token edited after decoding (for example a refresh
+// token synthesized by RefreshTokenSource for a response that omitted one)
+// survives a marshal/unmarshal round-trip instead of reverting to stale raw
+// data (RC review F10).
 func (t *Token) UnmarshalJSON(data []byte) error {
 	if t == nil {
 		return fmt.Errorf("token is nil")
@@ -52,9 +57,32 @@ func (t *Token) UnmarshalJSON(data []byte) error {
 		rawPayload = data
 	}
 
-	decoded := alias{}
-	if err := json.Unmarshal(rawPayload, &decoded); err != nil {
+	fromRaw := alias{}
+	if err := json.Unmarshal(rawPayload, &fromRaw); err != nil {
 		return err
+	}
+
+	decoded := stored.alias
+	if decoded.AccessToken == "" {
+		decoded.AccessToken = fromRaw.AccessToken
+	}
+	if decoded.TokenType == "" {
+		decoded.TokenType = fromRaw.TokenType
+	}
+	if decoded.ExpiresIn == 0 {
+		decoded.ExpiresIn = fromRaw.ExpiresIn
+	}
+	if decoded.IDToken == "" {
+		decoded.IDToken = fromRaw.IDToken
+	}
+	if decoded.RefreshToken == "" {
+		decoded.RefreshToken = fromRaw.RefreshToken
+	}
+	if decoded.Scope == "" {
+		decoded.Scope = fromRaw.Scope
+	}
+	if decoded.GrantID == "" {
+		decoded.GrantID = fromRaw.GrantID
 	}
 
 	*t = Token(decoded)
