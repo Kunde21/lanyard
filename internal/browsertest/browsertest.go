@@ -14,9 +14,14 @@ import (
 	"time"
 )
 
-// ChromiumPath locates a Chromium binary or calls tb.Skip.
+// ChromiumPath locates a Chromium binary or calls tb.Skip. The
+// CHROMIUM_PATH environment variable takes precedence (used by CI to point
+// at a snap-free Chromium install).
 func ChromiumPath(tb testingTB) string {
 	tb.Helper()
+	if p := strings.TrimSpace(os.Getenv("CHROMIUM_PATH")); p != "" {
+		return p
+	}
 	for _, name := range []string{"chromium", "chromium-browser", "google-chrome"} {
 		path, err := exec.LookPath(name)
 		if err == nil {
@@ -86,12 +91,14 @@ func Run(tb testingTB, browser, profileDir, target string, markers []string) str
 		target,
 	}
 	cmd := exec.CommandContext(ctx, browser, args...)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		tb.Fatalf("Chromium stdout pipe failed: %v", err)
 	}
 	if err := cmd.Start(); err != nil {
-		tb.Fatalf("Chromium failed to start: %v", err)
+		tb.Fatalf("Chromium failed to start: %v (stderr: %s)", err, stderr.String())
 	}
 
 	var collected strings.Builder
@@ -118,7 +125,7 @@ func Run(tb testingTB, browser, profileDir, target string, markers []string) str
 	case <-ctx.Done():
 		_ = cmd.Process.Kill()
 		<-done
-		tb.Fatalf("Chromium timed out after %v; browser output:\n%s", 90*time.Second, collected.String())
+		tb.Fatalf("Chromium timed out after %v; browser output:\n%s\nstderr:\n%s", 90*time.Second, collected.String(), stderr.String())
 	}
 	_ = cmd.Wait()
 	return collected.String()
