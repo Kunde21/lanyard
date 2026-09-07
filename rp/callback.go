@@ -33,6 +33,16 @@ type CallbackResult struct {
 	// it with SetGrantManagementAction / SetGrantID to merge, replace, or
 	// obtain new tokens for the same grant, and with QueryGrant / RevokeGrant.
 	GrantID string
+	// Token is the complete token endpoint response: access token,
+	// refresh token (when issued - use it with NewRefreshTokenSource),
+	// ID token, token type, and expiry. Use it to persist the session and
+	// refresh later without re-intercepting HTTP traffic. Nil never happens
+	// on success.
+	Token *Token
+	// Issuer is the issuer the identity was validated against. Pair it with
+	// Subject for a stable identity key (subjects are only unique per
+	// issuer).
+	Issuer string
 	// VerifiedClaims holds the identity assurance data parsed from the ID
 	// Token's verified_claims member (OpenID Connect for Identity Assurance
 	// 1.0), when present. UserInfo-delivered verified claims are available
@@ -206,7 +216,16 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, err
 	}
 	if r.isFAPIProfile() {
-		return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, GrantID: tokenResp.GrantID, Cnf: claims.Cnf, VerifiedClaims: parseIDTokenVerifiedClaims(claims)}, nil
+		tokenCopy := tokenResp
+		return &CallbackResult{
+			Subject:        claims.Subject,
+			AccessToken:    tokenResp.AccessToken,
+			GrantID:        tokenResp.GrantID,
+			Cnf:            claims.Cnf,
+			VerifiedClaims: parseIDTokenVerifiedClaims(claims),
+			Token:          &tokenCopy,
+			Issuer:         issuer,
+		}, nil
 	}
 
 	userInfoEndpoint := r.userInfoEndpoint(provider)
@@ -224,7 +243,17 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, err
 	}
 
-	return &CallbackResult{Subject: claims.Subject, AccessToken: tokenResp.AccessToken, UserInfo: userinfo, GrantID: tokenResp.GrantID, Cnf: claims.Cnf, VerifiedClaims: parseIDTokenVerifiedClaims(claims)}, nil
+	tokenCopy := tokenResp
+	return &CallbackResult{
+		Subject:        claims.Subject,
+		AccessToken:    tokenResp.AccessToken,
+		UserInfo:       userinfo,
+		GrantID:        tokenResp.GrantID,
+		Cnf:            claims.Cnf,
+		VerifiedClaims: parseIDTokenVerifiedClaims(claims),
+		Token:          &tokenCopy,
+		Issuer:         issuer,
+	}, nil
 }
 
 // exchangeTokenSpan wraps the code-for-token exchange with a child span.
