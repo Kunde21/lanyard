@@ -65,6 +65,13 @@ func WithHTTPOnly(httpOnly bool) Option {
 }
 
 // WithSameSite sets the cookie SameSite attribute.
+//
+// The default (SameSite=Lax) is correct for authorization-code flows whose
+// callbacks are top-level redirects. Cross-site form_post callbacks do not
+// carry Lax cookies: deployments using response_mode=form_post must select
+// WithSameSite(http.SameSiteNoneMode). None-mode cookies require Secure
+// (always set by this store) and an HTTPS-served RP; reverse proxies must
+// forward the scheme so Set-Cookie is not dropped.
 func WithSameSite(sameSite http.SameSite) Option {
 	return func(s *Store) {
 		s.cookieOptions.SameSite = sameSite

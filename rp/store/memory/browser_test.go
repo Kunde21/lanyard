@@ -1,25 +1,22 @@
 package memory
 
 import (
-	"bufio"
-	"context"
 	"fmt"
 	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	rpstore "github.com/Kunde21/lanyard/rp/store"
+
+	"github.com/Kunde21/lanyard/internal/browsertest"
 )
 
 func TestCorrelationBrowserBindingCrossSiteCallbacks(t *testing.T) {
-	browser := chromiumPath(t)
+	browser := browsertest.ChromiumPath(t)
 
 	for _, mode := range []string{"query", "form_post"} {
 		t.Run(mode, func(t *testing.T) {
@@ -69,11 +66,11 @@ func TestCorrelationBrowserBindingCrossSiteCallbacks(t *testing.T) {
 			}))
 			defer issuerServer.Close()
 
-			rpURL = browserSiteURL(rpServer.URL, "rp.test")
-			issuerURL = browserSiteURL(issuerServer.URL, "issuer.test")
+			rpURL = browsertest.SiteURL(rpServer.URL, "rp.test")
+			issuerURL = browsertest.SiteURL(issuerServer.URL, "issuer.test")
 			close(ready)
-			profileDir := chromiumProfileDir(t)
-			output := runChromiumAwait(t, browser, profileDir, rpURL+"/start", []string{"callback-accepted"})
+			profileDir := browsertest.ProfileDir(t)
+			output := browsertest.Run(t, browser, profileDir, rpURL+"/start", []string{"callback-accepted"})
 			if !strings.Contains(output, "callback-accepted") {
 				t.Fatalf("cross-site %s callback was not accepted; browser output:\n%s", mode, output)
 			}
@@ -82,7 +79,7 @@ func TestCorrelationBrowserBindingCrossSiteCallbacks(t *testing.T) {
 }
 
 func TestCorrelationBrowserBindingRejectsDifferentBrowser(t *testing.T) {
-	browser := chromiumPath(t)
+	browser := browsertest.ChromiumPath(t)
 	store := New(time.Minute)
 	const state = "browser-bound-state"
 	var rpURL string
@@ -111,133 +108,21 @@ func TestCorrelationBrowserBindingRejectsDifferentBrowser(t *testing.T) {
 		}
 	}))
 	defer rpServer.Close()
-	rpURL = browserSiteURL(rpServer.URL, "rp.test")
+	rpURL = browsertest.SiteURL(rpServer.URL, "rp.test")
 
-	initiatingProfile := chromiumProfileDir(t)
-	if output := runChromiumAwait(t, browser, initiatingProfile, rpURL+"/bind", []string{"binding-created"}); !strings.Contains(output, "binding-created") {
+	initiatingProfile := browsertest.ProfileDir(t)
+	if output := browsertest.Run(t, browser, initiatingProfile, rpURL+"/bind", []string{"binding-created"}); !strings.Contains(output, "binding-created") {
 		t.Fatalf("initiating browser did not create binding; browser output:\n%s", output)
 	}
 
-	otherProfile := chromiumProfileDir(t)
-	if output := runChromiumAwait(t, browser, otherProfile, rpURL+"/callback", []string{"callback-rejected"}); !strings.Contains(output, "callback-rejected") {
+	otherProfile := browsertest.ProfileDir(t)
+	if output := browsertest.Run(t, browser, otherProfile, rpURL+"/callback", []string{"callback-rejected"}); !strings.Contains(output, "callback-rejected") {
 		t.Fatalf("different browser was not rejected; browser output:\n%s", output)
 	}
 
-	if output := runChromiumAwait(t, browser, initiatingProfile, rpURL+"/callback", []string{"callback-accepted"}); !strings.Contains(output, "callback-accepted") {
+	if output := browsertest.Run(t, browser, initiatingProfile, rpURL+"/callback", []string{"callback-accepted"}); !strings.Contains(output, "callback-accepted") {
 		t.Fatalf("initiating browser could not consume correlation; browser output:\n%s", output)
 	}
-}
-
-func chromiumPath(t *testing.T) string {
-	t.Helper()
-	for _, name := range []string{"chromium", "chromium-browser", "google-chrome"} {
-		path, err := exec.LookPath(name)
-		if err == nil {
-			return path
-		}
-	}
-	t.Skip("Chromium is not installed; real-browser SameSite coverage skipped")
-	return ""
-}
-
-// chromiumProfileDir creates a scratch profile directory whose cleanup
-// tolerates Chromium child processes still writing after the kill that
-// follows marker detection (t.TempDir fails hard on that race).
-func chromiumProfileDir(t *testing.T) string {
-	t.Helper()
-	dir, err := os.MkdirTemp("", "chromium-profile-*")
-	if err != nil {
-		t.Fatalf("MkdirTemp() failed: %v", err)
-	}
-	t.Cleanup(func() {
-		for attempt := 0; attempt < 10; attempt++ {
-			if err := os.RemoveAll(dir); err == nil {
-				return
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-	})
-	return dir
-}
-
-func browserSiteURL(serverURL, host string) string {
-	parsed, err := url.Parse(serverURL)
-	if err != nil {
-		panic(err)
-	}
-	_, port, _ := strings.Cut(parsed.Host, ":")
-	parsed.Host = host + ":" + port
-	return parsed.String()
-}
-
-// runChromiumAwait launches headless Chromium with --dump-dom and returns
-// its output as soon as one of the markers appears on stdout. Success is
-// driven by the page content, not by process exit: some CI environments
-// (notably snap Chromium on GitHub runners) dump the DOM but then hang at
-// shutdown, which must not fail an otherwise successful navigation
-// (third RC review T6).
-func runChromiumAwait(t *testing.T, browser, profileDir, target string, markers []string) string {
-	t.Helper()
-
-	// Generous deadline: cold-start fontconfig cache builds on 2-core CI
-	// runners can make the first Chromium launch slow.
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
-	args := []string{
-		"--headless",
-		"--no-sandbox",
-		"--disable-gpu",
-		"--disable-dev-shm-usage",
-		"--disable-background-networking",
-		"--disable-crash-reporter",
-		"--disable-component-update",
-		"--no-first-run",
-		"--no-proxy-server",
-		"--ignore-certificate-errors",
-		"--host-resolver-rules=MAP rp.test 127.0.0.1, MAP issuer.test 127.0.0.1",
-		"--user-data-dir=" + filepath.Clean(profileDir),
-		"--dump-dom",
-		target,
-	}
-	cmd := exec.CommandContext(ctx, browser, args...)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatalf("Chromium stdout pipe failed: %v", err)
-	}
-	cmd.Stderr = nil
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("Chromium failed to start: %v", err)
-	}
-
-	var collected strings.Builder
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
-		for scanner.Scan() {
-			line := scanner.Text()
-			collected.WriteString(line)
-			collected.WriteByte('\n')
-			for _, marker := range markers {
-				if strings.Contains(line, marker) {
-					_ = cmd.Process.Kill()
-					return
-				}
-			}
-		}
-	}()
-
-	select {
-	case <-done:
-	case <-ctx.Done():
-		_ = cmd.Process.Kill()
-		<-done
-		t.Fatalf("Chromium timed out after %v; browser output:\n%s", 90*time.Second, collected.String())
-	}
-	_ = cmd.Wait()
-	return collected.String()
 }
 
 // TestCorrelationBindingRejectsSiblingDomainCookieInjection: a sibling-site
@@ -245,7 +130,7 @@ func runChromiumAwait(t *testing.T, browser, profileDir, target string, markers 
 // __Host- prefix makes the browser refuse it outright, so the RP's binding
 // is always host-only (third RC review T1).
 func TestCorrelationBindingRejectsSiblingDomainCookieInjection(t *testing.T) {
-	browser := chromiumPath(t)
+	browser := browsertest.ChromiumPath(t)
 	store := New(time.Minute)
 	const state = "injection-state"
 	var rpURL, issuerURL string
@@ -285,12 +170,12 @@ document.title = "cookie-" + readable;
 	}))
 	defer issuerServer.Close()
 
-	rpURL = browserSiteURL(rpServer.URL, "rp.test")
-	issuerURL = browserSiteURL(issuerServer.URL, "issuer.test")
+	rpURL = browsertest.SiteURL(rpServer.URL, "rp.test")
+	issuerURL = browsertest.SiteURL(issuerServer.URL, "issuer.test")
 	close(ready)
 
-	profile := chromiumProfileDir(t)
-	attack := runChromiumAwait(t, browser, profile, issuerURL+"/attack", []string{"cookie-refused", "cookie-injected"})
+	profile := browsertest.ProfileDir(t)
+	attack := browsertest.Run(t, browser, profile, issuerURL+"/attack", []string{"cookie-refused", "cookie-injected"})
 	if !strings.Contains(attack, "cookie-refused") {
 		t.Fatalf("sibling-domain cookie was injected despite __Host- prefix; browser output:\n%s", attack)
 	}
@@ -298,7 +183,7 @@ document.title = "cookie-" + readable;
 	// The victim browser (same profile the attacker page ran in) starts a
 	// login at the RP: no hostile binding cookie may be visible, and the
 	// flow must create its own host-only binding.
-	legit := runChromiumAwait(t, browser, profile, rpURL+"/start", []string{"binding-created"})
+	legit := browsertest.Run(t, browser, profile, rpURL+"/start", []string{"binding-created"})
 	if !strings.Contains(legit, "binding-created") {
 		t.Fatalf("legitimate binding not created in attacked profile; browser output:\n%s", legit)
 	}
