@@ -4,7 +4,7 @@ go 1.25.7
 
 require (
 	github.com/Kunde21/markdownfmt v0.1.6
-	github.com/go-jose/go-jose/v4 v4.1.3
+	github.com/go-jose/go-jose/v4 v4.1.4
 	github.com/google/go-cmp v0.7.0
 	github.com/gorilla/sessions v1.3.0
 	github.com/pquerna/cachecontrol v0.2.0
