@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -1077,5 +1078,90 @@ func TestClientCredentials_Token_InvalidContextResourceDoesNotCallEndpoint(t *te
 	}
 	if calls != 0 {
 		t.Fatalf("token endpoint calls = %d, want 0", calls)
+	}
+}
+
+// TestClientCredentials_ClientSecretJWT: the client credentials grant sends
+// a client_secret_jwt assertion (RC review F9).
+func TestClientCredentials_ClientSecretJWT(t *testing.T) {
+	var gotAssertion, gotAssertionType string
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		gotAssertion = r.PostFormValue("client_assertion")
+		gotAssertionType = r.PostFormValue("client_assertion_type")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"access_token":"at-1","token_type":"Bearer","expires_in":3600}`)
+	}))
+	defer ts.Close()
+
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = ts.URL
+
+	cc, err := NewClientCredentials(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("a-very-secret-secret-0123456789abcdef"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodClientSecretJWT),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+	if _, err := cc.Token(context.Background()); err != nil {
+		t.Fatalf("Token() failed: %v", err)
+	}
+
+	if gotAssertionType != "urn:ietf:params:oauth:client-assertion-type:jwt-bearer" {
+		t.Fatalf("client_assertion_type = %q", gotAssertionType)
+	}
+	parts := strings.Split(gotAssertion, ".")
+	if len(parts) != 3 {
+		t.Fatalf("client_assertion not a JWT: %q", gotAssertion)
+	}
+	header, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatalf("decode header: %v", err)
+	}
+	if !strings.Contains(string(header), `"HS256"`) {
+		t.Fatalf("assertion header = %s, want HS256", header)
+	}
+}
+
+// TestSelectAuthMethod_CredentialAware: automatic selection only chooses
+// methods whose credentials the consumer supplied (RC review F9).
+func TestSelectAuthMethod_CredentialAware(t *testing.T) {
+	// Provider advertises private_key_jwt and basic; consumer has only a
+	// secret: basic must win over private_key_jwt.
+	c := clientConfig{
+		clientID:     "client",
+		clientSecret: "secret",
+	}
+	supported := []string{"private_key_jwt", "client_secret_basic"}
+	method, _, err := c.selectAuthMethodFromSupported(supported)
+	if err != nil {
+		t.Fatalf("selectAuthMethodFromSupported() failed: %v", err)
+	}
+	if method != AuthMethodBasic {
+		t.Fatalf("method = %q, want client_secret_basic", method)
+	}
+
+	// Consumer has only a key provider: private_key_jwt wins.
+	c2 := clientConfig{
+		clientID: "client",
+	}
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	c2.clientKeyProvider = NewStaticClientKeyProvider(key, "kid", "RS256", nil)
+	method2, _, err := c2.selectAuthMethodFromSupported(supported)
+	if err != nil {
+		t.Fatalf("selectAuthMethodFromSupported() failed: %v", err)
+	}
+	if method2 != AuthMethodPrivateKeyJWT {
+		t.Fatalf("method = %q, want private_key_jwt", method2)
 	}
 }

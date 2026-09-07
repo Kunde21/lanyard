@@ -109,19 +109,29 @@ func (c *clientConfig) selectAuthMethodFromSupported(supported []string) (AuthMe
 			}
 			resolved = c.authMethod
 		} else {
+			// Credential-aware preference: only select methods whose
+			// credentials the consumer actually supplied (RC review F9).
+			hasKey := c.clientKeyProvider != nil
+			hasSecret := strings.TrimSpace(c.clientSecret) != ""
 			switch {
-			case methodSupported(AuthMethodPrivateKeyJWT, supported):
+			case hasKey && methodSupported(AuthMethodPrivateKeyJWT, supported):
 				resolved = AuthMethodPrivateKeyJWT
-			case methodExactMatch(AuthMethodTLSClientAuth, supported):
+			case hasKey && methodExactMatch(AuthMethodTLSClientAuth, supported):
 				resolved = AuthMethodTLSClientAuth
-			case methodExactMatch(AuthMethodSelfSignedTLSClientAuth, supported):
+			case hasKey && methodExactMatch(AuthMethodSelfSignedTLSClientAuth, supported):
 				resolved = AuthMethodSelfSignedTLSClientAuth
-			case methodSupported(AuthMethodTLSClientAuth, supported):
+			case hasKey && methodSupported(AuthMethodTLSClientAuth, supported):
 				resolved = AuthMethodTLSClientAuth
-			case methodSupported(AuthMethodPost, supported):
+			case hasSecret && methodSupported(AuthMethodClientSecretJWT, supported):
+				resolved = AuthMethodClientSecretJWT
+			case hasSecret && methodSupported(AuthMethodPost, supported):
 				resolved = AuthMethodPost
-			case methodSupported(AuthMethodBasic, supported):
+			case hasSecret && methodSupported(AuthMethodBasic, supported):
 				resolved = AuthMethodBasic
+			case hasKey && methodSupported(AuthMethodPost, supported):
+				resolved = AuthMethodPost
+			case methodSupported(AuthMethodNone, supported):
+				resolved = AuthMethodNone
 			default:
 				return "", false, &AuthMethodError{Method: AuthMethodPost, Supported: supported, Err: ErrAuthMethodNotSupported}
 			}

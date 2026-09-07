@@ -121,7 +121,21 @@ func (c *ClientCredentials) requestToken(ctx context.Context, method AuthMethod)
 		}
 		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		form.Set("client_assertion", assertion)
-	case AuthMethodSelfSignedTLSClientAuth:
+	case AuthMethodSelfSignedTLSClientAuth, AuthMethodTLSClientAuth:
+	case AuthMethodClientSecretJWT:
+		audience := c.issuer
+		if audience == "" {
+			audience = c.provider.TokenEndpoint
+		}
+		assertion, err := buildClientSecretJWTAssertion(c.clientID, c.clientSecret, audience, c.now(), c.randReader)
+		if err != nil {
+			return nil, 0, "", fmt.Errorf("failed to build client secret assertion: %w", err)
+		}
+		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
+		form.Set("client_assertion", assertion)
+		form.Set("client_id", c.clientID)
+	case AuthMethodNone:
+		form.Set("client_id", c.clientID)
 	case AuthMethodPost:
 		form.Set("client_secret", c.clientSecret)
 	case AuthMethodBasic:
