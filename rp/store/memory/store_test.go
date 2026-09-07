@@ -102,6 +102,93 @@ func TestStoreValueLifecycle(t *testing.T) {
 	}
 }
 
+func TestStoreLoadValueDistinguishesNilEmptyAndAbsent(t *testing.T) {
+	store := New(time.Minute)
+	ctx := context.Background()
+
+	values := []struct {
+		name string
+		want []byte
+	}{
+		{name: "nil", want: nil},
+		{name: "empty", want: []byte{}},
+		{name: "ordinary", want: []byte("value")},
+	}
+	for _, value := range values {
+		if err := store.SaveValue(ctx, nil, nil, "state", value.name, value.want); err != nil {
+			t.Fatalf("SaveValue(%q) failed: %v", value.name, err)
+		}
+	}
+
+	for _, tt := range values {
+		t.Run(tt.name, func(t *testing.T) {
+			got, ok, err := store.LoadValue(ctx, nil, "state", tt.name)
+			if err != nil {
+				t.Fatalf("LoadValue() failed: %v", err)
+			}
+			if !ok {
+				t.Fatal("LoadValue() expected stored value")
+			}
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Fatalf("value mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+
+	if got, ok, err := store.LoadValue(ctx, nil, "state", "absent"); err != nil {
+		t.Fatalf("LoadValue(absent) failed: %v", err)
+	} else if ok || got != nil {
+		t.Fatalf("LoadValue(absent) = (%v, %t), want (nil, false)", got, ok)
+	}
+}
+
+func TestStoreLoadValueConcurrentNilAndMissing(t *testing.T) {
+	store := New(time.Minute)
+	ctx := context.Background()
+	const iterations = 1000
+
+	var wg sync.WaitGroup
+	for worker := 0; worker < 4; worker++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				var value []byte
+				switch i % 3 {
+				case 1:
+					value = []byte{}
+				case 2:
+					value = []byte("value")
+				}
+				if err := store.SaveValue(ctx, nil, nil, "state", "name", value); err != nil {
+					t.Errorf("SaveValue() failed: %v", err)
+					return
+				}
+				if i%2 == 0 {
+					if err := store.DeleteValue(ctx, nil, nil, "state", "name"); err != nil {
+						t.Errorf("DeleteValue() failed: %v", err)
+						return
+					}
+				}
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				if _, _, err := store.LoadValue(ctx, nil, "state", "name"); err != nil {
+					t.Errorf("LoadValue() failed: %v", err)
+					return
+				}
+				if _, _, err := store.LoadValue(ctx, nil, "state", "absent"); err != nil {
+					t.Errorf("LoadValue(absent) failed: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+}
+
 func TestStoreConsumeCorrelationSingleUse(t *testing.T) {
 	store := New(time.Minute)
 	want := rpstore.CallbackCorrelation{Nonce: "nonce", CodeVerifier: "verifier", CreatedAt: time.Now().UTC()}
@@ -197,24 +284,34 @@ func TestCorrelationBrowserBinding(t *testing.T) {
 	if len(attackRec.Header().Values("Set-Cookie")) == 0 {
 		t.Fatal("binding cookie not set")
 	}
+	cookies := attackRec.Result().Cookies()
+	if len(cookies) != 1 {
+		t.Fatalf("binding cookies = %d, want 1", len(cookies))
+	}
+	if diff := cmp.Diff(http.SameSiteNoneMode, cookies[0].SameSite); diff != "" {
+		t.Fatalf("binding cookie SameSite mismatch (-want +got):\n%s", diff)
+	}
+	if !cookies[0].Secure || !cookies[0].HttpOnly {
+		t.Fatalf("binding cookie flags = Secure:%t HttpOnly:%t, want both true", cookies[0].Secure, cookies[0].HttpOnly)
+	}
 
 	// Victim browser (no cookie) replays the attacker's callback URL:
 	// rejected.
 	victimRec := httptest.NewRecorder()
-	victimReq := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?state=state-1", nil)
+	victimReq := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", nil)
 	if _, ok, _ := store.ConsumeCorrelation(context.Background(), victimRec, victimReq, "state-1"); ok {
 		t.Fatal("correlation consumed without the binding cookie")
 	}
 
 	// A different browser's cookie is also rejected.
-	otherReq := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?state=state-1", nil)
+	otherReq := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", nil)
 	otherReq.AddCookie(&http.Cookie{Name: "lanyard_state_binding", Value: "other-browser"})
 	if _, ok, _ := store.ConsumeCorrelation(context.Background(), victimRec, otherReq, "state-1"); ok {
 		t.Fatal("correlation consumed with a foreign binding cookie")
 	}
 
 	// The initiating browser succeeds.
-	attackerCallbackReq := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?state=state-1", nil)
+	attackerCallbackReq := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", nil)
 	for _, raw := range attackRec.Header().Values("Set-Cookie") {
 		parts := strings.SplitN(raw, ";", 2)
 		nameValue := strings.SplitN(parts[0], "=", 2)

@@ -70,23 +70,28 @@ func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge, aut
 }
 
 func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*parResponse, error) {
+	method, _ := r.authMethodState()
+	return r.pushAuthorizationRequestWithAuthMethod(ctx, params, method)
+}
+
+func (r *RP) pushAuthorizationRequestWithAuthMethod(ctx context.Context, params url.Values, method AuthMethod) (*parResponse, error) {
 	ctx, span := r.spanStart(ctx, "rp.par_request",
-		attribute.String("lanyard.auth_method", string(func() AuthMethod { m, _ := r.authMethodState(); return m }())),
+		attribute.String("lanyard.auth_method", string(method)),
 	)
 	defer span.End()
 
-	parResp, err := r.pushAuthorizationRequestInner(ctx, params)
+	parResp, err := r.pushAuthorizationRequestInner(ctx, params, method)
 	spanError(span, err)
 	return parResp, err
 }
 
-func (r *RP) pushAuthorizationRequestInner(ctx context.Context, params url.Values) (*parResponse, error) {
+func (r *RP) pushAuthorizationRequestInner(ctx context.Context, params url.Values, method AuthMethod) (*parResponse, error) {
 	parEndpoint := r.pushedAuthorizationRequestEndpoint(r.provider)
 	if parEndpoint == "" {
 		return nil, fmt.Errorf("%w: pushed authorization request endpoint not available", ErrInvalidConfiguration)
 	}
 
-	if r.clientKeyProvider != nil && r.resolvedAuthMethod == AuthMethodPrivateKeyJWT {
+	if r.clientKeyProvider != nil && method == AuthMethodPrivateKeyJWT {
 		assertion, err := r.buildClientAssertion(r.issuer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build client assertion for PAR: %w", err)
@@ -95,7 +100,7 @@ func (r *RP) pushAuthorizationRequestInner(ctx context.Context, params url.Value
 		params.Set("client_assertion", assertion)
 	}
 
-	if r.resolvedAuthMethod == AuthMethodClientSecretJWT {
+	if method == AuthMethodClientSecretJWT {
 		assertion, err := r.buildClientSecretAssertion(r.issuer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build client secret assertion for PAR: %w", err)

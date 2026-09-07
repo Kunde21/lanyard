@@ -105,6 +105,7 @@ func (r *RP) authorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 	if err := r.resolveAuthMethod(); err != nil {
 		return "", err
 	}
+	resolvedAuthMethod, _ := r.authMethodState()
 
 	state, err := randomToken(r.randReader, 32)
 	if err != nil {
@@ -134,12 +135,12 @@ func (r *RP) authorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 			}
 			parParams = url.Values{}
 			parParams.Set("request", signed)
-			if methodTLS, _ := r.authMethodState(); methodTLS == AuthMethodTLSClientAuth {
+			if resolvedAuthMethod == AuthMethodTLSClientAuth {
 				parParams.Set("client_id", r.clientID)
 			}
 		}
 
-		parResp, err := r.pushAuthorizationRequest(ctx, parParams)
+		parResp, err := r.pushAuthorizationRequestWithAuthMethod(ctx, parParams, resolvedAuthMethod)
 		if err != nil {
 			return "", err
 		}

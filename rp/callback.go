@@ -205,8 +205,12 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	}
 
 	if !r.usesOpenIDScope() {
+		tokenCopy := tokenResp
 		return &CallbackResult{
 			AccessToken: tokenResp.AccessToken,
+			GrantID:     tokenResp.GrantID,
+			Token:       &tokenCopy,
+			Issuer:      issuer,
 		}, nil
 	}
 

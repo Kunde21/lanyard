@@ -82,7 +82,7 @@ func (s *Store) SaveCorrelation(_ context.Context, w http.ResponseWriter, r *htt
 				MaxAge:   int((s.ttl + time.Minute).Seconds()),
 				HttpOnly: true,
 				Secure:   true,
-				SameSite: http.SameSiteLaxMode,
+				SameSite: http.SameSiteNoneMode,
 			})
 		}
 	}
@@ -245,27 +245,32 @@ func (s *Store) LoadValue(_ context.Context, _ *http.Request, state, name string
 		return nil, false, fmt.Errorf("value name must not be empty")
 	}
 
+	now := time.Now().UTC()
 	s.mu.RLock()
-	entry, ok := s.items[state]
+	entry, statePresent := s.items[state]
+	expired := statePresent && s.isExpired(entry, now)
 	var value []byte
-	if ok && !s.isExpired(entry, time.Now().UTC()) {
-		value = cloneBytes(entry.values[name])
+	var valuePresent bool
+	if statePresent && !expired {
+		stored, present := entry.values[name]
+		value = cloneBytes(stored)
+		valuePresent = present
 	}
 	s.mu.RUnlock()
-	if !ok {
+
+	if !statePresent {
 		return nil, false, nil
 	}
-	if s.isExpired(entry, time.Now().UTC()) {
+	if expired {
 		s.mu.Lock()
-		delete(s.items, state)
+		if current, present := s.items[state]; present && s.isExpired(current, time.Now().UTC()) {
+			delete(s.items, state)
+		}
 		s.mu.Unlock()
 		return nil, false, nil
 	}
-
-	if value == nil {
-		if _, present := entry.values[name]; !present {
-			return nil, false, nil
-		}
+	if !valuePresent {
+		return nil, false, nil
 	}
 
 	return value, true, nil

@@ -35,7 +35,7 @@ func expandRunJobs(runID string, cfg harnessConfig, plans []AvailablePlan) []Run
 		allVariants = deduplicateMatrixVariants(plan.Name, allVariants)
 
 		if len(allVariants) == 0 {
-			jobs = append(jobs, buildRunJob(runID, jobIndex, plan, "", "", nil, RPProfileConfig{}))
+			jobs = append(jobs, buildRunJob(runID, jobIndex, plan, "", "", defaultPlanVariant(plan.Name), RPProfileConfig{}))
 			jobIndex++
 			continue
 		}
@@ -46,6 +46,20 @@ func expandRunJobs(runID string, cfg harnessConfig, plans []AvailablePlan) []Run
 		}
 	}
 	return jobs
+}
+
+// defaultPlanVariant pins the supported variant for plans that no matrix
+// covers, so the suite does not pick an unsupported default.
+func defaultPlanVariant(planName string) map[string]string {
+	switch strings.ToLower(planName) {
+	case "oidcc-client-dynamic-certification-test-plan":
+		// The example RP's dynamic registration sends symmetric
+		// credentials; the private_key_jwt variant requires registering
+		// asymmetric metadata the runtime does not build yet.
+		return map[string]string{"client_auth_type": "client_secret_basic"}
+	default:
+		return nil
+	}
 }
 
 func deduplicateMatrixVariants(planName string, variants []matrixVariant) []matrixVariant {

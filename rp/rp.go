@@ -77,8 +77,9 @@ func validateRequestMethodExplicit(raw string) error {
 }
 
 // validateFAPIProfileRequirements enforces the FAPI security profile
-// invariants at construction: asymmetric client authentication, PAR or
-// signed request objects, and sender-constrained tokens (RC review F7).
+// invariants at construction: asymmetric client authentication,
+// profile-specific authorization request protection, and sender-constrained
+// tokens.
 func (r *RP) validateFAPIProfileRequirements() error {
 	if !r.profile.isFAPI() {
 		return nil
@@ -91,8 +92,15 @@ func (r *RP) validateFAPIProfileRequirements() error {
 		violations = append(violations, fmt.Sprintf(
 			"client authentication %q is not permitted (FAPI requires private_key_jwt or TLS client auth)", method))
 	}
-	if !r.requirePAR && !r.requestMethod.isSigned() {
-		violations = append(violations, "PAR or a signed request object is required")
+	switch r.profile {
+	case profileFAPI2SecurityProfile, profileFAPI2MessageSigning:
+		if !r.requirePAR {
+			violations = append(violations, "PAR is required")
+		}
+	default:
+		if !r.requirePAR && !r.requestMethod.isSigned() {
+			violations = append(violations, "PAR or a signed request object is required")
+		}
 	}
 	if r.senderConstrain == SenderConstraintNone {
 		violations = append(violations, "sender-constrained tokens are required (mTLS or DPoP)")
@@ -463,12 +471,18 @@ func (r *RP) applyProfileDefaults() {
 		if !r.requestMethodExplicit {
 			r.requestMethod = requestMethodSignedNonRepudiation
 		}
+		if !r.requirePARExplicit {
+			r.requirePAR = true
+		}
 	case profileFAPI2MessageSigning:
 		if !r.scopesExplicit {
 			r.scopes = []string{"openid"}
 		}
 		if !r.requestMethodExplicit {
 			r.requestMethod = requestMethodSignedNonRepudiation
+		}
+		if !r.requirePARExplicit {
+			r.requirePAR = true
 		}
 	}
 }
