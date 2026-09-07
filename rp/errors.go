@@ -30,6 +30,11 @@ var (
 	ErrAuthMethodNotSupported = errors.New("auth method not supported")
 	// ErrClientCredentialsFailed indicates client credentials token request failed.
 	ErrClientCredentialsFailed = errors.New("client credentials token request failed")
+	// ErrSenderConstraintViolated indicates the provider's response does not
+	// carry the sender constraining the client explicitly required (for
+	// example a Bearer token_type when DPoP binding was configured).
+	ErrSenderConstraintViolated = errors.New("sender constraining was violated")
+
 	// ErrRefreshTokenFailed indicates a refresh token request failed.
 	ErrRefreshTokenFailed = errors.New("refresh token request failed")
 	// ErrRefreshTokenRejected indicates the authorization server rejected the

@@ -62,6 +62,14 @@ func executeTokenGrant(config *clientConfig, run tokenGrantExecutor) (Token, err
 		return Token{}, err
 	}
 	if result.status == http.StatusOK {
+		// Explicitly required DPoP sender constraining must fail closed:
+		// RFC 9449 section 5 has the AS issue a DPoP-bound access token and
+		// echo the token_type; a Bearer (or missing) type means the response
+		// is not sender-constrained and must be discarded (third RC review
+		// T3). Opportunistic DPoP (no explicit constraint) stays lenient.
+		if config.senderConstrain == SenderConstraintDPoP && !strings.EqualFold(strings.TrimSpace(result.token.TokenType), "DPoP") {
+			return Token{}, fmt.Errorf("%w: token endpoint returned %q token_type but DPoP sender constraining is required", ErrSenderConstraintViolated, result.token.TokenType)
+		}
 		if allowFallback {
 			config.setAuthMethodState(method, false)
 		}
@@ -74,6 +82,9 @@ func executeTokenGrant(config *clientConfig, run tokenGrantExecutor) (Token, err
 			return Token{}, retryErr
 		}
 		if retryResult.status == http.StatusOK {
+			if config.senderConstrain == SenderConstraintDPoP && !strings.EqualFold(strings.TrimSpace(retryResult.token.TokenType), "DPoP") {
+				return Token{}, fmt.Errorf("%w: token endpoint returned %q token_type but DPoP sender constraining is required", ErrSenderConstraintViolated, retryResult.token.TokenType)
+			}
 			config.setAuthMethodState(AuthMethodBasic, false)
 			return retryResult.token, nil
 		}

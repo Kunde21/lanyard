@@ -705,3 +705,71 @@ func TestPublicErrorsPreserveCauses(t *testing.T) {
 		t.Fatalf("New() error = %v, want discovery cause text", err)
 	}
 }
+
+// TestExplicitDPoPRequiresDPoPTokenType: an explicitly required DPoP
+// constraint fails closed when the token endpoint returns a Bearer or
+// missing token type, across all three grants (third RC review T3);
+// opportunistic DPoP stays lenient.
+func TestExplicitDPoPRequiresDPoPTokenType(t *testing.T) {
+	tokenHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"access_token":"at","token_type":"Bearer","expires_in":3600}`)
+	}
+	ts := httptest.NewTLSServer(http.HandlerFunc(tokenHandler))
+	defer ts.Close()
+
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = ts.URL
+
+	newDPoPRP := func(t *testing.T, constrain SenderConstraint) *RP {
+		r, err := New(context.Background(), "https://issuer.test",
+			WithClientID("client"),
+			WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+			WithRedirectURI("https://rp.test/callback"),
+			WithHTTPClient(ts.Client()),
+			WithProviderMetadata(provider),
+			WithAuthMethod(AuthMethodBasic),
+			WithSenderConstrain(constrain),
+			WithClientKeyProvider(fapiTestKeyProvider(t)),
+		)
+		if err != nil {
+			t.Fatalf("New() failed: %v", err)
+		}
+		return r
+	}
+
+	// Explicit DPoP: token exchange rejects the Bearer response.
+	rExplicit := newDPoPRP(t, SenderConstraintDPoP)
+	if _, err := rExplicit.RefreshToken(context.Background(), "rt"); !errors.Is(err, ErrSenderConstraintViolated) {
+		t.Fatalf("refresh with explicit DPoP err = %v, want ErrSenderConstraintViolated", err)
+	}
+
+	// Client credentials: same rejection.
+	cc, err := NewClientCredentials(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+		WithSenderConstrain(SenderConstraintDPoP),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+	if _, err := cc.Token(context.Background()); !errors.Is(err, ErrClientCredentialsFailed) || !errors.Is(err, ErrSenderConstraintViolated) {
+		t.Fatalf("client credentials with explicit DPoP err = %v, want ErrSenderConstraintViolated chain", err)
+	}
+
+	// Authorization-code exchange: same rejection through the shared path.
+	if _, err := rExplicit.exchangeToken(context.Background(), ts.URL+"/token", "code", "verifier", nil); !errors.Is(err, ErrSenderConstraintViolated) {
+		t.Fatalf("code exchange with explicit DPoP err = %v, want ErrSenderConstraintViolated", err)
+	}
+
+	// Opportunistic DPoP (no explicit constraint): lenient.
+	rAuto := newDPoPRP(t, SenderConstraintNone)
+	rAuto.senderConstrain = SenderConstraintNone
+	if _, err := rAuto.RefreshToken(context.Background(), "rt"); errors.Is(err, ErrSenderConstraintViolated) {
+		t.Fatalf("opportunistic DPoP incorrectly rejected Bearer response: %v", err)
+	}
+}
