@@ -100,3 +100,34 @@ func TestCookieStoreCrossSiteFormPostSameSitePolicy(t *testing.T) {
 		}
 	})
 }
+
+// TestCookieStoreRejectsSiblingDomainCookieInjection: a sibling-site page
+// cannot plant the __Host- prefixed state cookie - the browser refuses
+// cookies with Domain attributes under that prefix, so store-level
+// transplantation via planted Domain cookies is blocked at the browser
+// (fourth RC review R7).
+func TestCookieStoreRejectsSiblingDomainCookieInjection(t *testing.T) {
+	browser := browsertest.ChromiumPath(t)
+	var issuerURL string
+	ready := make(chan struct{})
+
+	issuerServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-ready
+		fmt.Fprintf(w, `<!doctype html><script>
+document.cookie = "__Host-lanyard_rp_state=attacker-session; Domain=issuer.test; Path=/; Secure";
+document.cookie = "lanyard_rp_state=attacker-session; Domain=issuer.test; Path=/";
+var host = document.cookie.indexOf("__Host-lanyard_rp_state=") !== -1 ? "injected" : "refused";
+var plain = document.cookie.indexOf("lanyard_rp_state=") !== -1 ? "injected" : "refused";
+document.title = "host-" + host + "-plain-" + plain;
+</script><p id="result">unknown</p><script>document.getElementById('result').textContent = document.title;</script>`)
+	}))
+	defer issuerServer.Close()
+	issuerURL = browsertest.SiteURL(issuerServer.URL, "issuer.test")
+	close(ready)
+
+	output := browsertest.Run(t, browser, browsertest.ProfileDir(t), issuerURL+"/attack",
+		[]string{"host-refused-plain-", "host-injected-plain-"})
+	if !strings.Contains(output, "host-refused-plain-") {
+		t.Fatalf("__Host- cookie injection was not refused by the browser; output:\n%s", output)
+	}
+}

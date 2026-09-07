@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	rpstore "github.com/Kunde21/lanyard/rp/store"
@@ -98,6 +99,9 @@ func New(authKey, encryptionKey []byte, opts ...Option) (*Store, error) {
 		configure(s.store)
 	}
 
+	if err := validateSessionCookieAttributes(s.sessionName, s.cookieOptions); err != nil {
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -560,4 +564,25 @@ func (s *Store) pruneExpiredStates(p *payload, now time.Time) {
 			delete(p.States, state)
 		}
 	}
+}
+
+// validateSessionCookieAttributes enforces the browser's prefix rules at
+// construction so a misconfigured store fails fast instead of emitting
+// cookies the browser silently drops (fourth RC review R7).
+func validateSessionCookieAttributes(name string, opts sessions.Options) error {
+	if strings.HasPrefix(name, "__Host-") {
+		if !opts.Secure {
+			return fmt.Errorf("__Host- cookie %q requires the Secure attribute", name)
+		}
+		if opts.Path != "/" {
+			return fmt.Errorf("__Host- cookie %q requires Path=/", name)
+		}
+		if opts.Domain != "" {
+			return fmt.Errorf("__Host- cookie %q must not set a Domain attribute", name)
+		}
+	}
+	if strings.HasPrefix(name, "__Secure-") && !opts.Secure {
+		return fmt.Errorf("__Secure- cookie %q requires the Secure attribute", name)
+	}
+	return nil
 }

@@ -8,7 +8,11 @@ import (
 )
 
 const (
-	defaultSessionName = "lanyard_rp_state"
+	// defaultSessionName carries the __Host- prefix: the browser then
+	// enforces host-only scope (no Domain attribute), Path=/, and Secure,
+	// so a sibling-domain attacker cannot plant this cookie with a
+	// Domain-wide value (fourth RC review R7).
+	defaultSessionName = "__Host-lanyard_rp_state"
 	defaultPayloadKey  = "payload"
 	defaultTTL         = 10 * time.Minute
 )
@@ -16,7 +20,11 @@ const (
 // Option configures a cookie-backed state store.
 type Option func(*Store)
 
-// WithSessionName sets the gorilla session cookie name.
+// WithSessionName sets the gorilla session cookie name. Names carrying
+// the __Host- or __Secure- prefix are validated for their required
+// attributes at construction; a custom name without a prefix is the
+// consumer's explicit choice and must be configured carefully (host-only
+// scope is then the consumer's responsibility).
 func WithSessionName(name string) Option {
 	return func(s *Store) {
 		if name != "" {

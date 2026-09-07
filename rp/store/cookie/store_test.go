@@ -198,3 +198,35 @@ func addCookies(req *http.Request, cookies []*http.Cookie) {
 		req.AddCookie(c)
 	}
 }
+
+// TestSessionCookiePrefixRules: __Host- names enforce Secure/Path=/ /no
+// Domain at construction instead of emitting cookies browsers drop
+// (fourth RC review R7).
+func TestSessionCookiePrefixRules(t *testing.T) {
+	auth := []byte("01234567890123456789012345678901")
+	enc := []byte("abcdef0123456789abcdef0123456789")
+
+	if _, err := New(auth, enc, WithSecure(false)); err == nil {
+		t.Fatal("__Host- default accepted without Secure")
+	}
+	if _, err := New(auth, enc, WithCookiePath("/state")); err == nil {
+		t.Fatal("__Host- default accepted with non-root Path")
+	}
+	if _, err := New(auth, enc, WithCookieDomain("example.com")); err == nil {
+		t.Fatal("__Host- default accepted with Domain attribute")
+	}
+	if _, err := New(auth, enc); err != nil {
+		t.Fatalf("default configuration rejected: %v", err)
+	}
+	store, err := New(auth, enc)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if store.sessionName != "__Host-lanyard_rp_state" {
+		t.Fatalf("session name = %q, want __Host- prefixed default", store.sessionName)
+	}
+	// A custom unprefixed name remains the consumer's explicit choice.
+	if _, err := New(auth, enc, WithSessionName("legacy_state")); err != nil {
+		t.Fatalf("custom unprefixed name rejected: %v", err)
+	}
+}
