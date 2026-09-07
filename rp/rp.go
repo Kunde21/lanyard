@@ -425,6 +425,11 @@ func (r *RP) initMetadataClient() {
 
 func (r *RP) resolveProvider(ctx context.Context) error {
 	if r.configuredProviderSet && providerIsComplete(r.configuredProvider) {
+		// Preloaded metadata bypasses discovery validation; apply the same
+		// endpoint checks here (fourth RC review R2).
+		if err := metadata.ValidateEndpoints(r.issuer, r.configuredProvider); err != nil {
+			return fmt.Errorf("%w: preloaded provider metadata: %w", ErrInvalidConfiguration, err)
+		}
 		r.provider = r.configuredProvider
 		r.providerSet = true
 		return nil
@@ -434,6 +439,9 @@ func (r *RP) resolveProvider(ctx context.Context) error {
 
 	if mode == discoveryModeDisabled {
 		if r.configuredProviderSet {
+			if err := metadata.ValidateEndpoints(r.issuer, r.configuredProvider); err != nil {
+				return fmt.Errorf("%w: preloaded provider metadata: %w", ErrInvalidConfiguration, err)
+			}
 			r.provider = r.configuredProvider
 			r.providerSet = true
 			return nil

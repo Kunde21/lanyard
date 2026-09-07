@@ -1261,3 +1261,74 @@ func TestStandaloneConstructorsWireMTLSCertificate(t *testing.T) {
 	}
 	assertWired(t, &g.clientConfig, "grant manager")
 }
+
+// TestInsecureEndpointsRejected: preloaded metadata with cleartext
+// credential-bearing endpoints is rejected at construction; loopback HTTP
+// stays development-acceptable (fourth RC review R2).
+func TestInsecureEndpointsRejected(t *testing.T) {
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = "http://auth.example.com/token"
+
+	_, err := NewClientCredentials(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if !errors.Is(err, ErrInvalidConfiguration) || !strings.Contains(err.Error(), "token_endpoint") {
+		t.Fatalf("cleartext token endpoint err = %v, want endpoint rejection", err)
+	}
+
+	provider.TokenEndpoint = "http://127.0.0.1:9999/token"
+	if _, err := NewClientCredentials(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+	); err != nil {
+		t.Fatalf("loopback http rejected: %v", err)
+	}
+}
+
+// TestSensitiveRequestsRefuseInsecureRedirects: a 307 redirect from HTTPS to
+// HTTP never receives the credential-bearing request body (fourth RC
+// review R2).
+func TestSensitiveRequestsRefuseInsecureRedirects(t *testing.T) {
+	secretSeen := false
+
+	redirectTarget := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.PostFormValue("client_secret") != "" {
+			secretSeen = true
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer redirectTarget.Close()
+
+	redirectServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, redirectTarget.URL+"/leak", http.StatusTemporaryRedirect)
+	}))
+	defer redirectServer.Close()
+
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = redirectServer.URL + "/token"
+
+	cc, err := NewClientCredentials(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("super-secret-secret-0123456789abcdef"),
+		WithHTTPClient(redirectServer.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodPost),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+	if _, err := cc.Token(context.Background()); err == nil {
+		t.Fatal("cross-scheme redirect accepted")
+	} else if !strings.Contains(err.Error(), "redirect rejected") {
+		t.Fatalf("Token() err = %v, want redirect rejection", err)
+	}
+	if secretSeen {
+		t.Fatal("credential body was replayed to the cleartext redirect target")
+	}
+}

@@ -198,7 +198,7 @@ func (r *RP) fetchDistributedClaimSource(ctx context.Context, sourceDef map[stri
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := r.httpClient.Do(req)
+	resp, err := doSensitiveRequest(r.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to execute distributed claims request: %v", ErrUserInfoValidationFailed, err)
 	}

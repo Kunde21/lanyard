@@ -85,6 +85,12 @@ func (c *clientConfig) resolveProviderFromDiscovery(ctx context.Context) error {
 		}
 		c.provider = provider
 		c.providerSet = true
+		return nil
+	}
+	// Preloaded metadata bypasses discovery validation: apply the endpoint
+	// security checks here (fourth RC review R2).
+	if err := metadata.ValidateEndpoints(c.issuer, c.provider); err != nil {
+		return fmt.Errorf("%w: preloaded provider metadata: %v", ErrInvalidConfiguration, err)
 	}
 	return nil
 }
