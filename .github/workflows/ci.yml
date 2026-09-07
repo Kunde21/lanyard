@@ -15,7 +15,9 @@ jobs:
       - name: Install Chromium
         run: |
           npx playwright install --with-deps chromium
-          sudo ln -s "$(echo "$HOME"/.cache/ms-playwright/chromium-*/chrome-linux/chrome)" /usr/local/bin/google-chrome
+          # Link the headless shell, not full Chrome-for-Testing: full CfT
+          # 153 aborts TLS handshakes with Go TLS servers on this runner.
+          sudo ln -s "$(echo "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell)" /usr/local/bin/google-chrome
       - name: Install gofumpt
         run: go install mvdan.cc/gofumpt@v0.11.0
       - name: Test format gate

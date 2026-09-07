@@ -111,7 +111,9 @@ func TestCorrelationBrowserBindingRejectsDifferentBrowser(t *testing.T) {
 	rpURL = browsertest.SiteURL(rpServer.URL, "rp.test")
 
 	initiatingProfile := browsertest.ProfileDir(t)
-	if output := browsertest.Run(t, browser, initiatingProfile, rpURL+"/bind", []string{"binding-created"}); !strings.Contains(output, "binding-created") {
+	// Natural exit (no markers): the binding cookie must be flushed to the
+	// profile for the later same-profile launch.
+	if output := browsertest.Run(t, browser, initiatingProfile, rpURL+"/bind", nil); !strings.Contains(output, "binding-created") {
 		t.Fatalf("initiating browser did not create binding; browser output:\n%s", output)
 	}
 

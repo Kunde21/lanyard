@@ -120,14 +120,29 @@ func Run(tb testingTB, browser, profileDir, target string, markers []string) str
 		}
 	}()
 
+	waitErr := make(chan error, 1)
+	go func() { waitErr <- cmd.Wait() }()
+
 	select {
 	case <-done:
+		if len(markers) == 0 {
+			// No markers: wait for the browser to exit by itself. The
+			// headless shell exits right after --dump-dom, and a natural
+			// exit flushes the cookie store - killing on output would race
+			// cookie persistence for later browser launches.
+			select {
+			case <-waitErr:
+			case <-ctx.Done():
+				_ = cmd.Process.Kill()
+				<-waitErr
+				tb.Fatalf("Chromium timed out after %v; browser output:\n%s\nstderr:\n%s", 90*time.Second, collected.String(), stderr.String())
+			}
+		}
 	case <-ctx.Done():
 		_ = cmd.Process.Kill()
-		<-done
+		<-waitErr
 		tb.Fatalf("Chromium timed out after %v; browser output:\n%s\nstderr:\n%s", 90*time.Second, collected.String(), stderr.String())
 	}
-	_ = cmd.Wait()
 	return collected.String()
 }
 
