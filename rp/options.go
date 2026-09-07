@@ -181,9 +181,16 @@ func WithValidateAuthorizationResponseIssuer(validate bool) AuthCodeOption {
 }
 
 // WithAllowUnsecuredIDTokens controls whether unsigned ID tokens are accepted.
+// WithAllowUnsecuredIDTokens controls whether ID tokens signed with the
+// "none" algorithm are accepted. The default is signed verification; the
+// previous behavior of defaulting to acceptance for non-FAPI profiles was
+// removed as a security fix. Providers that do not advertise "none" in
+// id_token_signing_alg_values_supported are always rejected regardless of
+// this option.
 func WithAllowUnsecuredIDTokens(allow bool) AuthCodeOption {
 	return authCodeOptionFunc(func(r *RP) {
 		r.allowUnsecuredIDTokens = allow
+		r.allowUnsecuredIDTokensSet = true
 	})
 }
 

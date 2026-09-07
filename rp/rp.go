@@ -76,10 +76,11 @@ type RP struct {
 
 	userInfoTokenTransport UserInfoTokenTransport
 
-	requirePAR              bool
-	requirePARExplicit      bool
-	senderConstrainExplicit bool
-	allowUnsecuredIDTokens  bool
+	requirePAR                bool
+	requirePARExplicit        bool
+	senderConstrainExplicit   bool
+	allowUnsecuredIDTokens    bool
+	allowUnsecuredIDTokensSet bool
 
 	responseMode                        string
 	responseModeExplicit                bool
@@ -431,9 +432,10 @@ func removeScope(scopes []string, target string) []string {
 }
 
 func (r *RP) finalizeSecurityDefaults() {
-	if !r.profile.isFAPI() && !r.allowUnsecuredIDTokens {
-		r.allowUnsecuredIDTokens = true
-	}
+	// Security fix: signed verification is the default. Explicit
+	// configuration is always honored; only an unset value may be defaulted
+	// (and the only remaining default is false).
+	_ = r.allowUnsecuredIDTokensSet
 }
 
 func (r *RP) validateProviderReadyForAuthorizationURL() error {

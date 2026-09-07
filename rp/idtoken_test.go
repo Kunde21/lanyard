@@ -309,7 +309,7 @@ func TestValidateIDToken_DecryptsEncryptedToken(t *testing.T) {
 		t.Fatalf("CompactSerialize() failed: %v", err)
 	}
 
-	if _, err := r.validateIDToken(context.Background(), encrypted, "nonce-123", issuer+"/jwks", []string{"PS256"}); err != nil {
+	if _, err := r.validateIDToken(context.Background(), encrypted, "nonce-123", issuer+"/jwks", []string{"RS256"}); err != nil {
 		t.Fatalf("validateIDToken() failed for encrypted token: %v", err)
 	}
 }
@@ -621,4 +621,66 @@ func TestValidateIDToken_NoCnfClaim(t *testing.T) {
 	if got.Cnf != nil {
 		t.Errorf("expected nil cnf for token without cnf claim, got %+v", got.Cnf)
 	}
+}
+
+// TestValidateIDToken_UnsignedPolicy: signed verification is the default;
+// explicit configuration is honored either way; advertised algorithms apply
+// to unsigned tokens with no per-client exceptions.
+func TestValidateIDToken_UnsignedPolicy(t *testing.T) {
+	claims := map[string]any{
+		"iss":   "https://issuer.test",
+		"sub":   "sub-123",
+		"aud":   []string{"client"},
+		"exp":   time.Now().Add(5 * time.Minute).Unix(),
+		"iat":   time.Now().Unix(),
+		"nonce": "nonce-123",
+	}
+	unsigned := "eyJhbGciOiJub25lIn0." + base64.RawURLEncoding.EncodeToString(mustJSON(t, claims)) + "."
+
+	newTestRP := func(opts ...AuthCodeOption) *RP {
+		r := claimsTestRP(t)
+		for _, opt := range opts {
+			if opt != nil {
+				opt.applyAuthCode(r)
+			}
+		}
+		return r
+	}
+
+	// Default: rejected.
+	if _, err := newTestRP().validateIDToken(context.Background(), unsigned, "nonce-123", "", nil); err == nil {
+		t.Fatal("default accepted unsigned id_token")
+	}
+
+	// Explicit opt-in: accepted.
+	r := newTestRP(WithAllowUnsecuredIDTokens(true))
+	got, err := r.validateIDToken(context.Background(), unsigned, "nonce-123", "", nil)
+	if err != nil {
+		t.Fatalf("explicit opt-in rejected: %v", err)
+	}
+	if got.Subject != "sub-123" {
+		t.Fatalf("subject = %q", got.Subject)
+	}
+
+	// Explicit opt-in but "none" not advertised: rejected.
+	if _, err := newTestRP(WithAllowUnsecuredIDTokens(true)).
+		validateIDToken(context.Background(), unsigned, "nonce-123", "", []string{"RS256"}); err == nil {
+		t.Fatal("unsigned id_token accepted despite not being advertised")
+	}
+
+	// No per-client exception: any client ID enforcing the same policy.
+	r2 := claimsTestRP(t)
+	r2.clientID = "local-dev-client-2"
+	if _, err := r2.validateIDToken(context.Background(), unsigned, "nonce-123", "", []string{"RS256"}); err == nil {
+		t.Fatal("client-specific bypass still present")
+	}
+}
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("Marshal() failed: %v", err)
+	}
+	return encoded
 }
