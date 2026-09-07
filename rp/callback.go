@@ -143,11 +143,14 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	if !ok {
 		return nil, fmt.Errorf("%w: unknown or expired state", ErrInvalidState)
 	}
+	// Effective identity for this callback: correlation-supplied credentials
+	// override the RP defaults without mutating shared fields (RC review F3).
+	id := flowIdentity{issuer: r.issuer, clientID: r.clientID, clientSecret: r.clientSecret}
 	if data.ClientID != "" {
-		r.clientID = data.ClientID
+		id.clientID = data.ClientID
 	}
 	if data.ClientSecret != "" {
-		r.clientSecret = data.ClientSecret
+		id.clientSecret = data.ClientSecret
 	}
 	if params.IDToken != "" {
 		idToken := params.IDToken
@@ -158,7 +161,7 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 			}
 			idToken = decrypted
 		}
-		authzClaims, err := r.validateAuthorizationResponseIDToken(req.Context(), idToken, data.Nonce, code, state, r.provider.JWKSURI, r.provider.IDTokenSigningAlgValuesSupported)
+		authzClaims, err := r.validateAuthorizationResponseIDTokenAs(ctx, idToken, data.Nonce, code, state, r.provider.JWKSURI, r.provider.IDTokenSigningAlgValuesSupported, id)
 		if err != nil {
 			return nil, err
 		}
@@ -181,7 +184,7 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	}
 
 	issuer := expectedIssuer
-	r.issuer = issuer
+	id.issuer = issuer
 
 	provider, err := r.providerForCallback(ctx, issuer)
 	if err != nil {
@@ -193,7 +196,7 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, fmt.Errorf("%w: provider missing token endpoint", ErrTokenExchangeFailed)
 	}
 
-	tokenResp, err := r.exchangeTokenSpan(ctx, tokenEndpoint, code, data.CodeVerifier, data.Resources)
+	tokenResp, err := r.exchangeTokenSpanAs(ctx, tokenEndpoint, code, data.CodeVerifier, data.Resources, id)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +214,7 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 		return nil, fmt.Errorf("%w: token response missing id_token", ErrIDTokenValidationFailed)
 	}
 
-	claims, err := r.validateIDTokenSpan(ctx, tokenResp.IDToken, data.Nonce, provider.JWKSURI, provider.IDTokenSigningAlgValuesSupported)
+	claims, err := r.validateIDTokenSpanAs(ctx, tokenResp.IDToken, data.Nonce, provider.JWKSURI, provider.IDTokenSigningAlgValuesSupported, id)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +245,7 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	var userinfo map[string]any
 	if userInfoEndpoint != "" {
 		var err error
-		userinfo, err = r.fetchUserInfoSpan(ctx, userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport)
+		userinfo, err = r.fetchUserInfoSpanAs(ctx, userInfoEndpoint, tokenResp.AccessToken, claims.Subject, transport, id)
 		if err != nil {
 			return nil, err
 		}
@@ -262,37 +265,37 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 }
 
 // exchangeTokenSpan wraps the code-for-token exchange with a child span.
-func (r *RP) exchangeTokenSpan(ctx context.Context, tokenEndpoint, code, verifier string, resources []string) (Token, error) {
+func (r *RP) exchangeTokenSpanAs(ctx context.Context, tokenEndpoint, code, verifier string, resources []string, id flowIdentity) (Token, error) {
 	ctx, span := r.spanStart(ctx, "rp.token_exchange",
-		attribute.String("lanyard.auth_method", string(r.resolvedAuthMethod)),
+		attribute.String("lanyard.auth_method", string(authMethodAttr(&r.clientConfig))),
 	)
 	defer span.End()
 
-	token, err := r.exchangeToken(ctx, tokenEndpoint, code, verifier, resources)
+	token, err := r.exchangeTokenAs(ctx, tokenEndpoint, code, verifier, resources, id)
 	spanError(span, err)
 	return token, err
 }
 
 // validateIDTokenSpan wraps ID token validation with a child span. The token
 // itself never enters telemetry; only algorithm identifiers do.
-func (r *RP) validateIDTokenSpan(ctx context.Context, rawIDToken, expectedNonce, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
+func (r *RP) validateIDTokenSpanAs(ctx context.Context, rawIDToken, expectedNonce, jwksURL string, providerAllowedAlgs []string, id flowIdentity) (idTokenClaims, error) {
 	ctx, span := r.spanStart(ctx, "rp.id_token_validation")
 	defer span.End()
 
-	claims, err := r.validateIDToken(ctx, rawIDToken, expectedNonce, jwksURL, providerAllowedAlgs)
+	claims, err := r.validateIDTokenAs(ctx, rawIDToken, expectedNonce, jwksURL, providerAllowedAlgs, id)
 	spanError(span, err)
 	return claims, err
 }
 
 // fetchUserInfoSpan wraps the userinfo request with a child span. The access
 // token and response payload never enter telemetry.
-func (r *RP) fetchUserInfoSpan(ctx context.Context, endpoint, accessToken, expectedSub string, transport UserInfoTokenTransport) (map[string]any, error) {
+func (r *RP) fetchUserInfoSpanAs(ctx context.Context, endpoint, accessToken, expectedSub string, transport UserInfoTokenTransport, id flowIdentity) (map[string]any, error) {
 	ctx, span := r.spanStart(ctx, "rp.userinfo",
 		attribute.String("lanyard.userinfo_transport", string(transport)),
 	)
 	defer span.End()
 
-	payload, err := r.fetchUserInfo(ctx, endpoint, accessToken, expectedSub, transport)
+	payload, err := r.fetchUserInfoAs(ctx, endpoint, accessToken, expectedSub, transport, id)
 	spanError(span, err)
 	return payload, err
 }
@@ -309,7 +312,11 @@ func parseIDTokenVerifiedClaims(claims idTokenClaims) []VerifiedClaims {
 }
 
 func (r *RP) validateAuthorizationResponseIDToken(ctx context.Context, rawIDToken, expectedNonce, code, state, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
-	claims, err := r.validateIDToken(ctx, rawIDToken, expectedNonce, jwksURL, providerAllowedAlgs)
+	return r.validateAuthorizationResponseIDTokenAs(ctx, rawIDToken, expectedNonce, code, state, jwksURL, providerAllowedAlgs, flowIdentity{issuer: r.issuer, clientID: r.clientID})
+}
+
+func (r *RP) validateAuthorizationResponseIDTokenAs(ctx context.Context, rawIDToken, expectedNonce, code, state, jwksURL string, providerAllowedAlgs []string, id flowIdentity) (idTokenClaims, error) {
+	claims, err := r.validateIDTokenAs(ctx, rawIDToken, expectedNonce, jwksURL, providerAllowedAlgs, id)
 	if err != nil {
 		return idTokenClaims{}, err
 	}

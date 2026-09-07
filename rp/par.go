@@ -71,7 +71,7 @@ func (r *RP) buildAuthorizationParameters(state, nonce, verifier, challenge, aut
 
 func (r *RP) pushAuthorizationRequest(ctx context.Context, params url.Values) (*parResponse, error) {
 	ctx, span := r.spanStart(ctx, "rp.par_request",
-		attribute.String("lanyard.auth_method", string(r.resolvedAuthMethod)),
+		attribute.String("lanyard.auth_method", string(func() AuthMethod { m, _ := r.authMethodState(); return m }())),
 	)
 	defer span.End()
 

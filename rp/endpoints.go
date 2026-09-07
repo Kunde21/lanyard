@@ -28,11 +28,13 @@ func (r *RP) userInfoEndpoint(provider metadata.Provider) string {
 }
 
 func (r *RP) usesMTLSForPAR() bool {
-	return r.resolvedAuthMethod == AuthMethodTLSClientAuth || r.resolvedAuthMethod == AuthMethodSelfSignedTLSClientAuth
+	method, _ := r.authMethodState()
+	return method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth
 }
 
 func (r *RP) usesMTLSForTokenEndpoint() bool {
-	return r.resolvedAuthMethod == AuthMethodTLSClientAuth || r.resolvedAuthMethod == AuthMethodSelfSignedTLSClientAuth || r.senderConstrain == SenderConstraintMTLS
+	method, _ := r.authMethodState()
+	return method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth || r.senderConstrain == SenderConstraintMTLS
 }
 
 func (c *clientConfig) introspectionEndpoint(provider metadata.Provider) string {
@@ -43,7 +45,8 @@ func (c *clientConfig) introspectionEndpoint(provider metadata.Provider) string 
 }
 
 func (c *clientConfig) usesMTLSForIntrospectionEndpoint() bool {
-	return c.resolvedAuthMethod == AuthMethodTLSClientAuth ||
-		c.resolvedAuthMethod == AuthMethodSelfSignedTLSClientAuth ||
+	method, _ := c.authMethodState()
+	return method == AuthMethodTLSClientAuth ||
+		method == AuthMethodSelfSignedTLSClientAuth ||
 		c.senderConstrain == SenderConstraintMTLS
 }

@@ -61,6 +61,10 @@ var supportedIDTokenAlgs = []jose.SignatureAlgorithm{
 }
 
 func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwksURL string, providerAllowedAlgs []string) (idTokenClaims, error) {
+	return r.validateIDTokenAs(ctx, rawIDToken, expectedNonce, jwksURL, providerAllowedAlgs, flowIdentity{issuer: r.issuer, clientID: r.clientID})
+}
+
+func (r *RP) validateIDTokenAs(ctx context.Context, rawIDToken, expectedNonce, jwksURL string, providerAllowedAlgs []string, id flowIdentity) (idTokenClaims, error) {
 	rawIDToken, _, err := r.decryptIDTokenIfNeeded(rawIDToken)
 	if err != nil {
 		return idTokenClaims{}, err
@@ -132,7 +136,7 @@ func (r *RP) validateIDToken(ctx context.Context, rawIDToken, expectedNonce, jwk
 		return idTokenClaims{}, fmt.Errorf("%w: %v", ErrIDTokenValidationFailed, err)
 	}
 
-	if err := r.validateIDTokenClaims(claims, expectedNonce); err != nil {
+	if err := r.validateIDTokenClaimsAs(claims, expectedNonce, id); err != nil {
 		return idTokenClaims{}, err
 	}
 
@@ -161,8 +165,22 @@ func (r *RP) decryptIDTokenIfNeeded(rawIDToken string) (string, bool, error) {
 	return string(plaintext), true, nil
 }
 
+// flowIdentity carries the effective issuer and client credentials for one
+// flow transaction. Callbacks resolve it per request (possibly from the
+// correlation data) instead of mutating shared RP fields, keeping one RP
+// safe for concurrent HTTP handlers (RC review F3).
+type flowIdentity struct {
+	issuer       string
+	clientID     string
+	clientSecret string
+}
+
 func (r *RP) validateIDTokenClaims(claims idTokenClaims, expectedNonce string) error {
-	if claims.Issuer != r.issuer {
+	return r.validateIDTokenClaimsAs(claims, expectedNonce, flowIdentity{issuer: r.issuer, clientID: r.clientID})
+}
+
+func (r *RP) validateIDTokenClaimsAs(claims idTokenClaims, expectedNonce string, id flowIdentity) error {
+	if claims.Issuer != id.issuer {
 		return fmt.Errorf("%w: issuer mismatch", ErrIDTokenValidationFailed)
 	}
 	if claims.Subject == "" {
@@ -174,7 +192,7 @@ func (r *RP) validateIDTokenClaims(claims idTokenClaims, expectedNonce string) e
 
 	audMatch := false
 	for _, aud := range claims.Aud {
-		if aud == r.clientID {
+		if aud == id.clientID {
 			audMatch = true
 			break
 		}
@@ -207,7 +225,7 @@ func (r *RP) validateIDTokenClaims(claims idTokenClaims, expectedNonce string) e
 		return fmt.Errorf("%w: nonce mismatch", ErrIDTokenValidationFailed)
 	}
 
-	if len(claims.Aud) > 1 && claims.Azp != r.clientID {
+	if len(claims.Aud) > 1 && claims.Azp != id.clientID {
 		return fmt.Errorf("%w: azp required for multiple audiences", ErrIDTokenValidationFailed)
 	}
 

@@ -17,6 +17,10 @@ import (
 )
 
 func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedSub string, transport UserInfoTokenTransport) (map[string]any, error) {
+	return r.fetchUserInfoAs(ctx, endpoint, accessToken, expectedSub, transport, flowIdentity{issuer: r.issuer, clientID: r.clientID})
+}
+
+func (r *RP) fetchUserInfoAs(ctx context.Context, endpoint, accessToken, expectedSub string, transport UserInfoTokenTransport, id flowIdentity) (map[string]any, error) {
 	useDPoP := transport == UserInfoTokenTransportHeader && r.shouldUseDPoP()
 
 	var body []byte
@@ -64,7 +68,7 @@ func (r *RP) fetchUserInfo(ctx context.Context, endpoint, accessToken, expectedS
 
 	var payload map[string]any
 	if looksLikeJWT(body) {
-		payload, err = r.verifySignedUserInfo(ctx, strings.TrimSpace(string(body)))
+		payload, err = r.verifySignedUserInfoAs(ctx, strings.TrimSpace(string(body)), id)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrUserInfoValidationFailed, err)
 		}
@@ -285,6 +289,10 @@ type signedUserInfoClaims struct {
 // the signature is checked against the provider's JWKS and the iss, aud, and
 // sub claims are validated per OIDC Core section 5.3.2.
 func (r *RP) verifySignedUserInfo(ctx context.Context, raw string) (map[string]any, error) {
+	return r.verifySignedUserInfoAs(ctx, raw, flowIdentity{issuer: r.issuer, clientID: r.clientID})
+}
+
+func (r *RP) verifySignedUserInfoAs(ctx context.Context, raw string, id flowIdentity) (map[string]any, error) {
 	parsed, err := jwt.ParseSigned(raw, supportedIDTokenAlgs)
 	if err != nil {
 		return nil, fmt.Errorf("parse signed userinfo: %v", err)
@@ -341,18 +349,18 @@ func (r *RP) verifySignedUserInfo(ctx context.Context, raw string) (map[string]a
 		}
 	}
 
-	if claims.Iss != r.issuer {
-		return nil, fmt.Errorf("signed userinfo iss mismatch: got %q, want %q", claims.Iss, r.issuer)
+	if claims.Iss != id.issuer {
+		return nil, fmt.Errorf("signed userinfo iss mismatch: got %q, want %q", claims.Iss, id.issuer)
 	}
 	audMatch := false
 	for _, aud := range claims.Aud {
-		if aud == r.clientID {
+		if aud == id.clientID {
 			audMatch = true
 			break
 		}
 	}
 	if !audMatch {
-		return nil, fmt.Errorf("signed userinfo aud mismatch: client_id %q not in audience", r.clientID)
+		return nil, fmt.Errorf("signed userinfo aud mismatch: client_id %q not in audience", id.clientID)
 	}
 	if strings.TrimSpace(claims.Sub) == "" {
 		return nil, fmt.Errorf("signed userinfo missing sub claim")

@@ -148,17 +148,29 @@ func executeTokenRequest(cfg tokenRequestExecution) (Token, int, string, error) 
 }
 
 func (r *RP) exchangeToken(ctx context.Context, tokenEndpoint, code, verifier string, resources []string) (Token, error) {
+	return r.exchangeTokenAs(ctx, tokenEndpoint, code, verifier, resources,
+		flowIdentity{issuer: r.issuer, clientID: r.clientID, clientSecret: r.clientSecret})
+}
+
+// exchangeTokenAs performs the code exchange with the given effective
+// identity instead of the shared RP fields (RC review F3).
+func (r *RP) exchangeTokenAs(ctx context.Context, tokenEndpoint, code, verifier string, resources []string, id flowIdentity) (Token, error) {
 	tokenResp, err := executeTokenGrant(&r.clientConfig, func(method AuthMethod) (tokenGrantResult, error) {
-		tokenResp, status, preview, err := r.exchangeTokenOnce(ctx, tokenEndpoint, code, verifier, method, "", resources)
+		tokenResp, status, preview, err := r.exchangeTokenOnceAs(ctx, tokenEndpoint, code, verifier, method, "", resources, id)
 		return tokenGrantResult{token: tokenResp, status: status, preview: preview}, err
 	})
 	if err != nil {
-		return Token{}, fmt.Errorf("%w: %v", ErrTokenExchangeFailed, err)
+		return Token{}, fmt.Errorf("%w: %w", ErrTokenExchangeFailed, err)
 	}
 	return tokenResp, nil
 }
 
 func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifier string, method AuthMethod, dpopAccessToken string, resources []string) (Token, int, string, error) {
+	return r.exchangeTokenOnceAs(ctx, tokenEndpoint, code, verifier, method, dpopAccessToken, resources,
+		flowIdentity{issuer: r.issuer, clientID: r.clientID, clientSecret: r.clientSecret})
+}
+
+func (r *RP) exchangeTokenOnceAs(ctx context.Context, tokenEndpoint, code, verifier string, method AuthMethod, dpopAccessToken string, resources []string, id flowIdentity) (Token, int, string, error) {
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", code)
@@ -170,7 +182,7 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 
 	switch method {
 	case AuthMethodPrivateKeyJWT:
-		audience := r.issuer
+		audience := id.issuer
 		if audience == "" {
 			audience = tokenEndpoint
 		}
@@ -180,9 +192,9 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 		}
 		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		form.Set("client_assertion", assertion)
-		form.Set("client_id", r.clientID)
+		form.Set("client_id", id.clientID)
 	case AuthMethodClientSecretJWT:
-		audience := r.issuer
+		audience := id.issuer
 		if audience == "" {
 			audience = tokenEndpoint
 		}
@@ -192,21 +204,21 @@ func (r *RP) exchangeTokenOnce(ctx context.Context, tokenEndpoint, code, verifie
 		}
 		form.Set("client_assertion_type", "urn:ietf:params:oauth:client-assertion-type:jwt-bearer")
 		form.Set("client_assertion", assertion)
-		form.Set("client_id", r.clientID)
+		form.Set("client_id", id.clientID)
 	case AuthMethodTLSClientAuth, AuthMethodSelfSignedTLSClientAuth:
-		form.Set("client_id", r.clientID)
+		form.Set("client_id", id.clientID)
 	case AuthMethodNone:
-		form.Set("client_id", r.clientID)
+		form.Set("client_id", id.clientID)
 	case AuthMethodPost:
-		form.Set("client_id", r.clientID)
-		form.Set("client_secret", r.clientSecret)
+		form.Set("client_id", id.clientID)
+		form.Set("client_secret", id.clientSecret)
 	case AuthMethodBasic:
 		// client_id not included in form when using Basic auth (only in Authorization header)
 	}
 
 	return executeTokenRequest(tokenRequestExecution{
 		buildRequest: func() (*http.Request, error) {
-			return r.buildTokenRequest(ctx, tokenEndpoint, form, method)
+			return buildTokenRequestEnvelope(ctx, tokenEndpoint, form, method, id.clientID, id.clientSecret)
 		},
 		attachDPoP: func(req *http.Request, nonce string) error {
 			return r.attachDPoPProof(req, dpopAccessToken, nonce)

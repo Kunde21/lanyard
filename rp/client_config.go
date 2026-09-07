@@ -201,10 +201,11 @@ func (c *clientConfig) setAuthMethodState(method AuthMethod, allowFallback bool)
 }
 
 func (c *clientConfig) shouldUseDPoP() bool {
+	method, _ := c.authMethodState()
 	if c.senderConstrain != SenderConstraintNone {
-		return c.senderConstrain == SenderConstraintDPoP && c.clientKeyProvider != nil && isDPoPSupported(c.resolvedAuthMethod)
+		return c.senderConstrain == SenderConstraintDPoP && c.clientKeyProvider != nil && isDPoPSupported(method)
 	}
-	return c.clientKeyProvider != nil && isDPoPSupported(c.resolvedAuthMethod)
+	return c.clientKeyProvider != nil && isDPoPSupported(method)
 }
 
 func (c *clientConfig) attachDPoPProof(req *http.Request, nonce string) error {

@@ -92,8 +92,16 @@ func (s *Store) LoadState(_ context.Context, _ *http.Request, state string) (rps
 		return rpstore.StateScope{}, false, fmt.Errorf("state must not be empty")
 	}
 
+	// Clone while holding the read lock: SaveValue may mutate the entry's
+	// value map concurrently (RC review F3).
 	s.mu.RLock()
 	entry, ok := s.items[state]
+	var correlation rpstore.CallbackCorrelation
+	var values map[string][]byte
+	if ok {
+		correlation = entry.correlation
+		values = cloneValues(entry.values)
+	}
 	s.mu.RUnlock()
 	if !ok {
 		return rpstore.StateScope{}, false, nil
@@ -105,7 +113,7 @@ func (s *Store) LoadState(_ context.Context, _ *http.Request, state string) (rps
 		return rpstore.StateScope{}, false, nil
 	}
 
-	return rpstore.StateScope{Correlation: entry.correlation, Values: cloneValues(entry.values)}, true, nil
+	return rpstore.StateScope{Correlation: correlation, Values: values}, true, nil
 }
 
 // DeleteState removes all data in a state scope.
@@ -157,6 +165,10 @@ func (s *Store) LoadValue(_ context.Context, _ *http.Request, state, name string
 
 	s.mu.RLock()
 	entry, ok := s.items[state]
+	var value []byte
+	if ok && !s.isExpired(entry, time.Now().UTC()) {
+		value = cloneBytes(entry.values[name])
+	}
 	s.mu.RUnlock()
 	if !ok {
 		return nil, false, nil
@@ -168,12 +180,13 @@ func (s *Store) LoadValue(_ context.Context, _ *http.Request, state, name string
 		return nil, false, nil
 	}
 
-	value, ok := entry.values[name]
-	if !ok {
-		return nil, false, nil
+	if value == nil {
+		if _, present := entry.values[name]; !present {
+			return nil, false, nil
+		}
 	}
 
-	return cloneBytes(value), true, nil
+	return value, true, nil
 }
 
 // DeleteValue removes a caller-owned value from a state scope.

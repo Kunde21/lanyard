@@ -134,7 +134,7 @@ func (r *RP) authorizationURL(ctx context.Context, w http.ResponseWriter, req *h
 			}
 			parParams = url.Values{}
 			parParams.Set("request", signed)
-			if r.resolvedAuthMethod == AuthMethodTLSClientAuth {
+			if methodTLS, _ := r.authMethodState(); methodTLS == AuthMethodTLSClientAuth {
 				parParams.Set("client_id", r.clientID)
 			}
 		}

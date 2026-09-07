@@ -67,3 +67,10 @@ func stripURLQuery(raw string) string {
 	}
 	return parsed.Scheme + "://" + parsed.Host + parsed.Path
 }
+
+// authMethodAttr reads the resolved auth method under lock for span
+// attributes.
+func authMethodAttr(c *clientConfig) AuthMethod {
+	method, _ := c.authMethodState()
+	return method
+}

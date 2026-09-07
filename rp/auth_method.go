@@ -29,12 +29,15 @@ func (r *RP) resolveAuthMethod() error {
 	return r.clientConfig.resolveAuthMethodFromProvider()
 }
 
+// applySupportedAuthMethods negotiates the auth method against the given
+// supported list without mutating shared provider state (RC review F3).
 func (r *RP) applySupportedAuthMethods(supportedAuthMethods []string) error {
-	oldProvider := r.provider
-	r.provider.TokenEndpointAuthMethodsSupported = supportedAuthMethods
-	err := r.clientConfig.resolveAuthMethodFromProvider()
-	r.provider = oldProvider
-	return err
+	method, allowFallback, err := r.selectAuthMethodFromSupported(supportedAuthMethods)
+	if err != nil {
+		return err
+	}
+	r.setAuthMethodState(method, allowFallback)
+	return nil
 }
 
 func normalizeSupportedAuthMethods(methods []string) []string {
