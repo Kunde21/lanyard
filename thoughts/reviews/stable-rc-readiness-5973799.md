@@ -214,3 +214,31 @@ Still useful before release:
 3. Repeat full tests, race tests, and vet, including the targeted external scenarios.
 4. Let the current conformance run finish and associate its results with its exact
    commit/configuration. Run the affected plans again after any subsequent fixes.
+
+## Remediation verification follow-up
+
+R1–R4 were implemented with a `gpt-5.6-sol` worker and independently reviewed;
+the changes are present in the history through `9ef2dc8`. Parent verification
+included RP race tests and real Chromium query/form_post and foreign-browser
+rejection tests.
+
+R5–R7 were implemented by a second `gpt-5.6-sol` worker on base `b10f61b` and
+independently reviewed in the uncommitted worktree:
+
+- Token persistence now emits every lifecycle field and honors explicit empty/zero
+  values; absent fields in legacy envelopes still fall back to raw provider data.
+- Every saved correlation renews the cookie lifetime without rotating its binding.
+- CI installs pinned gofumpt v0.11.0 and uses a tested gate that fails on missing or
+  failing formatters as well as unformatted code.
+
+The parent independently passed `go test -race -count=1 ./...`, `go vet ./...`,
+`go build ./...`, formatter gate self-tests, repository formatting, and
+`git diff --check`. Race log: `/tmp/lanyard-r5-r7-parent-race.log`.
+The worker also passed the uncached ordinary full test suite.
+
+All seven concrete findings are addressed in the reviewed working tree. This is
+not a release certification: the conformance results recorded in
+`conformance/README.md` apply to `9ef2dc8`, not the subsequent R5–R7 changes.
+Repeat affected conformance checks against the final release candidate revision.
+Editing Token fields intentionally does not erase the preserved original raw
+payload; this retained-credential behavior is now documented and tested.
