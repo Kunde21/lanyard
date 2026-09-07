@@ -32,94 +32,107 @@ type Token struct {
 
 type tokenJSON Token
 
-// UnmarshalJSON decodes token fields and preserves the full provider
-// payload in raw. Explicitly stored lifecycle fields take precedence over
-// the raw payload: a Token edited after decoding (for example a refresh
-// token synthesized by RefreshTokenSource for a response that omitted one)
-// survives a marshal/unmarshal round-trip instead of reverting to stale raw
-// data (RC review F10).
+type tokenEnvelope struct {
+	AccessToken  string          `json:"access_token"`
+	TokenType    string          `json:"token_type"`
+	ExpiresIn    int64           `json:"expires_in"`
+	IDToken      string          `json:"id_token"`
+	RefreshToken string          `json:"refresh_token"`
+	GrantID      string          `json:"grant_id"`
+	Scope        string          `json:"scope"`
+	Raw          json.RawMessage `json:"raw,omitempty"`
+}
+
+// UnmarshalJSON decodes token fields and preserves the full provider payload
+// in raw. Fields present in a persisted envelope are authoritative even when
+// empty or zero. Missing fields in a legacy raw-only envelope are restored
+// from its raw provider payload for backward compatibility.
 func (t *Token) UnmarshalJSON(data []byte) error {
 	if t == nil {
 		return fmt.Errorf("token is nil")
 	}
 
-	type alias tokenJSON
-	stored := struct {
-		alias
-		Raw json.RawMessage `json:"raw,omitempty"`
-	}{}
+	stored := tokenEnvelope{}
 	if err := json.Unmarshal(data, &stored); err != nil {
 		return err
 	}
 
-	rawPayload := stored.Raw
-	if len(rawPayload) == 0 {
-		rawPayload = data
-	}
-
-	fromRaw := alias{}
-	if err := json.Unmarshal(rawPayload, &fromRaw); err != nil {
+	fields := map[string]json.RawMessage{}
+	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
 
-	decoded := stored.alias
-	if decoded.AccessToken == "" {
-		decoded.AccessToken = fromRaw.AccessToken
+	decoded := Token{
+		AccessToken:  stored.AccessToken,
+		TokenType:    stored.TokenType,
+		ExpiresIn:    stored.ExpiresIn,
+		IDToken:      stored.IDToken,
+		RefreshToken: stored.RefreshToken,
+		GrantID:      stored.GrantID,
+		Scope:        stored.Scope,
 	}
-	if decoded.TokenType == "" {
-		decoded.TokenType = fromRaw.TokenType
-	}
-	if decoded.ExpiresIn == 0 {
-		decoded.ExpiresIn = fromRaw.ExpiresIn
-	}
-	if decoded.IDToken == "" {
-		decoded.IDToken = fromRaw.IDToken
-	}
-	if decoded.RefreshToken == "" {
-		decoded.RefreshToken = fromRaw.RefreshToken
-	}
-	if decoded.Scope == "" {
-		decoded.Scope = fromRaw.Scope
-	}
-	if decoded.GrantID == "" {
-		decoded.GrantID = fromRaw.GrantID
+	rawPayload := json.RawMessage(data)
+	if persistedRaw, ok := fields["raw"]; ok {
+		rawPayload = persistedRaw
+		fromRaw := tokenJSON{}
+		if err := json.Unmarshal(rawPayload, &fromRaw); err != nil {
+			return err
+		}
+		if _, present := fields["access_token"]; !present {
+			decoded.AccessToken = fromRaw.AccessToken
+		}
+		if _, present := fields["token_type"]; !present {
+			decoded.TokenType = fromRaw.TokenType
+		}
+		if _, present := fields["expires_in"]; !present {
+			decoded.ExpiresIn = fromRaw.ExpiresIn
+		}
+		if _, present := fields["id_token"]; !present {
+			decoded.IDToken = fromRaw.IDToken
+		}
+		if _, present := fields["refresh_token"]; !present {
+			decoded.RefreshToken = fromRaw.RefreshToken
+		}
+		if _, present := fields["grant_id"]; !present {
+			decoded.GrantID = fromRaw.GrantID
+		}
+		if _, present := fields["scope"]; !present {
+			decoded.Scope = fromRaw.Scope
+		}
 	}
 
-	*t = Token(decoded)
-	t.raw = append(t.raw[:0], rawPayload...)
+	decoded.raw = append(json.RawMessage(nil), rawPayload...)
+	*t = decoded
 	return nil
 }
 
-// MarshalJSON persists the token fields together with the preserved raw payload.
+// MarshalJSON persists every token lifecycle field, including empty and zero
+// values, together with the preserved raw provider payload. Explicit zero
+// values therefore remain authoritative on a later unmarshal.
 func (t Token) MarshalJSON() ([]byte, error) {
-	type alias tokenJSON
-	encoded := alias(t)
 	rawPayload := t.raw
 	if len(rawPayload) == 0 {
-		payload, err := json.Marshal(alias{
-			AccessToken:  t.AccessToken,
-			TokenType:    t.TokenType,
-			ExpiresIn:    t.ExpiresIn,
-			IDToken:      t.IDToken,
-			RefreshToken: t.RefreshToken,
-			GrantID:      t.GrantID,
-			Scope:        t.Scope,
-		})
+		payload, err := json.Marshal(tokenJSON(t))
 		if err != nil {
 			return nil, err
 		}
 		rawPayload = payload
 	}
-	return json.Marshal(struct {
-		alias
-		Raw json.RawMessage `json:"raw,omitempty"`
-	}{
-		alias: encoded,
-		Raw:   rawPayload,
+	return json.Marshal(tokenEnvelope{
+		AccessToken:  t.AccessToken,
+		TokenType:    t.TokenType,
+		ExpiresIn:    t.ExpiresIn,
+		IDToken:      t.IDToken,
+		RefreshToken: t.RefreshToken,
+		GrantID:      t.GrantID,
+		Scope:        t.Scope,
+		Raw:          rawPayload,
 	})
 }
 
-// DecodeRaw unmarshals the preserved raw token payload into target.
+// DecodeRaw unmarshals the original preserved provider token payload into
+// target. Editing Token fields does not alter or securely erase credentials
+// or other values retained in that raw payload.
 func (t Token) DecodeRaw(target any) error {
 	if target == nil {
 		return fmt.Errorf("target is nil")
