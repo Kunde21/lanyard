@@ -43,6 +43,16 @@ flow in the example RP), Brazil DCR, the client-credentials-grant profile, and t
 plan's `private_key_jwt` variant (asymmetric registration metadata). These are capability
 gaps, not regressions — see `thoughts/plans/2026-09-05-rc-readiness-remediation.md`.
 
+Final pre-RC verification (2026-09-07, commit `41b7bb9`, after the third-review remediation
+and the FAPI policy audit — signed-response enforcement, PS256/ES256-only ID tokens, mTLS
+certificate wiring, DPoP fail-closed):
+
+- `all-rp-smoke`: PASS (17 plans) — artifact `artifacts/20260907-133253/report.json`
+- `oidcc-dynamic-full`: PASS (11/11 modules) — artifact `artifacts/20260907-133954/report.json`
+- `fapi1-adv-smoke`: PASS (4 plans) — artifact `artifacts/20260907-134109/report.json`
+- `fapi2-sp-full`: PASS (16 plans) — artifact `artifacts/20260907-134335/report.json`
+- `fapi2-ms-full`: PASS (32 plans) — artifact `artifacts/20260907-134744/report.json`
+
 The example RP implements Authorization Code + PKCE, ID token validation, UserInfo validation,
 PAR, JAR, JARM, RAR, DPoP, mTLS, and RP-hosted `request_uri` support. It uses the supported
 cookie-backed RP state store (`rp/store/cookie`) so login and callback state is bound to the
