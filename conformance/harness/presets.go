@@ -37,8 +37,10 @@ var builtInPresets = map[string]presetConfig{
 		MaxParallelRuns: 4,
 		// Same unsupported-family exclusions as all-rp-full: the harness
 		// cannot yet drive CIBA (no backchannel flow), Brazil DCR, or the
-		// client-credentials-grant profile.
-		ExcludePlanRegex: "ciba|brazil|id1-|id2-|client-credentials",
+		// client-credentials-grant profile. The library never emits unsigned
+		// request objects by design.
+		ExcludePlanRegex:   "ciba|brazil|id1-|id2-|client-credentials",
+		ExcludeModuleRegex: "oidcc-client-test-request-uri-signed-none",
 	},
 	"fapi2-sp-full": {
 		Profile:          "fapi-rp",

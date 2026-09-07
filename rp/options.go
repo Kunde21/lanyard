@@ -159,6 +159,7 @@ func WithClientKeyProvider(provider ClientKeyProvider) Option {
 }
 
 // WithRequirePAR controls whether authorization requests must use PAR.
+// FAPI 2.0 profiles require PAR and reject an explicit false value.
 func WithRequirePAR(require bool) AuthCodeOption {
 	return authCodeOptionFunc(func(r *RP) {
 		r.requirePAR = require

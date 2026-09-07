@@ -24,8 +24,10 @@ func TestCorrelationBrowserBindingCrossSiteCallbacks(t *testing.T) {
 			store := New(time.Minute)
 			state := "state-" + mode
 			var rpURL, issuerURL string
+			ready := make(chan struct{})
 
 			rpServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				<-ready
 				switch r.URL.Path {
 				case "/start":
 					if err := store.SaveCorrelation(r.Context(), w, r, state, rpstore.CallbackCorrelation{Nonce: "nonce"}); err != nil {
@@ -55,6 +57,7 @@ func TestCorrelationBrowserBindingCrossSiteCallbacks(t *testing.T) {
 			defer rpServer.Close()
 
 			issuerServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				<-ready
 				state := r.URL.Query().Get("state")
 				if mode == "query" {
 					http.Redirect(w, r, rpURL+"/callback?state="+url.QueryEscape(state), http.StatusFound)
@@ -66,6 +69,7 @@ func TestCorrelationBrowserBindingCrossSiteCallbacks(t *testing.T) {
 
 			rpURL = browserSiteURL(rpServer.URL, "rp.test")
 			issuerURL = browserSiteURL(issuerServer.URL, "issuer.test")
+			close(ready)
 			profileDir := t.TempDir()
 			output := runChromium(t, browser, profileDir, rpURL+"/start")
 			if !strings.Contains(output, "callback-accepted") {

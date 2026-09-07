@@ -146,3 +146,97 @@ func TestConcurrentRPUse(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// TestConcurrentPARAndCallback keeps PAR auth-method selection coherent while
+// callbacks renegotiate the shared RP's token endpoint authentication method.
+func TestConcurrentPARAndCallback(t *testing.T) {
+	const secret = "secret-32-bytes-minimum-0123456789ab"
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		switch req.URL.Path {
+		case "/par":
+			if err := req.ParseForm(); err != nil {
+				t.Errorf("ParseForm(PAR) failed: %v", err)
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			if req.Form.Get("client_assertion") == "" {
+				t.Error("PAR request missing client_assertion")
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusCreated)
+			fmt.Fprint(w, `{"request_uri":"urn:test:concurrent-par","expires_in":90}`)
+		case "/token":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"access_token":"access","token_type":"Bearer","expires_in":3600}`)
+		default:
+			http.NotFound(w, req)
+		}
+	}))
+	defer ts.Close()
+
+	provider := providerWithAuthorizationAndPAR(ts.URL+"/par", "client_secret_jwt")
+	provider.TokenEndpoint = ts.URL + "/token"
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret(secret),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProviderMetadata(provider),
+		WithScopes("accounts"),
+		WithAuthMethod(AuthMethodClientSecretJWT),
+		WithRequirePAR(true),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	const workers = 8
+	const iterations = 20
+	errs := make(chan error, workers*2)
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		worker := worker
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				if _, err := r.AuthorizationURL(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil)); err != nil {
+					errs <- fmt.Errorf("AuthorizationURL: %w", err)
+					return
+				}
+			}
+		}()
+		go func() {
+			defer wg.Done()
+			for i := 0; i < iterations; i++ {
+				state := fmt.Sprintf("callback-%d-%d", worker, i)
+				if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, state, CallbackCorrelation{
+					CodeVerifier: "verifier",
+					CreatedAt:    time.Now().UTC(),
+				}); err != nil {
+					errs <- fmt.Errorf("SaveCorrelation: %w", err)
+					return
+				}
+				result, err := r.HandleCallback(callbackRequest("code", state))
+				if err != nil {
+					errs <- fmt.Errorf("HandleCallback: %w", err)
+					return
+				}
+				if result.Token == nil {
+					errs <- fmt.Errorf("HandleCallback returned nil Token")
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+}

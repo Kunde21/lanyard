@@ -105,6 +105,57 @@ func TestAuthorizationURL_UsesClientAssertionFormFieldsForPAR(t *testing.T) {
 	}
 }
 
+func TestAuthorizationURL_FAPI2PerformsPAR(t *testing.T) {
+	var requests int
+	var gotBody url.Values
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("ParseForm() failed: %v", err)
+		}
+		gotBody = r.PostForm
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"request_uri": "urn:test:fapi2-request", "expires_in": 90})
+	}))
+	defer ts.Close()
+
+	key := testRSAKey(t)
+	r, err := New(
+		context.Background(),
+		"https://issuer.test",
+		WithClientID("client"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(ts.Client()),
+		WithProfile(FAPI2SecurityProfile),
+		WithProviderMetadata(providerWithAuthorizationAndPAR(ts.URL, "private_key_jwt")),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithClientKeyProvider(NewStaticClientKeyProvider(key, "kid-1", "PS256", nil)),
+		WithSenderConstrain(SenderConstraintDPoP),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	redirect, err := r.AuthorizationURL(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "https://rp.test/login", nil))
+	if err != nil {
+		t.Fatalf("AuthorizationURL() failed: %v", err)
+	}
+	parsed, err := url.Parse(redirect)
+	if err != nil {
+		t.Fatalf("url.Parse(redirect) failed: %v", err)
+	}
+	if diff := cmp.Diff(1, requests); diff != "" {
+		t.Errorf("PAR request count mismatch (-want +got):\n%s", diff)
+	}
+	if gotBody.Get("request") == "" {
+		t.Fatal("FAPI2 PAR body missing signed request object")
+	}
+	if diff := cmp.Diff("urn:test:fapi2-request", parsed.Query().Get("request_uri")); diff != "" {
+		t.Errorf("authorization request_uri mismatch (-want +got):\n%s", diff)
+	}
+}
+
 func TestAuthorizationURL_UsesMTLSAliasForPARWhenTLSClientAuth(t *testing.T) {
 	var gotPath string
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -86,7 +86,7 @@ func (r *RP) pushAuthorizationRequestWithAuthMethod(ctx context.Context, params 
 }
 
 func (r *RP) pushAuthorizationRequestInner(ctx context.Context, params url.Values, method AuthMethod) (*parResponse, error) {
-	parEndpoint := r.pushedAuthorizationRequestEndpoint(r.provider)
+	parEndpoint := pushedAuthorizationRequestEndpointWithAuthMethod(r.provider, method)
 	if parEndpoint == "" {
 		return nil, fmt.Errorf("%w: pushed authorization request endpoint not available", ErrInvalidConfiguration)
 	}
@@ -114,7 +114,7 @@ func (r *RP) pushAuthorizationRequestInner(ctx context.Context, params url.Value
 		return nil, err
 	}
 
-	useDPoP := r.shouldUseDPoP()
+	useDPoP := r.shouldUseDPoPWithAuthMethod(method)
 	if useDPoP {
 		cachedNonce := r.cachedDPoPNonce(parEndpoint)
 		if err := r.attachDPoPProof(parReq, "", cachedNonce); err != nil {

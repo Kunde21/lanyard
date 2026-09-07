@@ -789,12 +789,24 @@ func TestHandleCallback_RejectsAuthorizationResponseIDTokenWithOldIATBeforeToken
 func TestHandleCallback_AllowsOAuthOnlyTokenResponseWithoutIDToken(t *testing.T) {
 	now := time.Now().UTC()
 	issuer := ""
+	refreshCalls := 0
 
 	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("ParseForm() failed: %v", err)
+			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"access_token":"access","token_type":"Bearer","expires_in":3600}`))
+			if r.Form.Get("grant_type") == "refresh_token" {
+				refreshCalls++
+				if diff := cmp.Diff("refresh-1", r.Form.Get("refresh_token")); diff != "" {
+					t.Errorf("refresh_token mismatch (-want +got):\n%s", diff)
+				}
+				_, _ = w.Write([]byte(`{"access_token":"access-2","token_type":"Bearer","expires_in":1800,"refresh_token":"refresh-2","grant_id":"grant-1"}`))
+				return
+			}
+			_, _ = w.Write([]byte(`{"access_token":"access-1","token_type":"Bearer","expires_in":3600,"refresh_token":"refresh-1","grant_id":"grant-1","scope":"accounts"}`))
 		default:
 			t.Fatalf("unexpected request path: %s", r.URL.Path)
 		}
@@ -828,8 +840,64 @@ func TestHandleCallback_AllowsOAuthOnlyTokenResponseWithoutIDToken(t *testing.T)
 	if err != nil {
 		t.Fatalf("HandleCallback() failed: %v", err)
 	}
-	if got.AccessToken != "access" {
-		t.Fatalf("AccessToken = %q, want access", got.AccessToken)
+	if got.Subject != "" {
+		t.Fatalf("Subject = %q, want empty for OAuth-only callback", got.Subject)
+	}
+	if got.Token == nil {
+		t.Fatal("Token missing from successful OAuth-only callback")
+	}
+	wantToken := Token{
+		AccessToken:  "access-1",
+		TokenType:    "Bearer",
+		ExpiresIn:    3600,
+		RefreshToken: "refresh-1",
+		GrantID:      "grant-1",
+		Scope:        "accounts",
+	}
+	if diff := cmp.Diff(wantToken, *got.Token, cmp.Comparer(func(x, y Token) bool {
+		return x.AccessToken == y.AccessToken && x.TokenType == y.TokenType && x.ExpiresIn == y.ExpiresIn &&
+			x.IDToken == y.IDToken && x.RefreshToken == y.RefreshToken && x.GrantID == y.GrantID && x.Scope == y.Scope
+	})); diff != "" {
+		t.Fatalf("Token mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("access-1", got.AccessToken); diff != "" {
+		t.Errorf("AccessToken mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(issuer, got.Issuer); diff != "" {
+		t.Errorf("Issuer mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("grant-1", got.GrantID); diff != "" {
+		t.Errorf("GrantID mismatch (-want +got):\n%s", diff)
+	}
+
+	persistedJSON, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("json.Marshal(CallbackResult) failed: %v", err)
+	}
+	var persisted CallbackResult
+	if err := json.Unmarshal(persistedJSON, &persisted); err != nil {
+		t.Fatalf("json.Unmarshal(CallbackResult) failed: %v", err)
+	}
+	if persisted.Token == nil {
+		t.Fatal("persisted OAuth-only callback lost Token")
+	}
+
+	source, err := NewRefreshTokenSource(r, persisted.Token.RefreshToken)
+	if err != nil {
+		t.Fatalf("NewRefreshTokenSource() failed: %v", err)
+	}
+	refreshed, err := source.Refresh(context.Background())
+	if err != nil {
+		t.Fatalf("Refresh() failed: %v", err)
+	}
+	if diff := cmp.Diff("access-2", refreshed.AccessToken); diff != "" {
+		t.Errorf("refreshed access token mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff("refresh-2", source.CurrentRefreshToken()); diff != "" {
+		t.Errorf("rotated refresh token mismatch (-want +got):\n%s", diff)
+	}
+	if diff := cmp.Diff(1, refreshCalls); diff != "" {
+		t.Errorf("refresh call count mismatch (-want +got):\n%s", diff)
 	}
 }
 

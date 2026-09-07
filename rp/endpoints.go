@@ -7,7 +7,13 @@ func (r *RP) authorizationEndpoint(provider metadata.Provider) string {
 }
 
 func (r *RP) pushedAuthorizationRequestEndpoint(provider metadata.Provider) string {
-	if r.usesMTLSForPAR() && provider.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint != "" {
+	method, _ := r.authMethodState()
+	return pushedAuthorizationRequestEndpointWithAuthMethod(provider, method)
+}
+
+func pushedAuthorizationRequestEndpointWithAuthMethod(provider metadata.Provider, method AuthMethod) string {
+	usesMTLS := method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth
+	if usesMTLS && provider.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint != "" {
 		return provider.MTLSEndpointAliases.PushedAuthorizationRequestEndpoint
 	}
 	return provider.PushedAuthorizationRequestEndpoint
@@ -25,11 +31,6 @@ func (r *RP) userInfoEndpoint(provider metadata.Provider) string {
 		return provider.MTLSEndpointAliases.UserinfoEndpoint
 	}
 	return provider.UserinfoEndpoint
-}
-
-func (r *RP) usesMTLSForPAR() bool {
-	method, _ := r.authMethodState()
-	return method == AuthMethodTLSClientAuth || method == AuthMethodSelfSignedTLSClientAuth
 }
 
 func (r *RP) usesMTLSForTokenEndpoint() bool {

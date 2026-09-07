@@ -1107,6 +1107,9 @@ func TestWithProfile_FAPI1Adv_DefaultsCanBeOverridden(t *testing.T) {
 	if diff := cmp.Diff([]string{"accounts"}, got.scopes); diff != "" {
 		t.Fatalf("explicit scopes should override profile defaults (-want +got):\n%s", diff)
 	}
+	if got.requirePAR {
+		t.Fatal("FAPI1 Advanced should continue to allow a signed request object without PAR")
+	}
 }
 
 func TestWithProfile_FAPI2_SetsSignedRequestMethod(t *testing.T) {
@@ -1125,17 +1128,52 @@ func TestWithProfile_FAPI2_SetsSignedRequestMethod(t *testing.T) {
 		WithAuthMethod(AuthMethodTLSClientAuth),
 		WithSenderConstrain(SenderConstraintMTLS),
 		WithClientKeyProvider(fapiTestKeyProvider(t)),
-		WithProviderMetadata(providerWithEndpoints(
+		WithProviderMetadata(providerWithPAR(providerWithEndpoints(
 			"https://issuer.test/authorize",
 			"https://issuer.test/token",
 			"https://issuer.test/jwks",
-		)),
+		), "https://issuer.test/par")),
 	)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
 	if !got.requestMethod.isSigned() {
 		t.Fatal("FAPI2 message signing profile should default to signed request method")
+	}
+	if !got.requirePAR {
+		t.Fatal("FAPI2 message signing profile should require PAR")
+	}
+}
+
+func TestWithProfile_FAPI2RejectsProviderWithoutPAR(t *testing.T) {
+	profiles := []struct {
+		name    string
+		profile Profile
+	}{
+		{name: "security profile", profile: FAPI2SecurityProfile},
+		{name: "message signing", profile: FAPI2MessageSigning},
+	}
+	for _, tt := range profiles {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := New(
+				context.Background(),
+				"https://issuer.test",
+				WithClientID("client"),
+				WithRedirectURI("https://rp.test/callback"),
+				WithProfile(tt.profile),
+				WithProviderMetadata(providerForAuthMethods("private_key_jwt")),
+				WithAuthMethod(AuthMethodPrivateKeyJWT),
+				WithClientKeyProvider(fapiTestKeyProvider(t)),
+				WithSenderConstrain(SenderConstraintDPoP),
+				WithRequestMethod("signed_non_repudiation"),
+			)
+			if !errors.Is(err, ErrInvalidConfiguration) {
+				t.Fatalf("New() error = %v, want ErrInvalidConfiguration", err)
+			}
+			if !strings.Contains(err.Error(), "pushed authorization request endpoint missing") {
+				t.Fatalf("New() error = %v, want missing-PAR-endpoint error", err)
+			}
+		})
 	}
 }
 
@@ -1212,7 +1250,7 @@ func TestFAPIProfileRejectsInsecureConfiguration(t *testing.T) {
 			WithClientID("client"),
 			WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
 			WithRedirectURI("https://rp.test/callback"),
-			WithProviderMetadata(providerForAuthMethods()),
+			WithProviderMetadata(providerWithPAR(providerForAuthMethods(), "https://issuer.test/par")),
 		}, extra...)
 	}
 
@@ -1227,17 +1265,18 @@ func TestFAPIProfileRejectsInsecureConfiguration(t *testing.T) {
 		}
 	}
 
-	// Compliant auth + sender constraint, but the request method is
-	// explicitly overridden to plain without PAR.
+	// Compliant auth + sender constraint cannot explicitly disable PAR for
+	// the FAPI 2.0 Security Profile.
 	_, err = New(context.Background(), "https://issuer.test", base(
 		WithProfile(FAPI2SecurityProfile),
 		WithAuthMethod(AuthMethodTLSClientAuth),
 		WithSenderConstrain(SenderConstraintMTLS),
 		WithClientKeyProvider(fapiTestKeyProvider(t)),
 		WithRequestMethod(""),
+		WithRequirePAR(false),
 	)...)
-	if err == nil || !strings.Contains(err.Error(), "PAR or a signed request object") {
-		t.Fatalf("plain request method under FAPI err = %v, want PAR-or-signed violation", err)
+	if err == nil || !strings.Contains(err.Error(), "PAR is required") {
+		t.Fatalf("disabled PAR under FAPI2 err = %v, want mandatory-PAR violation", err)
 	}
 
 	// DPoP without asymmetric auth still rejected.
