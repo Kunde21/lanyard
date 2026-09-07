@@ -1814,3 +1814,41 @@ func TestFAPI2MessageSigningRequiresJARM(t *testing.T) {
 		t.Fatal("FAPI2 Security Profile did not default authorization response issuer validation on")
 	}
 }
+
+// TestFAPIJARMAlgorithmPolicy: FAPI profiles reject RS256-signed JARM
+// responses even when the provider advertises RS256 (fourth RC review R6).
+func TestFAPIJARMAlgorithmPolicy(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	now := time.Now().UTC()
+
+	jwksServer, rs256JARM := newJARMTestServerWithAlg(t, key, "kid-1", jose.RS256, map[string]any{
+		"iss": "https://issuer.test", "aud": "client-id", "code": "c", "state": "s",
+		"exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(),
+	})
+	defer jwksServer.Close()
+
+	r, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client-id"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(jwksServer.Client()),
+		WithProviderMetadata(providerWithPAR(providerWithEndpoints("https://issuer.test/authorize", "https://issuer.test/token", jwksServer.URL+"/jwks"), "https://issuer.test/par")),
+		WithProfile(FAPI2MessageSigning),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
+		WithValidateAuthorizationResponseIssuer(false),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if _, err := r.parseJARMResponse(context.Background(), rs256JARM); err == nil {
+		t.Fatal("RS256 JARM response accepted under FAPI profile")
+	}
+}

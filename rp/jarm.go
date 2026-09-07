@@ -32,6 +32,12 @@ func (r *RP) parseJARMResponse(ctx context.Context, rawJARM string) (jarmClaims,
 		jose.PS256, jose.PS384, jose.PS512,
 		jose.ES256, jose.ES384, jose.ES512,
 	}
+	if r.profile.isFAPI() {
+		// FAPI profiles restrict authorization response signing to
+		// PS256/ES256, mirroring the hardened ID token path (fourth RC
+		// review R6).
+		supportedAlgs = fapiSupportedIDTokenAlgs
+	}
 
 	parsed, err := josejwt.ParseSigned(rawJARM, supportedAlgs)
 	if err != nil {

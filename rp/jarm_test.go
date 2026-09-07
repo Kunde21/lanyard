@@ -13,6 +13,7 @@ import (
 
 	"github.com/Kunde21/lanyard/metadata"
 	"github.com/go-jose/go-jose/v4"
+	josejwt "github.com/go-jose/go-jose/v4/jwt"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -188,6 +189,17 @@ func TestExtractCallbackParams_IncludesResponseParameter(t *testing.T) {
 	}
 }
 
+func newJARMTestServerWithAlg(t *testing.T, key *rsa.PrivateKey, kid string, alg jose.SignatureAlgorithm, claims map[string]any) (*httptest.Server, string) {
+	t.Helper()
+	jwksServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		jwk := jose.JSONWebKey{Key: key.Public(), KeyID: kid, Algorithm: string(alg), Use: "sig"}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{"keys": []any{jwk}})
+	}))
+	signed := signJARMTokenWithAlg(t, key, kid, alg, claims)
+	return jwksServer, signed
+}
+
 func newJARMTestServer(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]any) (*httptest.Server, string) {
 	t.Helper()
 	jwksServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -228,6 +240,19 @@ func newJARMTestRP(t *testing.T, jwksServer *httptest.Server, clientID string, n
 		t.Fatalf("New() failed: %v", err)
 	}
 	return r
+}
+
+func signJARMTokenWithAlg(t *testing.T, key *rsa.PrivateKey, kid string, alg jose.SignatureAlgorithm, claims map[string]any) string {
+	t.Helper()
+	signer, err := jose.NewSigner(jose.SigningKey{Algorithm: alg, Key: jose.JSONWebKey{KeyID: kid, Key: key}}, nil)
+	if err != nil {
+		t.Fatalf("NewSigner() failed: %v", err)
+	}
+	raw, err := josejwt.Signed(signer).Claims(claims).Serialize()
+	if err != nil {
+		t.Fatalf("Serialize() failed: %v", err)
+	}
+	return raw
 }
 
 func signJARMToken(t *testing.T, key *rsa.PrivateKey, kid string, claims map[string]any) string {
