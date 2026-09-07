@@ -2,6 +2,8 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
+**STATUS: COMPLETE 2026-09-05.** All 12 tasks landed in commits 374e643..de030dd (12 atomic commits, one per task); full suite + race green; every fix carries regression tests per the goal. Remaining review suggestions intentionally deferred: production-shaped runnable example app and fuzzed callback/token parsing (release-work section) - tracked for the RC polish pass.
+
 **Source:** `thoughts/reviews/stable-rc-readiness-3e4826a.md` (review of `3e4826a`).
 **Goal:** Resolve all P1 findings and the tractable P2 findings, each with regression tests, gated commits, and the review's release gates in mind.
 
