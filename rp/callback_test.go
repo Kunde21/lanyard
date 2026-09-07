@@ -1698,3 +1698,119 @@ func TestHandleCallback_UserInfoOptional(t *testing.T) {
 		t.Fatalf("UserInfo = %v, want nil", result.UserInfo)
 	}
 }
+
+// TestJARMEnforcement: a requested or profile-required JWT response mode
+// rejects plain callbacks, and JARM issuer comparison is unconditional
+// (third RC review T2).
+func TestJARMEnforcement(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	now := time.Now().UTC()
+	issuer := "https://issuer.test"
+
+	saveState := func(t *testing.T, r *RP, state string) {
+		if err := r.stateStore.SaveCorrelation(context.Background(), nil, nil, state, CallbackCorrelation{
+			Nonce: "nonce-1", CodeVerifier: "verifier", CreatedAt: now, Issuer: issuer,
+		}); err != nil {
+			t.Fatalf("SaveCorrelation() failed: %v", err)
+		}
+	}
+
+	// Plain response while response_mode=jwt was requested: rejected
+	// before any state consumption side effects.
+	r, err := New(context.Background(), issuer,
+		WithClientID("client-id"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(providerWithEndpoints(issuer+"/authorize", issuer+"/token", issuer+"/jwks")),
+		WithResponseMode("jwt"),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	state := "jarm-state"
+	saveState(t, r, state)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?code=x&state="+url.QueryEscape(state), nil)
+	if _, err := r.HandleCallback(rec, req); !errors.Is(err, ErrInvalidState) || !strings.Contains(err.Error(), "JWT response mode required") {
+		t.Fatalf("plain callback under response_mode=jwt err = %v, want JWT-required rejection", err)
+	}
+
+	// JARM response with a foreign issuer: rejected unconditionally, even
+	// with issuer validation explicitly disabled for plain responses.
+	jwksServer, jarm := newJARMTestServer(t, key, "kid-1", map[string]any{
+		"iss": "https://evil.test", "aud": "client-id", "code": "c", "state": "jarm-state-2",
+		"exp": now.Add(5 * time.Minute).Unix(), "iat": now.Unix(),
+	})
+	defer jwksServer.Close()
+
+	r2, err := New(context.Background(), issuer,
+		WithClientID("client-id"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(jwksServer.Client()),
+		WithProviderMetadata(providerWithEndpoints(issuer+"/authorize", issuer+"/token", jwksServer.URL+"/jwks")),
+		WithResponseMode("jwt"),
+		WithValidateAuthorizationResponseIssuer(false),
+		withNow(func() time.Time { return now }),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	saveState(t, r2, "jarm-state-2")
+	rec2 := httptest.NewRecorder()
+	req2 := httptest.NewRequest(http.MethodGet, "https://rp.test/callback?response="+url.QueryEscape(jarm), nil)
+	if _, err := r2.HandleCallback(rec2, req2); !errors.Is(err, ErrInvalidState) || !strings.Contains(err.Error(), "iss mismatch") {
+		t.Fatalf("JARM foreign-issuer err = %v, want unconditional iss mismatch", err)
+	}
+}
+
+// TestFAPI2MessageSigningRequiresJARM: the profile defaults to a JWT
+// response mode and rejects contradictory explicit configuration.
+func TestFAPI2MessageSigningRequiresJARM(t *testing.T) {
+	base := []Option{
+		WithClientID("client"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithProviderMetadata(providerWithPAR(providerForAuthMethods(), "https://issuer.test/par")),
+		WithAuthMethod(AuthMethodPrivateKeyJWT),
+		WithSenderConstrain(SenderConstraintMTLS),
+		WithClientKeyProvider(fapiTestKeyProvider(t)),
+		WithRequestMethod("signed_non_repudiation"),
+	}
+
+	r, err := New(context.Background(), "https://issuer.test",
+		append(append([]Option{}, base...), WithProfile(FAPI2MessageSigning))...)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if !r.requiresJARMResponse() {
+		t.Fatal("FAPI2 Message Signing did not default to a JWT response mode")
+	}
+	if !r.validateAuthorizationResponseIssuer {
+		t.Fatal("FAPI2 Message Signing did not default authorization response issuer validation on")
+	}
+
+	if _, err := New(context.Background(), "https://issuer.test",
+		append(append([]Option{}, base...),
+			WithProfile(FAPI2MessageSigning),
+			WithResponseMode("query"))...); !errors.Is(err, ErrInvalidConfiguration) {
+		t.Fatalf("explicit query response mode under FAPI2 MS err = %v, want ErrInvalidConfiguration", err)
+	}
+
+	// FAPI2 Security Profile keeps plain response modes but validates the
+	// response issuer by default.
+	r2, err := New(context.Background(), "https://issuer.test",
+		append(append([]Option{}, base...), WithProfile(FAPI2SecurityProfile))...)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if r2.requiresJARMResponse() {
+		t.Fatal("FAPI2 Security Profile must not require JARM")
+	}
+	if !r2.validateAuthorizationResponseIssuer {
+		t.Fatal("FAPI2 Security Profile did not default authorization response issuer validation on")
+	}
+}

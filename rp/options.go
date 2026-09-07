@@ -178,6 +178,7 @@ func WithSenderConstrain(mode SenderConstraint) Option {
 func WithValidateAuthorizationResponseIssuer(validate bool) AuthCodeOption {
 	return authCodeOptionFunc(func(r *RP) {
 		r.validateAuthorizationResponseIssuer = validate
+		r.validateAuthorizationResponseIssuerSet = true
 	})
 }
 

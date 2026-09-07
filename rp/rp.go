@@ -132,15 +132,16 @@ type RP struct {
 	allowUnsecuredIDTokens    bool
 	allowUnsecuredIDTokensSet bool
 
-	responseMode                        string
-	responseModeExplicit                bool
-	responseType                        string
-	responseTypeExplicit                bool
-	requestMethod                       requestMethodType
-	requestMethodExplicit               bool
-	requestMethodRaw                    string
-	requestURIHandler                   RequestURIHandler
-	validateAuthorizationResponseIssuer bool
+	responseMode                           string
+	responseModeExplicit                   bool
+	responseType                           string
+	responseTypeExplicit                   bool
+	requestMethod                          requestMethodType
+	requestMethodExplicit                  bool
+	requestMethodRaw                       string
+	requestURIHandler                      RequestURIHandler
+	validateAuthorizationResponseIssuer    bool
+	validateAuthorizationResponseIssuerSet bool
 
 	profile               profileType
 	profileExplicit       bool
@@ -209,6 +210,10 @@ func New(ctx context.Context, issuer string, opts ...Option) (*RP, error) {
 		if err := validateRequestMethodExplicit(r.requestMethodRaw); err != nil {
 			return nil, err
 		}
+	}
+	if r.profile == profileFAPI2MessageSigning && r.responseModeExplicit && !strings.Contains(strings.ToLower(r.responseMode), "jwt") {
+		return nil, fmt.Errorf("%w: FAPI2 Message Signing requires a JWT response mode, got %q",
+			ErrInvalidConfiguration, r.responseMode)
 	}
 	if err := r.validateFAPIProfileRequirements(); err != nil {
 		return nil, err
@@ -484,6 +489,17 @@ func (r *RP) applyProfileDefaults() {
 		if !r.requirePARExplicit {
 			r.requirePAR = true
 		}
+		// FAPI2 Message Signing returns authorization responses as signed
+		// JWTs (JARM); request it by default (third RC review T2).
+		if !r.responseModeExplicit {
+			r.responseMode = "jwt"
+		}
+	}
+	// FAPI profiles validate the authorization response issuer by default
+	// (FAPI1 Advanced iss/aud response parameters; FAPI2 requires RFC 9207
+	// iss). Explicit configuration is honored either way.
+	if r.profile.isFAPI() && !r.validateAuthorizationResponseIssuerSet {
+		r.validateAuthorizationResponseIssuer = true
 	}
 }
 

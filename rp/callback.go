@@ -51,6 +51,12 @@ type CallbackResult struct {
 }
 
 func (r *RP) parseAuthorizationResponse(ctx context.Context, params callbackParams) (code, state, iss string, err error) {
+	if r.requiresJARMResponse() && !r.isJARMResponse(params) {
+		// A signed JWT response mode was requested (or is required by the
+		// profile); a plain code/state response must not silently bypass
+		// JARM processing (third RC review T2).
+		return "", "", "", fmt.Errorf("%w: plain authorization response rejected: JWT response mode required", ErrInvalidState)
+	}
 	if r.isJARMResponse(params) {
 		jarmClaims, err := r.parseJARMResponse(ctx, params.Response)
 		if err != nil {
@@ -173,6 +179,13 @@ func (r *RP) handleCallback(ctx context.Context, w http.ResponseWriter, req *htt
 	expectedIssuer := data.Issuer
 	if expectedIssuer == "" {
 		expectedIssuer = r.issuer
+	}
+
+	// JARM issuer comparison is unconditional: a signed response mode was
+	// requested, so its issuer must match the transaction issuer regardless
+	// of the plain-response iss policy (third RC review T2).
+	if r.isJARMResponse(extractCallbackParams(req)) && authzResponseIss != expectedIssuer {
+		return nil, fmt.Errorf("%w: JARM response iss mismatch: got %q, want %q", ErrInvalidState, authzResponseIss, expectedIssuer)
 	}
 
 	if r.validateAuthorizationResponseIssuer && authzResponseIss == "" {

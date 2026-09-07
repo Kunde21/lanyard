@@ -145,3 +145,10 @@ func (r *RP) validateJARMClaims(claims jarmClaims) error {
 func (r *RP) isJARMResponse(params callbackParams) bool {
 	return strings.TrimSpace(params.Response) != ""
 }
+
+// requiresJARMResponse reports whether the RP requested (or its profile
+// requires) a signed JWT authorization response: response_mode values
+// containing "jwt" (jwt, query.jwt, form_post.jwt, ...).
+func (r *RP) requiresJARMResponse() bool {
+	return strings.Contains(strings.ToLower(r.responseMode), "jwt")
+}
