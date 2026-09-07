@@ -22,7 +22,7 @@ func ChromiumPath(tb testingTB) string {
 	if p := strings.TrimSpace(os.Getenv("CHROMIUM_PATH")); p != "" {
 		return p
 	}
-	for _, name := range []string{"chromium", "chromium-browser", "google-chrome"} {
+	for _, name := range []string{"chrome-headless-shell", "chromium", "chromium-browser", "google-chrome"} {
 		path, err := exec.LookPath(name)
 		if err == nil {
 			return path

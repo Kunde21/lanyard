@@ -17,7 +17,12 @@ jobs:
           npx playwright install --with-deps chromium
           # Link the headless shell, not full Chrome-for-Testing: full CfT
           # 153 aborts TLS handshakes with Go TLS servers on this runner.
-          sudo ln -s "$(echo "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell)" /usr/local/bin/google-chrome
+          sudo ln -s "$(echo "$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell)" /usr/local/bin/chrome-headless-shell
+      - name: Smoke test Chromium
+        run: |
+          out=$(chrome-headless-shell --headless --no-sandbox --disable-gpu --user-data-dir="$(mktemp -d)" --dump-dom 'data:text/html,<p id="ok">smoke-ok</p>' 2>/dev/null || true)
+          echo "$out"
+          echo "$out" | grep -q smoke-ok
       - name: Install gofumpt
         run: go install mvdan.cc/gofumpt@v0.11.0
       - name: Test format gate
