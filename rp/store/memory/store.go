@@ -17,8 +17,12 @@ const (
 
 	// bindingCookieName binds a saved correlation to the browser session
 	// that initiated the login, defeating cross-browser login-CSRF handoffs
-	// (RC review F1).
-	bindingCookieName = "lanyard_state_binding"
+	// (RC review F1). The __Host- prefix makes the browser itself enforce
+	// the cookie's security properties: Secure, Path=/, and no Domain
+	// attribute - so the cookie is always host-only and cannot be injected
+	// by a sibling-domain attacker setting a Domain-wide cookie
+	// (third RC review T1).
+	bindingCookieName = "__Host-lanyard_state_binding"
 
 	// maxEntries bounds memory use; the sweep evicts expired entries first
 	// and then the soonest-to-expire survivors (RC review F11).

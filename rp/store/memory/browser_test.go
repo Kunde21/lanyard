@@ -239,3 +239,67 @@ func runChromiumAwait(t *testing.T, browser, profileDir, target string, markers 
 	_ = cmd.Wait()
 	return collected.String()
 }
+
+// TestCorrelationBindingRejectsSiblingDomainCookieInjection: a sibling-site
+// page cannot plant the binding cookie with a Domain attribute - the
+// __Host- prefix makes the browser refuse it outright, so the RP's binding
+// is always host-only (third RC review T1).
+func TestCorrelationBindingRejectsSiblingDomainCookieInjection(t *testing.T) {
+	browser := chromiumPath(t)
+	store := New(time.Minute)
+	const state = "injection-state"
+	var rpURL, issuerURL string
+	ready := make(chan struct{})
+
+	rpServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-ready
+		switch r.URL.Path {
+		case "/start":
+			if err := store.SaveCorrelation(r.Context(), w, r, state, rpstore.CallbackCorrelation{Nonce: "nonce"}); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			fmt.Fprint(w, "binding-created")
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer rpServer.Close()
+
+	issuerServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-ready
+		if r.URL.Path != "/attack" {
+			http.NotFound(w, r)
+			return
+		}
+		// Attacker page on the sibling site tries to plant the binding
+		// cookie for the whole registrable domain, plus a plain prefixed
+		// attempt. Both must be rejected by the browser because __Host-
+		// forbids Domain attributes (and this page is not the RP host).
+		fmt.Fprintf(w, `<!doctype html><script>
+document.cookie = "__Host-lanyard_state_binding=attacker-known; Domain=issuer.test; Path=/; Secure";
+document.cookie = "__Host-lanyard_state_binding=attacker-known; Domain=issuer.test; Path=/";
+var readable = document.cookie.indexOf("__Host-lanyard_state_binding=") !== -1 ? "injected" : "refused";
+document.title = "cookie-" + readable;
+</script><p id="result">cookie-unknown</p><script>document.getElementById('result').textContent = document.title;</script>`)
+	}))
+	defer issuerServer.Close()
+
+	rpURL = browserSiteURL(rpServer.URL, "rp.test")
+	issuerURL = browserSiteURL(issuerServer.URL, "issuer.test")
+	close(ready)
+
+	profile := chromiumProfileDir(t)
+	attack := runChromiumAwait(t, browser, profile, issuerURL+"/attack", []string{"cookie-refused", "cookie-injected"})
+	if !strings.Contains(attack, "cookie-refused") {
+		t.Fatalf("sibling-domain cookie was injected despite __Host- prefix; browser output:\n%s", attack)
+	}
+
+	// The victim browser (same profile the attacker page ran in) starts a
+	// login at the RP: no hostile binding cookie may be visible, and the
+	// flow must create its own host-only binding.
+	legit := runChromiumAwait(t, browser, profile, rpURL+"/start", []string{"binding-created"})
+	if !strings.Contains(legit, "binding-created") {
+		t.Fatalf("legitimate binding not created in attacked profile; browser output:\n%s", legit)
+	}
+}

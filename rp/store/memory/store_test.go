@@ -305,7 +305,7 @@ func TestCorrelationBrowserBinding(t *testing.T) {
 
 	// A different browser's cookie is also rejected.
 	otherReq := httptest.NewRequest(http.MethodPost, "https://rp.test/callback", nil)
-	otherReq.AddCookie(&http.Cookie{Name: "lanyard_state_binding", Value: "other-browser"})
+	otherReq.AddCookie(&http.Cookie{Name: "__Host-lanyard_state_binding", Value: "other-browser"})
 	if _, ok, _ := store.ConsumeCorrelation(context.Background(), victimRec, otherReq, "state-1"); ok {
 		t.Fatal("correlation consumed with a foreign binding cookie")
 	}
