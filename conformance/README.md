@@ -62,6 +62,15 @@ hardening, constructor-wide mTLS wiring, DPoP proof attachment, FAPI invariants,
 - `fapi2-sp-full`: PASS (16 plans) — artifact `artifacts/20260907-160940/report.json`
 - `fapi2-ms-full`: PASS (32 plans) — artifact `artifacts/20260907-161337/report.json`
 
+Post-fifth-review re-verification (2026-09-08, commit `6cffd2b`, after the RFC 6749 §5.1 token-endpoint
+success-response validation fix — malformed 200 responses now rejected across all grants):
+
+- `all-rp-smoke`: PASS (17 plans) — artifact `artifacts/20260908-141500/report.json`
+- `oidcc-dynamic-full`: PASS (11/11 modules) — artifact `artifacts/20260908-142144/report.json`
+- `fapi1-adv-smoke`: PASS (4 plans) — artifact `artifacts/20260908-142234/report.json`
+- `fapi2-sp-full`: PASS (16 plans) — artifact `artifacts/20260908-142452/report.json`
+- `fapi2-ms-full`: PASS (32 plans) — artifact `artifacts/20260908-142838/report.json`
+
 The example RP implements Authorization Code + PKCE, ID token validation, UserInfo validation,
 PAR, JAR, JARM, RAR, DPoP, mTLS, and RP-hosted `request_uri` support. It uses the supported
 cookie-backed RP state store (`rp/store/cookie`) so login and callback state is bound to the
