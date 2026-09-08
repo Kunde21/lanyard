@@ -223,7 +223,7 @@ func (c *clientConfig) queryGrantInner(ctx context.Context, accessToken, grantID
 		return nil
 	})
 	if err != nil {
-		return GrantStatus{}, fmt.Errorf("%w: %v", ErrGrantManagementFailed, err)
+		return GrantStatus{}, fmt.Errorf("%w: %w", ErrGrantManagementFailed, err)
 	}
 	if httpStatus != http.StatusOK {
 		return GrantStatus{}, c.grantStatusError(httpStatus, preview)
@@ -251,7 +251,7 @@ func (c *clientConfig) revokeGrantInner(ctx context.Context, accessToken, grantI
 
 	httpStatus, preview, err := c.grantRequest(ctx, http.MethodDelete, resourceURL, accessToken, http.StatusNoContent, nil)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrGrantManagementFailed, err)
+		return fmt.Errorf("%w: %w", ErrGrantManagementFailed, err)
 	}
 	if httpStatus != http.StatusNoContent {
 		return c.grantStatusError(httpStatus, preview)

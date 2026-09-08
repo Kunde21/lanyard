@@ -233,7 +233,7 @@ func (c *clientConfig) introspectTokenInner(ctx context.Context, in Introspectio
 
 	resp, status, preview, err := c.introspectTokenOnce(ctx, endpoint, in, method)
 	if err != nil {
-		return IntrospectionResponse{}, fmt.Errorf("%w: %v", ErrIntrospectionFailed, err)
+		return IntrospectionResponse{}, fmt.Errorf("%w: %w", ErrIntrospectionFailed, err)
 	}
 	if status == http.StatusOK {
 		return resp, nil
@@ -242,7 +242,7 @@ func (c *clientConfig) introspectTokenInner(ctx context.Context, in Introspectio
 	if allowFallback && method == AuthMethodPost && shouldFallbackToBasic(status) {
 		retryResp, retryStatus, retryPreview, retryErr := c.introspectTokenOnce(ctx, endpoint, in, AuthMethodBasic)
 		if retryErr != nil {
-			return IntrospectionResponse{}, fmt.Errorf("%w: %v", ErrIntrospectionFailed, retryErr)
+			return IntrospectionResponse{}, fmt.Errorf("%w: %w", ErrIntrospectionFailed, retryErr)
 		}
 		if retryStatus == http.StatusOK {
 			return retryResp, nil

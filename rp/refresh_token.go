@@ -33,7 +33,7 @@ func (r *RP) refreshToken(ctx context.Context, refreshToken string) (Token, erro
 
 	resources := r.resources
 	if overrideResources, overrideErr := tokenResourcesAndErrorFromContext(ctx); overrideErr != nil {
-		return Token{}, fmt.Errorf("%w: %v", ErrRefreshTokenFailed, overrideErr)
+		return Token{}, fmt.Errorf("%w: %w", ErrRefreshTokenFailed, overrideErr)
 	} else if len(overrideResources) > 0 {
 		resources = overrideResources
 	}

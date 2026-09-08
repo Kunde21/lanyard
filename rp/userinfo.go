@@ -70,7 +70,7 @@ func (r *RP) fetchUserInfoAs(ctx context.Context, endpoint, accessToken, expecte
 	if looksLikeJWT(body) {
 		payload, err = r.verifySignedUserInfoAs(ctx, strings.TrimSpace(string(body)), id)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrUserInfoValidationFailed, err)
+			return nil, fmt.Errorf("%w: %w", ErrUserInfoValidationFailed, err)
 		}
 	} else if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, fmt.Errorf("%w: failed to decode userinfo JSON: %v", ErrUserInfoValidationFailed, err)

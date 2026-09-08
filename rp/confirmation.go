@@ -51,7 +51,7 @@ func (c Confirmation) VerifyDPoPBinding(priv crypto.PrivateKey) error {
 	}
 	got, err := JWKThumbprint(priv)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrTokenBindingMismatch, err)
+		return fmt.Errorf("%w: %w", ErrTokenBindingMismatch, err)
 	}
 	if subtle.ConstantTimeCompare([]byte(c.JKT), []byte(got)) != 1 {
 		return fmt.Errorf("%w: jkt mismatch", ErrTokenBindingMismatch)

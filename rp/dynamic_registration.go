@@ -326,7 +326,7 @@ func (g *Registrar) delete(ctx context.Context, registrationClientURI, accessTok
 func (g *Registrar) doRegistrationRequest(ctx context.Context, method, endpoint, accessToken string, body any, successStatus int) (ClientRegistration, error) {
 	req, err := g.registrationRequest(ctx, method, endpoint, accessToken, body)
 	if err != nil {
-		return ClientRegistration{}, fmt.Errorf("%w: %v", ErrRegistrationFailed, err)
+		return ClientRegistration{}, fmt.Errorf("%w: %w", ErrRegistrationFailed, err)
 	}
 
 	var reg ClientRegistration
@@ -346,9 +346,9 @@ func (g *Registrar) doRegistrationRequest(ctx context.Context, method, endpoint,
 	if err != nil {
 		var decodeErr *jsonDecodeError
 		if errors.As(err, &decodeErr) {
-			return ClientRegistration{}, fmt.Errorf("%w: %v", ErrRegistrationFailed, decodeErr.Err)
+			return ClientRegistration{}, fmt.Errorf("%w: %w", ErrRegistrationFailed, decodeErr.Err)
 		}
-		return ClientRegistration{}, fmt.Errorf("%w: %v", ErrRegistrationFailed, err)
+		return ClientRegistration{}, fmt.Errorf("%w: %w", ErrRegistrationFailed, err)
 	}
 	if status != successStatus {
 		return ClientRegistration{}, registrationStatusError(status, preview)
@@ -358,7 +358,7 @@ func (g *Registrar) doRegistrationRequest(ctx context.Context, method, endpoint,
 
 func validateRegistrationManagementArgs(registrationClientURI, accessToken string) error {
 	if err := validateHTTPSAbsoluteURL("registration_client_uri", registrationClientURI); err != nil {
-		return fmt.Errorf("%w: %v", ErrRegistrationFailed, err)
+		return fmt.Errorf("%w: %w", ErrRegistrationFailed, err)
 	}
 	if strings.TrimSpace(accessToken) == "" {
 		return fmt.Errorf("%w: registration access token is required", ErrRegistrationFailed)

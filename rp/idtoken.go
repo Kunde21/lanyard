@@ -145,7 +145,7 @@ func (r *RP) validateIDTokenAs(ctx context.Context, rawIDToken, expectedNonce, j
 		}
 	}
 	if err != nil {
-		return idTokenClaims{}, fmt.Errorf("%w: %v", ErrIDTokenValidationFailed, err)
+		return idTokenClaims{}, fmt.Errorf("%w: %w", ErrIDTokenValidationFailed, err)
 	}
 
 	if err := r.validateIDTokenClaimsAs(claims, expectedNonce, id); err != nil {
