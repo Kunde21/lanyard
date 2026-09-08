@@ -18,7 +18,12 @@ import (
 // WithClientID sets the OAuth client identifier.
 func WithClientID(id string) Option {
 	return optionFunc(func(c *clientConfig) {
-		c.clientID = strings.TrimSpace(id)
+		// Preserved verbatim: RFC 7591 registration endpoints may issue
+		// identifiers containing leading/trailing whitespace, and silently
+		// trimming them changes the credential the authorization server
+		// compares against (found by the dynamic-client conformance plan,
+		// which deliberately issues such identifiers).
+		c.clientID = id
 	})
 }
 
