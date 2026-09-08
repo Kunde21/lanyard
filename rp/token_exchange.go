@@ -70,6 +70,13 @@ func executeTokenGrant(config *clientConfig, run tokenGrantExecutor) (Token, err
 		if config.senderConstrain == SenderConstraintDPoP && !strings.EqualFold(strings.TrimSpace(result.token.TokenType), "DPoP") {
 			return Token{}, fmt.Errorf("%w: token endpoint returned %q token_type but DPoP sender constraining is required", ErrSenderConstraintViolated, result.token.TokenType)
 		}
+		// A 2xx response is only a success when RFC 6749 section 5.1's
+		// required fields are present: a malformed body must fail every grant
+		// before callers (notably RefreshTokenSource) adopt its rotation
+		// data as valid state (fifth RC review R1).
+		if strings.TrimSpace(result.token.AccessToken) == "" || strings.TrimSpace(result.token.TokenType) == "" {
+			return Token{}, fmt.Errorf("token response missing required access_token or token_type")
+		}
 		if allowFallback {
 			config.setAuthMethodState(method, false)
 		}
@@ -84,6 +91,9 @@ func executeTokenGrant(config *clientConfig, run tokenGrantExecutor) (Token, err
 		if retryResult.status == http.StatusOK {
 			if config.senderConstrain == SenderConstraintDPoP && !strings.EqualFold(strings.TrimSpace(retryResult.token.TokenType), "DPoP") {
 				return Token{}, fmt.Errorf("%w: token endpoint returned %q token_type but DPoP sender constraining is required", ErrSenderConstraintViolated, retryResult.token.TokenType)
+			}
+			if strings.TrimSpace(retryResult.token.AccessToken) == "" || strings.TrimSpace(retryResult.token.TokenType) == "" {
+				return Token{}, fmt.Errorf("token response missing required access_token or token_type")
 			}
 			config.setAuthMethodState(AuthMethodBasic, false)
 			return retryResult.token, nil

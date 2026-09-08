@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 
@@ -272,5 +273,94 @@ func TestRefreshTokenSource_ConcurrentRefreshNeverReplays(t *testing.T) {
 
 	if want := fmt.Sprintf("rt-%d", counter); src.CurrentRefreshToken() != want {
 		t.Fatalf("CurrentRefreshToken() = %q, want %q", src.CurrentRefreshToken(), want)
+	}
+}
+
+// TestRefreshMalformedSuccessResponses: a 200 response lacking the required
+// access_token/token_type is a failure, wrapped in ErrRefreshTokenFailed,
+// and the rotation source must not adopt its refresh token (fifth RC
+// review R1).
+func TestRefreshMalformedSuccessResponses(t *testing.T) {
+	newServer := func(t *testing.T, body string) *httptest.Server {
+		t.Helper()
+		server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, body)
+		}))
+		t.Cleanup(server.Close)
+		return server
+	}
+
+	newRP := func(t *testing.T, server *httptest.Server) *RP {
+		t.Helper()
+		provider := providerForAuthMethods()
+		provider.TokenEndpoint = server.URL + "/token"
+		r, err := New(context.Background(), "https://issuer.test",
+			WithClientID("client"),
+			WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+			WithRedirectURI("https://rp.test/callback"),
+			WithHTTPClient(server.Client()),
+			WithProviderMetadata(provider),
+			WithAuthMethod(AuthMethodBasic),
+		)
+		if err != nil {
+			t.Fatalf("New() failed: %v", err)
+		}
+		return r
+	}
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "refresh token only, no access token or type",
+			body: `{"refresh_token":"unexpected-rotation"}`,
+		},
+		{
+			name: "access token without token type",
+			body: `{"access_token":"at"}`,
+		},
+		{
+			name: "token type without access token",
+			body: `{"token_type":"Bearer","refresh_token":"unexpected-rotation"}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newServer(t, tc.body)
+			r := newRP(t, server)
+
+			source, err := NewRefreshTokenSource(r, "initial-refresh")
+			if err != nil {
+				t.Fatalf("NewRefreshTokenSource() failed: %v", err)
+			}
+
+			token, err := source.Refresh(context.Background())
+			if !errors.Is(err, ErrRefreshTokenFailed) {
+				t.Fatalf("Refresh() err = %v, want ErrRefreshTokenFailed", err)
+			}
+			if !strings.Contains(err.Error(), "access_token") {
+				t.Fatalf("Refresh() err = %v, want required-fields message", err)
+			}
+			if token.AccessToken != "" {
+				t.Fatalf("AccessToken = %q, want empty on malformed success", token.AccessToken)
+			}
+			if got := source.CurrentRefreshToken(); got != "initial-refresh" {
+				t.Fatalf("source adopted invalid response refresh token: %q", got)
+			}
+		})
+	}
+
+	// Valid omission of refresh_token and expires_in still succeeds.
+	server := newServer(t, `{"access_token":"at","token_type":"Bearer"}`)
+	r := newRP(t, server)
+	token, err := r.RefreshToken(context.Background(), "initial-refresh")
+	if err != nil {
+		t.Fatalf("RefreshToken() failed on minimal valid response: %v", err)
+	}
+	if token.AccessToken != "at" || token.TokenType != "Bearer" {
+		t.Fatalf("minimal valid response decoded wrong: %+v", token)
 	}
 }

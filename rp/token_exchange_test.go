@@ -822,3 +822,50 @@ func TestExplicitDPoPSendsProofWithSymmetricAuth(t *testing.T) {
 		t.Fatalf("keyless explicit DPoP err = %v, want ErrInvalidConfiguration", err)
 	}
 }
+
+// TestAllGrantsRejectMalformedSuccessResponses: the shared token-grant path
+// rejects 200 responses missing required RFC 6749 section 5.1 fields across
+// the code exchange and client-credentials grants too (fifth RC review R1).
+func TestAllGrantsRejectMalformedSuccessResponses(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"refresh_token":"unexpected-rotation"}`)
+	}))
+	defer server.Close()
+
+	provider := providerForAuthMethods()
+	provider.TokenEndpoint = server.URL
+
+	r, err := New(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithRedirectURI("https://rp.test/callback"),
+		WithHTTPClient(server.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	if _, err := r.exchangeToken(context.Background(), server.URL, "code", "verifier", nil); !errors.Is(err, ErrTokenExchangeFailed) {
+		t.Fatalf("exchangeToken() err = %v, want ErrTokenExchangeFailed", err)
+	} else if !strings.Contains(err.Error(), "access_token") {
+		t.Fatalf("exchangeToken() err = %v, want required-fields message", err)
+	}
+
+	cc, err := NewClientCredentials(context.Background(), "https://issuer.test",
+		WithClientID("client"),
+		WithClientSecret("secret-32-bytes-minimum-0123456789ab"),
+		WithHTTPClient(server.Client()),
+		WithProviderMetadata(provider),
+		WithAuthMethod(AuthMethodBasic),
+	)
+	if err != nil {
+		t.Fatalf("NewClientCredentials() failed: %v", err)
+	}
+	if _, err := cc.Token(context.Background()); !errors.Is(err, ErrClientCredentialsFailed) {
+		t.Fatalf("Token() err = %v, want ErrClientCredentialsFailed", err)
+	} else if !strings.Contains(err.Error(), "access_token") {
+		t.Fatalf("Token() err = %v, want required-fields message", err)
+	}
+}
