@@ -71,6 +71,16 @@ success-response validation fix — malformed 200 responses now rejected across 
 - `fapi2-sp-full`: PASS (16 plans) — artifact `artifacts/20260908-142452/report.json`
 - `fapi2-ms-full`: PASS (32 plans) — artifact `artifacts/20260908-142838/report.json`
 
+Sixth-review remediation re-verification (2026-09-08, commit `9d77ae7`, after consumer redirect-policy chaining,
+error-cause preservation in service wrappers, and the verbatim client_id fix exposed by the dynamic plan —
+70 plans, zero failures):
+
+- `all-rp-smoke`: PASS (17 plans) — artifact `artifacts/20260908-151912/report.json`
+- `oidcc-dynamic-full`: PASS (11/11 modules) — artifact `artifacts/20260908-150454/report.json`
+- `fapi1-adv-smoke`: PASS (4 plans) — artifact `artifacts/20260908-150547/report.json`
+- `fapi2-sp-full`: PASS (16 plans) — artifact `artifacts/20260908-150806/report.json`
+- `fapi2-ms-full`: PASS (32 plans) — artifact `artifacts/20260908-151149/report.json`
+
 The example RP implements Authorization Code + PKCE, ID token validation, UserInfo validation,
 PAR, JAR, JARM, RAR, DPoP, mTLS, and RP-hosted `request_uri` support. It uses the supported
 cookie-backed RP state store (`rp/store/cookie`) so login and callback state is bound to the
