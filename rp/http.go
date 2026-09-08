@@ -57,8 +57,16 @@ var errInsecureRedirect = errors.New("sensitive request redirect rejected")
 // redirect policy that refuses scheme downgrades and cross-origin redirects
 // (fourth RC review R2): an endpoint answering 307/308 toward http:// or a
 // different host never receives the request body.
+//
+// The library's restrictions are a minimum (sixth RC review R1): when the
+// supplied client carries a consumer CheckRedirect callback, it is consulted
+// after the minimum passes, so stricter policies (for example
+// http.ErrUseLastResponse to stop at the initial response) keep working. A
+// consumer callback can never weaken the minimum policy because it only runs
+// once the redirect already satisfies it.
 func doSensitiveRequest(client *http.Client, req *http.Request) (*http.Response, error) {
 	checked := *client
+	consumer := client.CheckRedirect
 	checked.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
 			return fmt.Errorf("too many redirects")
@@ -69,6 +77,9 @@ func doSensitiveRequest(client *http.Client, req *http.Request) (*http.Response,
 		}
 		if next.URL.Host != previous.URL.Host {
 			return fmt.Errorf("%w: %s redirects to different origin %s", errInsecureRedirect, previous.URL.Host, next.URL.Host)
+		}
+		if consumer != nil {
+			return consumer(next, via)
 		}
 		return nil
 	}
