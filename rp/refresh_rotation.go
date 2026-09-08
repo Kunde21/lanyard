@@ -3,7 +3,6 @@ package rp
 import (
 	"context"
 	"fmt"
-	"strings"
 	"sync"
 )
 
@@ -28,12 +27,15 @@ type RefreshTokenSource struct {
 
 // NewRefreshTokenSource creates a rotating refresh token source around
 // refreshToken obtained from a prior authorization. Returns an error wrapping
-// ErrInvalidConfiguration when r is nil or refreshToken is empty.
+// ErrInvalidConfiguration when r is nil or refreshToken is empty. The token
+// is stored verbatim: refresh tokens are opaque credentials (RFC 6749
+// Appendix A.17 permits ASCII space in VSCHAR), so leading/trailing
+// whitespace is preserved rather than normalized.
 func NewRefreshTokenSource(r *RP, refreshToken string) (*RefreshTokenSource, error) {
 	if r == nil {
 		return nil, fmt.Errorf("%w: rp is required", ErrInvalidConfiguration)
 	}
-	if refreshToken = strings.TrimSpace(refreshToken); refreshToken == "" {
+	if refreshToken == "" {
 		return nil, fmt.Errorf("%w: refresh token is required", ErrInvalidConfiguration)
 	}
 	return &RefreshTokenSource{rp: r, current: refreshToken}, nil
@@ -76,5 +78,7 @@ func (s *RefreshTokenSource) CurrentRefreshToken() string {
 func (s *RefreshTokenSource) Replace(refreshToken string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.current = strings.TrimSpace(refreshToken)
+	// Verbatim, like NewRefreshTokenSource: opaque provider-issued
+	// credentials are stored exactly as received.
+	s.current = refreshToken
 }

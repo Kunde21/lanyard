@@ -54,8 +54,13 @@ func TestNewRefreshTokenSource_Validation(t *testing.T) {
 	}
 
 	r := &RP{}
-	if _, err := NewRefreshTokenSource(r, "  "); !errors.Is(err, ErrInvalidConfiguration) {
+	if _, err := NewRefreshTokenSource(r, ""); !errors.Is(err, ErrInvalidConfiguration) {
 		t.Fatalf("NewRefreshTokenSource(r, \"\") error = %v, want ErrInvalidConfiguration", err)
+	}
+	// All-spaces is a nonempty opaque credential (RFC 6749 Appendix A.17
+	// permits ASCII space in VSCHAR); only truly empty input is rejected.
+	if _, err := NewRefreshTokenSource(r, " "); err != nil {
+		t.Fatalf("NewRefreshTokenSource(r, \" \") error = %v, want accepted verbatim", err)
 	}
 }
 

@@ -221,7 +221,9 @@ func (c *clientConfig) introspectToken(ctx context.Context, in IntrospectionRequ
 }
 
 func (c *clientConfig) introspectTokenInner(ctx context.Context, in IntrospectionRequest) (IntrospectionResponse, error) {
-	if strings.TrimSpace(in.Token) == "" {
+	// Only truly empty input is invalid; nonempty opaque credentials
+	// (including whitespace-bearing ones) are transmitted verbatim.
+	if in.Token == "" {
 		return IntrospectionResponse{}, fmt.Errorf("%w: token is required", ErrIntrospectionFailed)
 	}
 	endpoint := c.introspectionEndpoint(c.provider)
@@ -319,7 +321,10 @@ func (c *clientConfig) shouldUseDPoPForMethod(method AuthMethod) bool {
 
 func (c *clientConfig) buildIntrospectionRequest(ctx context.Context, endpoint string, in IntrospectionRequest, method AuthMethod) (*http.Request, error) {
 	form := url.Values{}
-	form.Set("token", strings.TrimSpace(in.Token))
+	// Verbatim: the token is an opaque credential (RFC 6749 Appendix A.17
+	// permits ASCII space in VSCHAR), so it is transmitted exactly as
+	// submitted; only truly empty input is rejected during validation.
+	form.Set("token", in.Token)
 	if strings.TrimSpace(string(in.TokenTypeHint)) != "" {
 		form.Set("token_type_hint", strings.TrimSpace(string(in.TokenTypeHint)))
 	}
