@@ -6,10 +6,10 @@ Security fixes are applied to the latest `master` and the most recent tagged rel
 
 ## Reporting a vulnerability
 
-Report vulnerabilities privately to the repository maintainers (see the
-owner contact on the hosting organization). Do not open public issues for
-suspected vulnerabilities. Include a description, reproduction steps, and
-affected versions; expect an acknowledgement within a few business days.
+Report vulnerabilities using [GitHub's private vulnerability reporting form](https://github.com/Kunde21/lanyard/security/advisories/new).
+Reports are shared privately with the repository maintainers. Do not open public
+issues for suspected vulnerabilities. Include a description, reproduction steps,
+and affected versions; expect an acknowledgement within a few business days.
 
 ## Hardening notes for consumers
 
