@@ -50,12 +50,19 @@
 // interaction. The method respects the same auth method and DPoP
 // configuration as the original flow.
 //
-// Authorization servers following RFC 9700 rotate the refresh token on every
-// use; once rotated, the previous token is invalid. Track rotation with
-// [NewRefreshTokenSource], which serializes refreshes so concurrent callers
-// never replay a rotated-out token. When the server rejects a token
-// (invalid_grant), refresh errors wrap [ErrRefreshTokenRejected]; discard the
-// token and restart the authorization flow.
+// Providers may rotate refresh tokens; after rotation, the previous token is
+// invalid. [NewRefreshTokenSource] tracks rotation and serializes refreshes only
+// among callers sharing that same instance. It does not coordinate separate
+// sources or processes, cache access tokens, or persist credentials. Applications
+// must coordinate the entire load/refresh/save operation across instances and
+// durably store the returned token before releasing that coordination. Persist
+// an absolute expiry alongside the token; ExpiresIn is a relative lifetime, not
+// a timestamp that restarts when the token is loaded from storage.
+//
+// When the server rejects a token (invalid_grant), refresh errors wrap
+// [ErrRefreshTokenRejected]; discard the token and restart authorization. If a
+// refresh outcome or subsequent persistence is uncertain, do not blindly retry
+// the old token: the server may already have rotated it.
 //
 // # OpenTelemetry tracing
 //

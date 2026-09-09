@@ -9,12 +9,13 @@ import (
 // RefreshTokenSource is a concurrency-safe holder for a refresh token that
 // tracks rotation across refreshes (RFC 9700 section 2.2.2).
 //
-// Authorization servers SHOULD issue a new refresh token with every refresh
-// response; once rotated, the previous token is invalid. RefreshTokenSource
-// serializes refreshes and adopts the new token on each successful response,
-// so concurrent callers cannot accidentally replay a token that has already
-// been rotated out — replay is what authorization servers answer by revoking
-// the entire token family.
+// Providers may rotate refresh tokens; once rotated, the previous token is
+// invalid. RefreshTokenSource serializes refreshes and adopts each successfully
+// returned refresh token. This coordination applies only to callers sharing the
+// same instance, not separate sources or processes. Applications must coordinate
+// the entire load/refresh/persist sequence across instances to avoid replaying
+// an old token, which can cause the provider to revoke the token family.
+// RefreshTokenSource does not cache access tokens or persist credentials.
 //
 // When the server rejects the token (invalid_grant), Refresh returns an error
 // wrapping ErrRefreshTokenRejected. Per RFC 9700 the caller must then discard

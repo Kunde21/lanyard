@@ -149,6 +149,46 @@ func handleCallback(rpClient *rp.RP) http.HandlerFunc {
 }
 ```
 
+### Production session storage and refresh
+
+For example, a multi-instance web application can keep each user's token set in
+an encrypted database row, keyed by an opaque application-session ID. The browser
+receives only that ID in a `Secure; HttpOnly` session cookie, never the token set.
+Application-session protection is separate from Lanyard's login correlation store.
+
+Use this lifecycle:
+
+1. After a successful callback, persist `CallbackResult.Token` and its issuer with
+   the acquisition time and an absolute access-token expiry. `ExpiresIn` is a
+   relative lifetime in seconds; compute expiry conservatively from the time just
+   before starting the token exchange, with an application safety margin. Do not
+   recompute expiry from the current time when loading a persisted token. If the
+   lifetime is absent or unknown, do not assume the token is valid indefinitely.
+2. Before refreshing, acquire exclusive coordination for the session across all
+   application instances (for example, a database row lock in a transaction),
+   then reload its latest persisted token. Reuse an unexpired access token rather
+   than refreshing on every API call.
+3. Construct `rp.NewRefreshTokenSource` from the stored refresh token and call
+   `Refresh` under that same coordination. Persist the returned full token set,
+   acquisition time and absolute expiry, and commit **before** another worker can
+   load or refresh that session. The source preserves the prior refresh token
+   when the provider validly omits a replacement.
+4. If `errors.Is(err, rp.ErrRefreshTokenRejected)`, invalidate the application
+   session and restart authorization. If the refresh response or database commit
+   is uncertain, quarantine the session and recover or reauthorize rather than
+   blindly retrying its old refresh token: the provider may already have rotated
+   it. A database transaction cannot atomically commit the provider's rotation.
+
+Keep coordination through the entire load/refresh/save sequence, not just the
+HTTP call. Each `RefreshTokenSource` mutex protects only that instance; separately
+constructed sources and separate processes do not share it. A distributed lease
+must remain valid for the whole operation and prevent stale workers from writing.
+Use bounded HTTP/database deadlines and protect stored tokens with encryption and
+restricted access. JSON persistence retains the original provider payload;
+clearing exported token fields does not securely erase secrets retained in it.
+Never log token values. The runnable `ExampleNewRefreshTokenSource` demonstrates
+in-process rotation, not a durable database implementation.
+
 ### Browser RP with Preloaded Provider
 
 ```go

@@ -273,9 +273,9 @@ func ExampleNewRegistrar() {
 	// registered as s6BhdRkqt3 manageable: false
 }
 
-// ExampleNewRefreshTokenSource tracks refresh token rotation (RFC 9700):
-// concurrent or repeated refreshes always use the token the server most
-// recently issued.
+// ExampleNewRefreshTokenSource tracks refresh token rotation for callers
+// sharing one source. Applications supply durable persistence and coordinate
+// refreshes across processes; see the README's session-storage example.
 func ExampleNewRefreshTokenSource() {
 	issued := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -320,9 +320,9 @@ func ExampleNewRefreshTokenSource() {
 		fmt.Println(err)
 		return
 	}
-	fmt.Println("current refresh token:", source.CurrentRefreshToken())
+	fmt.Println("refresh token rotated:", source.CurrentRefreshToken() != "refresh-0")
 	// Output:
-	// current refresh token: refresh-1
+	// refresh token rotated: true
 }
 
 // ExampleRP_QueryGrant reads a grant's status through the Grant Management
